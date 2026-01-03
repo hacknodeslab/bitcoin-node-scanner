@@ -39,7 +39,7 @@ This tool is for **security research and educational purposes only**. All data c
 
 ```bash
 # Clone the repository
-git clone https://github.com/hacknodes-lab/bitcoin-node-scanner.git
+git clone https://github.com/hacknodeslab/bitcoin-node-scanner.git
 cd bitcoin-node-scanner
 
 # Install dependencies
