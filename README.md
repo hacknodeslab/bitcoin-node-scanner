@@ -136,8 +136,7 @@ Special thanks to:
 ## 📧 Contact
 
 - Website: [hacknodes.com](https://hacknodes.com)
-- Twitter: [@hacknodes_lab](https://twitter.com/hacknodes_lab)
-- Email: security@hacknodes.com
+- Email: support@hacknodes.com
 
 ## 🔗 Related Projects
 
