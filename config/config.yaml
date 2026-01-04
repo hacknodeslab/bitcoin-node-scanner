@@ -1,0 +1,98 @@
+# Bitcoin Node Scanner Configuration
+
+shodan:
+  # API rate limiting
+  rate_limit_delay: 1  # seconds between requests
+  query_cooldown: 2    # seconds between different queries
+  max_retries: 3
+
+queries:
+  - 'product:Bitcoin'
+  - 'port:8333'
+  - '"Satoshi" port:8333'
+  - 'port:8332'
+  - '"Bitcoin Core"'
+  - '"Bitcoin Knots"'
+  - 'bitcoin'
+  - '"btcd"'
+  - '"bcoin"'
+
+ports:
+  bitcoin:
+    8333: 'P2P Mainnet'
+    8332: 'RPC Mainnet (CRITICAL)'
+    18333: 'P2P Testnet'
+    18332: 'RPC Testnet'
+    38333: 'P2P Signet'
+    38332: 'RPC Signet'
+    9735: 'Lightning Network'
+    50001: 'Electrum TCP'
+    50002: 'Electrum SSL'
+  
+  high_risk:
+    22: 'SSH'
+    80: 'HTTP'
+    443: 'HTTPS'
+    3306: 'MySQL'
+    5432: 'PostgreSQL'
+    6379: 'Redis'
+    27017: 'MongoDB'
+    9200: 'Elasticsearch'
+    2375: 'Docker API'
+    6443: 'Kubernetes API'
+
+vulnerable_versions:
+  '0.13.0': 'Multiple CVEs'
+  '0.13.1': 'Multiple CVEs'
+  '0.13.2': 'Multiple CVEs'
+  '0.14.0': 'CVE-2017-12842'
+  '0.14.1': 'CVE-2017-12842'
+  '0.14.2': 'CVE-2017-12842'
+  '0.15.0': 'CVE-2018-17144'
+  '0.15.1': 'CVE-2018-17144'
+  '0.16.0': 'CVE-2018-17144'
+  '0.16.1': 'CVE-2018-17144'
+  '0.16.2': 'CVE-2018-17144'
+  '0.16.3': 'Multiple CVEs'
+  '0.17.0': 'Multiple CVEs'
+  '0.17.1': 'Multiple CVEs'
+  '0.18.0': 'Multiple CVEs'
+  '0.18.1': 'Multiple CVEs'
+  '0.19.0': 'Multiple CVEs'
+  '0.19.1': 'Multiple CVEs'
+  '0.20.0': 'Multiple CVEs'
+  '0.20.1': 'Multiple CVEs'
+  '0.21.0': 'CVE-2021-31876'
+  '0.21.1': 'CVE-2021-31876'
+
+scan:
+  max_results_per_query: 1000
+  enable_enrichment: true
+  max_enrichments: 100
+  
+risk_assessment:
+  critical:
+    - rpc_exposed
+  high:
+    - vulnerable_version
+    - multiple_high_risk_services
+  medium:
+    - dev_version
+    - outdated_version
+  
+output:
+  base_dir: 'output'
+  subdirs:
+    raw_data: 'raw_data'
+    reports: 'reports'
+    logs: 'logs'
+  formats:
+    - json
+    - csv
+    - txt
+  generate_charts: true
+
+logging:
+  level: INFO
+  format: '[%(asctime)s] [%(levelname)s] %(message)s'
+  date_format: '%Y-%m-%d %H:%M:%S'
