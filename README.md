@@ -55,6 +55,37 @@ python src/scanner.py
 ./scripts/quick_scan.sh
 ```
 
+## 📦 Structure Project
+```
+bitcoin-node-scanner/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── setup.py
+├── .env.example
+├── .gitignore
+├── config/
+│   └── config.yaml
+├── src/
+│   ├── __init__.py
+│   ├── scanner.py
+│   ├── analyzer.py
+│   ├── reporter.py
+│   └── utils.py
+├── docs/
+│   ├── INSTALLATION.md
+│   ├── USAGE.md
+│   ├── API.md
+│   └── METHODOLOGY.md
+├── tests/
+│   ├── __init__.py
+│   ├── test_scanner.py
+│   └── test_analyzer.py
+└── scripts/
+    ├── quick_scan.sh
+    └── setup.sh
+```
+
 ## 📖 Documentation
 
 - [Installation Guide](docs/INSTALLATION.md)
