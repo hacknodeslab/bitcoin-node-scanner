@@ -39,7 +39,7 @@ This tool is for **security research and educational purposes only**. All data c
 
 ```bash
 # Clone the repository
-git clone https://github.com/hacknodes-lab/bitcoin-node-scanner.git
+git clone https://github.com/hacknodeslab/bitcoin-node-scanner.git
 cd bitcoin-node-scanner
 
 # Install dependencies
@@ -53,6 +53,37 @@ python src/scanner.py
 
 # Or use the quick scan script
 ./scripts/quick_scan.sh
+```
+
+## 📦 Structure Project
+```
+bitcoin-node-scanner/
+├── README.md
+├── LICENSE
+├── requirements.txt
+├── setup.py
+├── .env.example
+├── .gitignore
+├── config/
+│   └── config.yaml
+├── src/
+│   ├── __init__.py
+│   ├── scanner.py
+│   ├── analyzer.py
+│   ├── reporter.py
+│   └── utils.py
+├── docs/
+│   ├── INSTALLATION.md
+│   ├── USAGE.md
+│   ├── API.md
+│   └── METHODOLOGY.md
+├── tests/
+│   ├── __init__.py
+│   ├── test_scanner.py
+│   └── test_analyzer.py
+└── scripts/
+    ├── quick_scan.sh
+    └── setup.sh
 ```
 
 ## 📖 Documentation
@@ -136,8 +167,7 @@ Special thanks to:
 ## 📧 Contact
 
 - Website: [hacknodes.com](https://hacknodes.com)
-- Twitter: [@hacknodes_lab](https://twitter.com/hacknodes_lab)
-- Email: security@hacknodes.com
+- Email: support@hacknodes.com
 
 ## 🔗 Related Projects
 
