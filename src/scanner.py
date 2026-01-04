@@ -14,6 +14,10 @@ import argparse
 import os
 from typing import List, Dict, Set
 import yaml
+from dotenv import load_dotenv, find_dotenv
+
+# Load environment variables from .env file
+load_dotenv(find_dotenv(), override=True)
 
 # ============================================================================
 # CONFIGURATION
@@ -23,18 +27,9 @@ class Config:
     """Centralized configuration"""
     SHODAN_API_KEY = os.getenv('SHODAN_API_KEY', 'YOUR_API_KEY_HERE')
     
-    # Search queries
-    QUERIES = [
-        'product:Bitcoin',
-        'port:8333',
-        '"Satoshi" port:8333',
-        'port:8332',  # RPC - CRITICAL
-        '"Bitcoin Core"',
-        '"Bitcoin Knots"',
-        'bitcoin',
-        '"btcd"',
-        '"bcoin"',
-    ]
+    # Search queries from environment
+    _QUERIES_STRING = os.getenv('QUERIES', 'Satoshi,product:Bitcoin port:8333,port:8332,Bitcoin Core,Bitcoin Knots,bitcoin,btcd,bcoin')
+    QUERIES = [query.strip() for query in _QUERIES_STRING.split(',') if query.strip()]
     
     # Ports of interest
     BITCOIN_PORTS = {
