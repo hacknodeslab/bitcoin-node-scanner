@@ -5,7 +5,7 @@
 
 A comprehensive security assessment tool for Bitcoin nodes exposed on the clearnet. This tool leverages Shodan API to identify, analyze, and report on potentially vulnerable Bitcoin Core and Bitcoin Knots nodes.
 
-## 🎯 Purpose
+## Purpose
 
 This scanner helps identify:
 - Nodes running vulnerable Bitcoin Core/Knots versions
@@ -15,11 +15,11 @@ This scanner helps identify:
 - Geographic distribution of vulnerable nodes
 - Infrastructure security posture analysis
 
-## 🚨 Disclaimer
+## Disclaimer
 
 This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan). Do not perform active penetration testing without explicit authorization.
 
-## ✨ Features
+## Features
 
 - **Multi-Query Search**: Comprehensive coverage using multiple Shodan queries
 - **Vulnerability Detection**: Identifies nodes running known vulnerable versions
@@ -35,7 +35,7 @@ This tool is for **security research and educational purposes only**. All data c
 - Shodan API key (get one at [shodan.io](https://account.shodan.io/))
 - pip package manager
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Clone the repository
@@ -55,7 +55,7 @@ python src/scanner.py
 ./scripts/quick_scan.sh
 ```
 
-## 📦 Structure Project
+## Structure Project
 ```
 bitcoin-node-scanner/
 ├── README.md
@@ -86,14 +86,14 @@ bitcoin-node-scanner/
     └── setup.sh
 ```
 
-## 📖 Documentation
+## Documentation
 
 - [Installation Guide](docs/INSTALLATION.md)
 - [Usage Guide](docs/USAGE.md)
 - [API Reference](docs/API.md)
 - [Methodology](docs/METHODOLOGY.md)
 
-## 🔍 Example Output
+## Example Output
 
 ```
 ================================================================================
@@ -117,7 +117,7 @@ MEDIUM         4820 (39.64%)
 LOW            5000 (41.11%)
 ```
 
-## 📊 Sample Findings
+## Sample Findings
 
 Based on recent scans:
 - ~19% of exposed nodes run vulnerable versions
@@ -125,7 +125,7 @@ Based on recent scans:
 - Top vulnerable versions: 0.18.x, 0.20.x, 0.21.x
 - Geographic concentration: US (28%), Germany (15%), France (9%)
 
-## 🛠️ Configuration
+## Configuration
 
 Edit `config/config.yaml` to customize:
 - Shodan queries
@@ -134,7 +134,7 @@ Edit `config/config.yaml` to customize:
 - Output directories
 - Risk assessment thresholds
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.
 
@@ -144,18 +144,18 @@ Contributions are welcome! Please read our contributing guidelines before submit
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Ethical Use
+## Ethical Use
 
 - **Responsible Disclosure**: If you discover 0-day vulnerabilities, please report them responsibly to the Bitcoin Core security team
 - **No Active Exploitation**: This tool is for passive reconnaissance only
 - **Respect Privacy**: Do not publish IP addresses of vulnerable nodes
 - **GDPR Compliance**: Handle European data in accordance with regulations
 
-## 🙏 Credits
+## Credits
 
 Developed by HackNodes Lab
 
@@ -164,12 +164,12 @@ Special thanks to:
 - Bitcoin Core development team
 - OSTIF and Quarkslab for their comprehensive security audit
 
-## 📧 Contact
+## Contact
 
 - Website: [hacknodes.com](https://hacknodes.com)
 - Email: support@hacknodes.com
 
-## 🔗 Related Projects
+## Related Projects
 
 - [Bitcoin Core](https://github.com/bitcoin/bitcoin)
 - [Bitcoin Knots](https://github.com/bitcoinknots/bitcoin)
