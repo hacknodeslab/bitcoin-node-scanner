@@ -51,7 +51,12 @@ python src/scanner.py
 ./scripts/quick_scan.sh
 ```
 
->> ## Structure Project
+<details>
+
+<summary>Structure Project</summary>
+
+## Structure Project
+
 ```
 bitcoin-node-scanner/
 ├── README.md
@@ -81,6 +86,7 @@ bitcoin-node-scanner/
     ├── quick_scan.sh
     └── setup.sh
 ```
+</details>
 
 ## Documentation
 
