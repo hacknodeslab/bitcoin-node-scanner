@@ -15,10 +15,6 @@ This scanner helps identify:
 - Geographic distribution of vulnerable nodes
 - Infrastructure security posture analysis
 
-## Disclaimer
-
-This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan). Do not perform active penetration testing without explicit authorization.
-
 ## Features
 
 - **Multi-Query Search**: Comprehensive coverage using multiple Shodan queries
@@ -169,11 +165,9 @@ Special thanks to:
 - Website: [hacknodes.com](https://hacknodes.com)
 - Email: support@hacknodes.com
 
-## Related Projects
+## Disclaimer
 
-- [Bitcoin Core](https://github.com/bitcoin/bitcoin)
-- [Bitcoin Knots](https://github.com/bitcoinknots/bitcoin)
-- [Bitnodes](https://bitnodes.io/)
+This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan). Do not perform active penetration testing without explicit authorization.
 
 ---
 
