@@ -1,601 +1,340 @@
 #!/usr/bin/env python3
 """
-Bitcoin Node Security Scanner - HackNodes Lab
-Comprehensive analysis of Bitcoin nodes exposed on clearnet using Shodan
+Optimized Bitcoin Node Scanner - Credit-Efficient Version
+Implements strategies to minimize Shodan API credit usage
 """
 
-import shodan
 import json
-import csv
-import time
-from datetime import datetime
-from collections import Counter
-import argparse
 import os
-from typing import List, Dict, Set
-import yaml
-from dotenv import load_dotenv, find_dotenv
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+from scanner import BitcoinNodeScanner, Config
 
-# Load environment variables from .env file
-load_dotenv(find_dotenv(), override=True)
 
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
+class OptimizedConfig(Config):
+    """Optimized configuration to reduce credit usage"""
+    
+    # Use optimized queries from environment if available, otherwise fall back to Config.QUERIES
+    _QUERIES_OPTIMIZED_STRING = os.getenv('QUERIES_OPTIMIZED', 
+        'product:Bitcoin port:8333,port:8332,Bitcoin Knots,btcd,bcoin')
+    QUERIES_OPTIMIZED = [query.strip() for query in _QUERIES_OPTIMIZED_STRING.split(',') if query.strip()]
+    
+    # Cache settings
+    CACHE_DIR = 'cache'
+    CACHE_FILE = f'{CACHE_DIR}/nodes_cache.json'
+    CACHE_MAX_AGE_DAYS = 7
+    
+    # Smart pagination limits
+    MAX_RESULTS_CRITICAL = 1000    # For port 8332 (RPC)
+    MAX_RESULTS_NORMAL = 100       # For other queries
+    
+    # Enrichment limits
+    MAX_ENRICHMENTS = 100          # Stay within scan credit limit
+    ENRICH_ONLY_CRITICAL = True    # Only enrich CRITICAL/HIGH nodes
 
-class Config:
-    """Centralized configuration"""
-    SHODAN_API_KEY = os.getenv('SHODAN_API_KEY', 'YOUR_API_KEY_HERE')
-    
-    # Search queries from environment
-    _QUERIES_STRING = os.getenv('QUERIES', 'Satoshi,product:Bitcoin port:8333,port:8332,Bitcoin Core,Bitcoin Knots,bitcoin,btcd,bcoin')
-    QUERIES = [query.strip() for query in _QUERIES_STRING.split(',') if query.strip()]
-    
-    # Ports of interest
-    BITCOIN_PORTS = {
-        8333: 'P2P Mainnet',
-        8332: 'RPC Mainnet (CRITICAL)',
-        18333: 'P2P Testnet',
-        18332: 'RPC Testnet',
-        38333: 'P2P Signet',
-        38332: 'RPC Signet',
-        9735: 'Lightning Network',
-        50001: 'Electrum TCP',
-        50002: 'Electrum SSL',
-    }
-    
-    # Additional high-risk ports
-    HIGH_RISK_PORTS = {
-        22: 'SSH',
-        80: 'HTTP',
-        443: 'HTTPS',
-        3306: 'MySQL',
-        5432: 'PostgreSQL',
-        6379: 'Redis',
-        27017: 'MongoDB',
-        9200: 'Elasticsearch',
-        2375: 'Docker API',
-        6443: 'Kubernetes API',
-    }
-    
-    # Known vulnerable versions
-    VULNERABLE_VERSIONS = {
-        '0.13.0': 'Multiple CVEs',
-        '0.13.1': 'Multiple CVEs',
-        '0.13.2': 'Multiple CVEs',
-        '0.14.0': 'CVE-2017-12842',
-        '0.14.1': 'CVE-2017-12842',
-        '0.14.2': 'CVE-2017-12842',
-        '0.15.0': 'CVE-2018-17144',
-        '0.15.1': 'CVE-2018-17144',
-        '0.16.0': 'CVE-2018-17144',
-        '0.16.1': 'CVE-2018-17144',
-        '0.16.2': 'CVE-2018-17144',
-        '0.16.3': 'Multiple CVEs',
-        '0.17.0': 'Multiple CVEs',
-        '0.17.1': 'Multiple CVEs',
-        '0.18.0': 'Multiple CVEs',
-        '0.18.1': 'Multiple CVEs',
-        '0.19.0': 'Multiple CVEs',
-        '0.19.1': 'Multiple CVEs',
-        '0.20.0': 'Multiple CVEs',
-        '0.20.1': 'Multiple CVEs',
-        '0.21.0': 'CVE-2021-31876',
-        '0.21.1': 'CVE-2021-31876',
-    }
-    
-    # Output directories
-    OUTPUT_DIR = 'output'
-    RAW_DATA_DIR = f'{OUTPUT_DIR}/raw_data'
-    REPORTS_DIR = f'{OUTPUT_DIR}/reports'
-    LOGS_DIR = f'{OUTPUT_DIR}/logs'
 
-# ============================================================================
-# MAIN CLASS
-# ============================================================================
-
-class BitcoinNodeScanner:
-    """Main Bitcoin node scanner"""
+class CachedNodeManager:
+    """Manages cached node data to avoid re-scanning"""
     
-    def __init__(self, api_key: str = None):
-        """Initialize scanner"""
-        self.api_key = api_key or Config.SHODAN_API_KEY
-        if not self.api_key or self.api_key == 'YOUR_API_KEY_HERE':
-            raise ValueError("Please set SHODAN_API_KEY environment variable")
+    def __init__(self, cache_file: str = None):
+        self.cache_file = cache_file or OptimizedConfig.CACHE_FILE
+        self.cache = self._load_cache()
+        self._ensure_cache_dir()
+    
+    def _ensure_cache_dir(self):
+        """Create cache directory if it doesn't exist"""
+        os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
+    
+    def _load_cache(self) -> Dict:
+        """Load cache from file"""
+        if os.path.exists(self.cache_file):
+            try:
+                with open(self.cache_file, 'r') as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, IOError):
+                return {}
+        return {}
+    
+    def save_cache(self):
+        """Save cache to file"""
+        with open(self.cache_file, 'w') as f:
+            json.dump(self.cache, f, indent=2)
+    
+    def is_cached(self, ip: str, max_age_days: int = None) -> bool:
+        """
+        Check if IP is in cache and recent enough
         
-        self.api = shodan.Shodan(self.api_key)
-        self.results = []
-        self.unique_ips = set()
-        self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        Args:
+            ip: IP address
+            max_age_days: Maximum age in days (default from config)
+            
+        Returns:
+            True if cached and fresh, False otherwise
+        """
+        max_age = max_age_days or OptimizedConfig.CACHE_MAX_AGE_DAYS
         
-        # Create directories
-        for directory in [Config.OUTPUT_DIR, Config.RAW_DATA_DIR, 
-                         Config.REPORTS_DIR, Config.LOGS_DIR]:
-            os.makedirs(directory, exist_ok=True)
+        if ip not in self.cache:
+            return False
         
-        # Logging
-        self.log_file = f"{Config.LOGS_DIR}/scan_{self.timestamp}.log"
-        self.log(f"Initializing Bitcoin Node Scanner - {self.timestamp}")
-    
-    def log(self, message: str, level: str = 'INFO'):
-        """Simple logger"""
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        log_message = f"[{timestamp}] [{level}] {message}"
-        print(log_message)
-        with open(self.log_file, 'a') as f:
-            f.write(log_message + '\n')
-    
-    def get_account_info(self):
-        """Check Shodan credits"""
-        try:
-            info = self.api.info()
-            self.log(f"Shodan query credits: {info.get('query_credits', 'N/A')}")
-            self.log(f"Scan credits: {info.get('scan_credits', 'N/A')}")
-            return info
-        except Exception as e:
-            self.log(f"Error getting account info: {e}", 'ERROR')
-            return None
-    
-    def search_bitcoin_nodes(self, query: str, max_results: int = 1000) -> List[Dict]:
-        """Search nodes with a specific query"""
-        self.log(f"Searching: '{query}'")
-        results = []
+        cached_date = datetime.fromisoformat(self.cache[ip]['timestamp'])
+        age = datetime.now() - cached_date
         
-        try:
-            # Initial search
-            search_results = self.api.search(query)
-            total = search_results['total']
-            self.log(f"Total found for '{query}': {total}")
+        return age < timedelta(days=max_age)
+    
+    def get_cached(self, ip: str) -> Optional[Dict]:
+        """Get cached node data"""
+        if self.is_cached(ip):
+            return self.cache[ip]['data']
+        return None
+    
+    def update_cache(self, nodes: List[Dict]):
+        """Update cache with new node data"""
+        timestamp = datetime.now().isoformat()
+        
+        for node in nodes:
+            ip = node.get('ip')
+            if ip:
+                self.cache[ip] = {
+                    'timestamp': timestamp,
+                    'data': node
+                }
+        
+        self.save_cache()
+    
+    def filter_uncached(self, nodes: List[Dict]) -> List[Dict]:
+        """Filter out cached nodes"""
+        return [n for n in nodes if not self.is_cached(n.get('ip', ''))]
+    
+    def get_stats(self) -> Dict:
+        """Get cache statistics"""
+        total = len(self.cache)
+        fresh = sum(1 for ip in self.cache if self.is_cached(ip))
+        stale = total - fresh
+        
+        return {
+            'total_cached': total,
+            'fresh': fresh,
+            'stale': stale,
+        }
+
+
+class OptimizedBitcoinScanner(BitcoinNodeScanner):
+    """Optimized scanner with credit-saving features"""
+    
+    def __init__(self, api_key: str = None, use_cache: bool = True):
+        super().__init__(api_key)
+        self.use_cache = use_cache
+        self.cache_manager = CachedNodeManager() if use_cache else None
+        self.credit_usage = {
+            'query_credits_used': 0,
+            'scan_credits_used': 0,
+            'nodes_from_cache': 0,
+            'nodes_scanned': 0,
+        }
+    
+    def smart_search(self, query: str, is_critical: bool = False) -> List[Dict]:
+        """
+        Smart search with adaptive result limits
+        
+        Args:
+            query: Search query
+            is_critical: Whether this is a critical query (RPC, etc.)
             
-            # Paginate results
-            page = 1
-            collected = 0
-            
-            while collected < min(max_results, total):
-                try:
-                    if page > 1:
-                        search_results = self.api.search(query, page=page)
-                    
-                    for result in search_results['matches']:
-                        if collected >= max_results:
-                            break
-                        
-                        # Process result
-                        node_data = self.parse_node_data(result, query)
-                        results.append(node_data)
-                        self.unique_ips.add(result['ip_str'])
-                        collected += 1
-                    
-                    page += 1
-                    time.sleep(1)  # Rate limiting
-                    
-                except shodan.APIError as e:
-                    if 'upgrade your API plan' in str(e).lower():
-                        self.log(f"Limit reached at page {page}. Collected: {collected}", 'WARNING')
-                        break
-                    else:
-                        raise
-            
-            self.log(f"Collected {collected} results for '{query}'")
-            
-        except shodan.APIError as e:
-            self.log(f"Error in search '{query}': {e}", 'ERROR')
+        Returns:
+            List of node results
+        """
+        # Determine max results based on criticality
+        if is_critical:
+            max_results = OptimizedConfig.MAX_RESULTS_CRITICAL
+            self.log(f"Critical query - fetching up to {max_results} results")
+        else:
+            max_results = OptimizedConfig.MAX_RESULTS_NORMAL
+            self.log(f"Normal query - fetching up to {max_results} results")
+        
+        # Search
+        results = self.search_bitcoin_nodes(query, max_results)
+        self.credit_usage['query_credits_used'] += 1
+        self.credit_usage['nodes_scanned'] += len(results)
         
         return results
     
-    def parse_node_data(self, result: Dict, query: str) -> Dict:
-        """Parse node data"""
-        return {
-            'timestamp': self.timestamp,
-            'query': query,
-            'ip': result.get('ip_str'),
-            'port': result.get('port'),
-            'transport': result.get('transport', 'tcp'),
-            'product': result.get('product', ''),
-            'version': result.get('version', ''),
-            'banner': result.get('data', ''),
-            'organization': result.get('org', ''),
-            'isp': result.get('isp', ''),
-            'asn': result.get('asn', ''),
-            'country': result.get('location', {}).get('country_name', ''),
-            'country_code': result.get('location', {}).get('country_code', ''),
-            'city': result.get('location', {}).get('city', ''),
-            'hostnames': result.get('hostnames', []),
-            'domains': result.get('domains', []),
-            'timestamp_shodan': result.get('timestamp', ''),
-            'ssl': self.extract_ssl_info(result),
-            'vulns': result.get('vulns', []),
-            'cpe': result.get('cpe', []),
-        }
-    
-    def extract_ssl_info(self, result: Dict) -> Dict:
-        """Extract SSL information if available"""
-        ssl_info = {}
-        if 'ssl' in result:
-            ssl_data = result['ssl']
-            ssl_info = {
-                'enabled': True,
-                'version': ssl_data.get('version', ''),
-                'cipher': ssl_data.get('cipher', {}).get('name', ''),
-                'cert_issued': ssl_data.get('cert', {}).get('issued', ''),
-                'cert_expires': ssl_data.get('cert', {}).get('expires', ''),
-                'cert_subject': ssl_data.get('cert', {}).get('subject', {}),
-            }
-        return ssl_info
-    
-    def scan_all_queries(self, max_per_query: int = 1000):
-        """Execute all configured queries"""
-        self.log("="*80)
-        self.log("STARTING FULL SCAN")
-        self.log("="*80)
+    def scan_optimized_queries(self) -> List[Dict]:
+        """
+        Scan using optimized query set
         
-        for query in Config.QUERIES:
-            results = self.search_bitcoin_nodes(query, max_per_query)
-            self.results.extend(results)
-            time.sleep(2)  # Cooldown between queries
+        Returns:
+            Combined results from all queries
+        """
+        self.log("Starting optimized scan...")
+        self.log(f"Using {len(OptimizedConfig.QUERIES_OPTIMIZED)} queries (vs 9 original)")
         
-        self.log(f"\nTotal results: {len(self.results)}")
-        self.log(f"Unique IPs: {len(self.unique_ips)}")
-    
-    def enrich_with_host_scan(self, ip: str) -> Dict:
-        """Get complete host information"""
-        try:
-            host = self.api.host(ip)
-            return {
-                'all_ports': [service['port'] for service in host.get('data', [])],
-                'all_services': [
-                    {
-                        'port': service.get('port'),
-                        'product': service.get('product', ''),
-                        'version': service.get('version', ''),
-                    }
-                    for service in host.get('data', [])
-                ],
-                'tags': host.get('tags', []),
-                'vulns': host.get('vulns', []),
-                'os': host.get('os', ''),
-                'last_update': host.get('last_update', ''),
-            }
-        except Exception as e:
-            self.log(f"Error enriching {ip}: {e}", 'WARNING')
-            return {}
-    
-    def enrich_critical_nodes(self, max_enrichments: int = 100):
-        """Enrich critical nodes with full host scan"""
-        self.log("\nEnriching critical nodes...")
+        all_results = []
         
-        # Filter critical nodes (RPC exposed or very old versions)
-        critical_ips = set()
-        
-        for result in self.results:
-            if result['port'] == 8332:  # RPC
-                critical_ips.add(result['ip'])
-            elif self.is_vulnerable_version(result.get('version', '')):
-                critical_ips.add(result['ip'])
-        
-        self.log(f"Critical nodes identified: {len(critical_ips)}")
-        
-        enriched = 0
-        for ip in list(critical_ips)[:max_enrichments]:
-            enrichment = self.enrich_with_host_scan(ip)
+        for query in OptimizedConfig.QUERIES_OPTIMIZED:
+            # Check if critical query
+            is_critical = 'port:8332' in query or 'RPC' in query
             
-            # Update results
-            for result in self.results:
-                if result['ip'] == ip:
-                    result['enrichment'] = enrichment
-            
-            enriched += 1
-            if enriched % 10 == 0:
-                self.log(f"Enriched: {enriched}/{min(max_enrichments, len(critical_ips))}")
-            
-            time.sleep(1)  # Rate limiting
+            results = self.smart_search(query, is_critical)
+            all_results.extend(results)
         
-        self.log(f"Enrichment completed: {enriched} hosts")
+        # Remove duplicates by IP
+        unique_results = self._deduplicate_by_ip(all_results)
+        
+        self.log(f"Total results: {len(all_results)}, Unique IPs: {len(unique_results)}")
+        
+        return unique_results
     
-    def is_vulnerable_version(self, version: str) -> bool:
-        """Check if version is known vulnerable"""
-        # Extract version from banner/product
-        for vuln_version in Config.VULNERABLE_VERSIONS.keys():
-            if vuln_version in version:
-                return True
+    def _deduplicate_by_ip(self, results: List[Dict]) -> List[Dict]:
+        """Remove duplicate IPs, keeping first occurrence"""
+        seen_ips = set()
+        unique = []
         
-        # Very old versions (< 0.21)
-        try:
-            if 'Satoshi:0.' in version:
-                ver_num = version.split(':')[1].split('.')[1]
-                if int(ver_num) < 21:
-                    return True
-        except:
-            pass
+        for result in results:
+            ip = result.get('ip')
+            if ip and ip not in seen_ips:
+                seen_ips.add(ip)
+                unique.append(result)
         
-        return False
+        return unique
     
-    def analyze_risk_level(self, result: Dict) -> str:
-        """Determine node risk level"""
-        risk_factors = []
+    def get_account_info(self):
+        """Get account info and show credit usage report with real API values"""
+        # Get parent implementation
+        info = super().get_account_info()
+        if not info:
+            return info
         
-        # RPC port exposed
-        if result['port'] == 8332:
-            return 'CRITICAL'
+        # Show credit usage report with real API values
+        from credit_tracker import CreditTracker
+        tracker = CreditTracker()
         
-        # Known vulnerable version
-        if self.is_vulnerable_version(result.get('version', '')):
-            risk_factors.append('vulnerable_version')
+        # Get current credits from API
+        query_credits = info.get('query_credits', 0)
+        scan_credits = info.get('scan_credits', 0)
         
-        # Development version in production
-        if '.99.' in result.get('version', ''):
-            risk_factors.append('dev_version')
-        
-        # Multiple services (if enriched)
-        enrichment = result.get('enrichment', {})
-        if enrichment:
-            ports = enrichment.get('all_ports', [])
-            high_risk_exposed = [p for p in ports if p in Config.HIGH_RISK_PORTS]
-            if len(high_risk_exposed) > 2:
-                risk_factors.append('multiple_services')
-        
-        # Determine level
-        if len(risk_factors) >= 2:
-            return 'HIGH'
-        elif len(risk_factors) == 1:
-            return 'MEDIUM'
-        else:
-            return 'LOW'
-    
-    def generate_statistics(self) -> Dict:
-        """Generate scan statistics"""
-        stats = {
-            'total_results': len(self.results),
-            'unique_ips': len(self.unique_ips),
-            'timestamp': self.timestamp,
-        }
-        
-        # Port distribution
-        port_dist = Counter(r['port'] for r in self.results)
-        stats['port_distribution'] = dict(port_dist)
-        
-        # Country distribution
-        country_dist = Counter(r['country_code'] for r in self.results if r['country_code'])
-        stats['country_distribution'] = dict(country_dist.most_common(20))
-        
-        # Version distribution
-        version_dist = Counter()
-        for r in self.results:
-            version = self.extract_version_from_banner(r)
-            if version:
-                version_dist[version] += 1
-        stats['version_distribution'] = dict(version_dist.most_common(50))
-        
-        # ASN distribution
-        asn_dist = Counter(r['asn'] for r in self.results if r['asn'])
-        stats['asn_distribution'] = dict(asn_dist.most_common(20))
-        
-        # Risk levels
-        risk_dist = Counter()
-        for r in self.results:
-            risk = self.analyze_risk_level(r)
-            risk_dist[risk] += 1
-        stats['risk_distribution'] = dict(risk_dist)
-        
-        # Vulnerable versions count
-        vulnerable_count = sum(
-            1 for r in self.results 
-            if self.is_vulnerable_version(r.get('version', ''))
+        # Generate projection with real API values
+        projection = tracker.project_monthly_usage(
+            current_query_credits=query_credits,
+            current_scan_credits=scan_credits
         )
-        stats['vulnerable_nodes'] = vulnerable_count
         
-        # RPC exposed
-        rpc_exposed = sum(1 for r in self.results if r['port'] == 8332)
-        stats['rpc_exposed'] = rpc_exposed
+        # Print enhanced report with real API values
+        tracker.print_report(projection)
         
-        return stats
+        return info
     
-    def extract_version_from_banner(self, result: Dict) -> str:
-        """Extract version from banner or product"""
-        banner = result.get('banner', '')
-        product = result.get('product', '')
-        version = result.get('version', '')
+    def scan_with_cache(self) -> List[Dict]:
+        """
+        Scan using cache to avoid re-scanning known nodes
         
-        # Try to extract from banner
-        if '/Satoshi:' in banner:
-            try:
-                version_part = banner.split('/Satoshi:')[1].split('/')[0]
-                return f"Satoshi:{version_part}"
-            except:
-                pass
+        Returns:
+            List of all nodes (cached + newly scanned)
+        """
+        if not self.use_cache:
+            self.log("Cache disabled, performing full scan")
+            return self.scan_optimized_queries()
         
-        if product and version:
-            return f"{product}:{version}"
+        self.log("Checking cache...")
+        cache_stats = self.cache_manager.get_stats()
+        self.log(f"Cache status: {cache_stats['fresh']} fresh, {cache_stats['stale']} stale")
         
-        return version or 'Unknown'
+        # Perform scan
+        new_results = self.scan_optimized_queries()
+        
+        # Filter out cached nodes
+        uncached = self.cache_manager.filter_uncached(new_results)
+        cached_count = len(new_results) - len(uncached)
+        
+        self.log(f"Found {cached_count} nodes in cache (skipping)")
+        self.log(f"New nodes to process: {len(uncached)}")
+        
+        self.credit_usage['nodes_from_cache'] = cached_count
+        
+        # Update cache with new results
+        self.cache_manager.update_cache(uncached)
+        
+        # Return all results (will use cached data for analysis)
+        all_results = []
+        for result in new_results:
+            cached_data = self.cache_manager.get_cached(result['ip'])
+            if cached_data:
+                all_results.append(cached_data)
+            else:
+                all_results.append(result)
+        
+        return all_results
     
-    def save_raw_data(self):
-        """Save raw data"""
-        filename = f"{Config.RAW_DATA_DIR}/nodes_{self.timestamp}.json"
+    def enrich_critical_only(self, results: List[Dict], max_enrichments: int = None):
+        """
+        Enrich only CRITICAL and HIGH risk nodes
         
-        with open(filename, 'w') as f:
-            json.dump(self.results, f, indent=2)
+        Args:
+            results: List of node results
+            max_enrichments: Maximum nodes to enrich (default from config)
+        """
+        max_enrich = max_enrichments or OptimizedConfig.MAX_ENRICHMENTS
         
-        self.log(f"Raw data saved: {filename}")
-        
-        # Also CSV
-        csv_filename = f"{Config.RAW_DATA_DIR}/nodes_{self.timestamp}.csv"
-        
-        if self.results:
-            keys = self.results[0].keys()
-            with open(csv_filename, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=keys)
-                writer.writeheader()
-                for row in self.results:
-                    # Convert lists/dicts to strings for CSV
-                    row_clean = {}
-                    for k, v in row.items():
-                        if isinstance(v, (list, dict)):
-                            row_clean[k] = json.dumps(v)
-                        else:
-                            row_clean[k] = v
-                    writer.writerow(row_clean)
-            
-            self.log(f"CSV saved: {csv_filename}")
-    
-    def save_statistics(self, stats: Dict):
-        """Save statistics"""
-        filename = f"{Config.REPORTS_DIR}/statistics_{self.timestamp}.json"
-        
-        with open(filename, 'w') as f:
-            json.dump(stats, f, indent=2)
-        
-        self.log(f"Statistics saved: {filename}")
-    
-    def generate_report(self, stats: Dict):
-        """Generate text report"""
-        report = []
-        report.append("="*80)
-        report.append("BITCOIN NODE SECURITY SCAN REPORT")
-        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append(f"Scan ID: {self.timestamp}")
-        report.append("="*80)
-        report.append("")
-        
-        # Summary
-        report.append("EXECUTIVE SUMMARY")
-        report.append("-"*80)
-        report.append(f"Total nodes found: {stats['total_results']}")
-        report.append(f"Unique IPs: {stats['unique_ips']}")
-        report.append(f"Vulnerable nodes: {stats.get('vulnerable_nodes', 0)}")
-        report.append(f"RPC exposed: {stats.get('rpc_exposed', 0)} (CRITICAL)")
-        report.append("")
-        
-        # Risk distribution
-        report.append("RISK DISTRIBUTION")
-        report.append("-"*80)
-        for risk_level, count in sorted(stats.get('risk_distribution', {}).items()):
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{risk_level:12} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Port distribution
-        report.append("PORT DISTRIBUTION")
-        report.append("-"*80)
-        for port, count in sorted(stats['port_distribution'].items(), key=lambda x: x[1], reverse=True):
-            port_name = Config.BITCOIN_PORTS.get(port, 'Unknown')
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{port:6} ({port_name:20}) {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Top versions
-        report.append("TOP 20 VERSIONS")
-        report.append("-"*80)
-        for version, count in list(stats['version_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            vulnerable = "⚠ VULNERABLE" if self.is_vulnerable_version(version) else ""
-            report.append(f"{version:40} {count:6} ({percentage:5.2f}%) {vulnerable}")
-        report.append("")
-        
-        # Top countries
-        report.append("TOP 20 COUNTRIES")
-        report.append("-"*80)
-        for country, count in list(stats['country_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{country:6} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Top ASNs
-        report.append("TOP 20 ASNs")
-        report.append("-"*80)
-        for asn, count in list(stats['asn_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{asn:15} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        report.append("="*80)
-        report.append("END OF REPORT")
-        report.append("="*80)
-        
-        # Save
-        report_text = '\n'.join(report)
-        filename = f"{Config.REPORTS_DIR}/report_{self.timestamp}.txt"
-        
-        with open(filename, 'w') as f:
-            f.write(report_text)
-        
-        self.log(f"Report saved: {filename}")
-        
-        # Also print
-        print("\n" + report_text)
-    
-    def generate_critical_nodes_list(self):
-        """Generate critical nodes list for tracking"""
+        # Filter for critical nodes
         critical_nodes = []
-        
-        for result in self.results:
+        for result in results:
             risk = self.analyze_risk_level(result)
             if risk in ['CRITICAL', 'HIGH']:
-                critical_nodes.append({
-                    'ip': result['ip'],
-                    'port': result['port'],
-                    'version': self.extract_version_from_banner(result),
-                    'risk_level': risk,
-                    'country': result['country_code'],
-                    'organization': result['organization'],
-                    'asn': result['asn'],
-                    'reason': self.get_risk_reason(result, risk),
-                })
+                critical_nodes.append(result)
         
-        # Sort by risk level
-        critical_nodes.sort(key=lambda x: (x['risk_level'] == 'CRITICAL', x['risk_level'] == 'HIGH'), reverse=True)
+        self.log(f"Found {len(critical_nodes)} critical/high-risk nodes")
         
-        # Save
-        filename = f"{Config.REPORTS_DIR}/critical_nodes_{self.timestamp}.json"
-        with open(filename, 'w') as f:
-            json.dump(critical_nodes, f, indent=2)
+        # Limit to max enrichments
+        to_enrich = critical_nodes[:max_enrich]
         
-        self.log(f"Critical nodes list saved: {filename}")
-        self.log(f"Total critical nodes: {len(critical_nodes)}")
+        if len(critical_nodes) > max_enrich:
+            self.log(f"Limiting enrichment to {max_enrich} nodes (saving credits)")
         
-        # CSV also
-        csv_filename = f"{Config.REPORTS_DIR}/critical_nodes_{self.timestamp}.csv"
-        if critical_nodes:
-            with open(csv_filename, 'w', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=critical_nodes[0].keys())
-                writer.writeheader()
-                writer.writerows(critical_nodes)
+        # Enrich
+        enriched_count = 0
+        for result in to_enrich:
+            ip = result['ip']
+            
+            try:
+                enrichment = self.enrich_with_host_scan(ip)
+                result['enrichment'] = enrichment
+                enriched_count += 1
+                self.credit_usage['scan_credits_used'] += 1
+            except Exception as e:
+                self.log(f"Error enriching {ip}: {e}", 'WARNING')
         
-        return critical_nodes
+        self.log(f"Enriched {enriched_count} critical nodes")
     
-    def get_risk_reason(self, result: Dict, risk_level: str) -> str:
-        """Get risk level reason"""
-        reasons = []
+    def run_optimized_scan(self, use_cache: bool = True, 
+                          enrich: bool = True,
+                          max_enrichments: int = None):
+        """
+        Run optimized scan with all credit-saving features
         
-        if result['port'] == 8332:
-            reasons.append("RPC_EXPOSED")
+        Args:
+            use_cache: Use cached results
+            enrich: Perform enrichment
+            max_enrichments: Max nodes to enrich
+        """
+        self.log("="*80)
+        self.log("OPTIMIZED SCAN - CREDIT EFFICIENT MODE")
+        self.log("="*80)
         
-        if self.is_vulnerable_version(result.get('version', '')):
-            reasons.append("VULNERABLE_VERSION")
-        
-        if '.99.' in result.get('version', ''):
-            reasons.append("DEV_VERSION")
-        
-        enrichment = result.get('enrichment', {})
-        if enrichment:
-            ports = enrichment.get('all_ports', [])
-            high_risk_exposed = [p for p in ports if p in Config.HIGH_RISK_PORTS]
-            if len(high_risk_exposed) > 2:
-                reasons.append(f"MULTIPLE_SERVICES({len(high_risk_exposed)})")
-        
-        return ', '.join(reasons) if reasons else 'UNKNOWN'
-    
-    def run_full_scan(self, max_per_query: int = 1000, enrich: bool = True):
-        """Run full scan"""
         # Check account
-        self.get_account_info()
+        info = self.get_account_info()
+        if info:
+            query_credits = info.get('query_credits', 'N/A')
+            scan_credits = info.get('scan_credits', 'N/A')
+            self.log(f"Available credits - Query: {query_credits}, Scan: {scan_credits}")
         
         # Scan
-        self.scan_all_queries(max_per_query)
+        if use_cache:
+            self.results = self.scan_with_cache()
+        else:
+            self.results = self.scan_optimized_queries()
         
-        # Enrich critical nodes
+        # Enrich (selective)
         if enrich and self.results:
-            self.enrich_critical_nodes()
+            self.enrich_critical_only(self.results, max_enrichments)
         
         # Generate statistics
         stats = self.generate_statistics()
@@ -606,81 +345,101 @@ class BitcoinNodeScanner:
         self.generate_report(stats)
         self.generate_critical_nodes_list()
         
+        # Report credit usage
         self.log("\n" + "="*80)
-        self.log("SCAN COMPLETED")
+        self.log("CREDIT USAGE SUMMARY")
         self.log("="*80)
+        self.log(f"Query credits used: {self.credit_usage['query_credits_used']}")
+        self.log(f"Scan credits used: {self.credit_usage['scan_credits_used']}")
+        self.log(f"Nodes scanned: {self.credit_usage['nodes_scanned']}")
+        self.log(f"Nodes from cache: {self.credit_usage['nodes_from_cache']}")
+        
+        if use_cache and self.credit_usage['nodes_from_cache'] > 0:
+            savings_pct = (self.credit_usage['nodes_from_cache'] / 
+                          (self.credit_usage['nodes_scanned'] + 
+                           self.credit_usage['nodes_from_cache']) * 100)
+            self.log(f"Cache savings: {savings_pct:.1f}%")
+        
+        self.log("="*80)
+        self.log("OPTIMIZED SCAN COMPLETED")
+        self.log("="*80)
+        
+        return stats
 
-# ============================================================================
-# CLI
-# ============================================================================
 
 def main():
+    """Main function for optimized scanner"""
+    import argparse
+    
     parser = argparse.ArgumentParser(
-        description='Bitcoin Node Security Scanner - HackNodes Lab',
+        description='Optimized Bitcoin Node Scanner - Credit Efficient',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Credit-Saving Features:
+  - Optimized queries (5 instead of 9)
+  - Smart pagination (adaptive limits)
+  - Node caching (avoid re-scanning)
+  - Selective enrichment (only critical nodes)
+  
 Usage examples:
   
-  # Basic scan
-  python scanner.py
+  # Quick scan with all optimizations
+  python optimized_scanner.py --quick
   
-  # Scan with more results per query
-  python scanner.py --max-per-query 2000
+  # Full scan without cache
+  python optimized_scanner.py --no-cache
   
-  # Scan without enrichment
-  python scanner.py --no-enrich
-  
-  # Only check credits
-  python scanner.py --check-credits
+  # Scan with limited enrichment
+  python optimized_scanner.py --max-enrich 50
         """
     )
     
-    parser.add_argument(
-        '--api-key',
-        help='Shodan API key (or use SHODAN_API_KEY variable)',
-        default=None
-    )
-    
-    parser.add_argument(
-        '--max-per-query',
-        type=int,
-        default=1000,
-        help='Maximum results per query (default: 1000)'
-    )
-    
-    parser.add_argument(
-        '--no-enrich',
-        action='store_true',
-        help='Do not enrich critical nodes with host scan'
-    )
-    
-    parser.add_argument(
-        '--check-credits',
-        action='store_true',
-        help='Only check Shodan credits and exit'
-    )
+    parser.add_argument('--api-key', help='Shodan API key')
+    parser.add_argument('--no-cache', action='store_true', 
+                       help='Disable caching')
+    parser.add_argument('--no-enrich', action='store_true',
+                       help='Skip enrichment')
+    parser.add_argument('--max-enrich', type=int, default=100,
+                       help='Maximum nodes to enrich (default: 100)')
+    parser.add_argument('--quick', action='store_true',
+                       help='Quick scan (cache + limited enrichment)')
+    parser.add_argument('--check-credits', action='store_true',
+                       help='Check credits and exit')
     
     args = parser.parse_args()
     
     try:
-        scanner = BitcoinNodeScanner(api_key=args.api_key)
+        scanner = OptimizedBitcoinScanner(
+            api_key=args.api_key,
+            use_cache=not args.no_cache
+        )
         
         if args.check_credits:
             scanner.get_account_info()
-            return
+            return 0
         
-        scanner.run_full_scan(
-            max_per_query=args.max_per_query,
-            enrich=not args.no_enrich
-        )
+        # Quick mode
+        if args.quick:
+            scanner.run_optimized_scan(
+                use_cache=True,
+                enrich=True,
+                max_enrichments=50  # Limit to 50 for quick scans
+            )
+        else:
+            scanner.run_optimized_scan(
+                use_cache=not args.no_cache,
+                enrich=not args.no_enrich,
+                max_enrichments=args.max_enrich
+            )
+        
+        return 0
         
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback
         traceback.print_exc()
         return 1
-    
-    return 0
+
 
 if __name__ == '__main__':
     exit(main())
