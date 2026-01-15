@@ -27,9 +27,8 @@ This scanner helps identify:
 
 ## 📋 Prerequisites
 
-- Python 3.8 or higher
+- Python 3.8+
 - Shodan API key (get one at [shodan.io](https://account.shodan.io/))
-- pip package manager
 
 ## Quick Start
 
