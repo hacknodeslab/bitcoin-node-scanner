@@ -5,11 +5,9 @@
 
 A comprehensive security assessment tool for Bitcoin nodes exposed on the clearnet. This tool leverages Shodan API to identify, analyze, and report on potentially vulnerable Bitcoin Core and Bitcoin Knots nodes.
 
-# Bitcoin Node Scanner
-
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=HackNodes-Lab_bitcoin-node-scanner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=HackNodes-Lab_bitcoin-node-scanner&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
-[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=HackNodes-Lab_bitcoin-node-scanner&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
 [![Bugs](https://sonarcloud.io/api/project_badges/measure?project=HackNodes-Lab_bitcoin-node-scanner&metric=bugs)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
 [![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=HackNodes-Lab_bitcoin-node-scanner&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=HackNodes-Lab_bitcoin-node-scanner)
 [![CI Pipeline](https://github.com/HackNodes-Lab/bitcoin-node-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/HackNodes-Lab/bitcoin-node-scanner/actions/workflows/ci.yml)
