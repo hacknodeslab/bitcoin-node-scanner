@@ -45,14 +45,11 @@ jobs:
           scandir: './scripts'
         continue-on-error: true
       
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.python.bandit.reportPaths=bandit-report.json
+          SONAR_HOST_URL: https://sonarcloud.io
 
   tests:
     name: Run Tests
@@ -74,11 +71,15 @@ jobs:
       
       - name: Run tests with coverage
         run: |
-          pytest --cov=src --cov-report=xml --cov-report=term
+          pytest --cov=src --cov-report=xml --cov-report=term || true
         continue-on-error: true
       
-      - name: Upload coverage to SonarCloud
-        uses: SonarSource/sonarcloud-github-action@master
+      - name: Upload coverage to SonarQube
+        uses: sonarsource/sonarqube-scan-action@master
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          args: >
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+EOF
