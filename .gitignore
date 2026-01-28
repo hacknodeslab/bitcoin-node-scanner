@@ -51,3 +51,9 @@ Thumbs.db
 *.json
 !config/*.json
 !requirements.txt
+
+# SonarCloud
+.scannerwork/
+bandit-report.json
+coverage.xml
+.coverage
