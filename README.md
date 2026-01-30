@@ -15,7 +15,7 @@ A comprehensive security assessment tool for Bitcoin nodes exposed on the clearn
 ## Purpose
 
 This scanner helps identify:
-- Nodes running vulnerable Bitcoin Core/Knots versions
+- Nodes running vulnerable Bitcoin versions
 - Exposed RPC interfaces (critical security risk)
 - Development versions running in production
 - Nodes with multiple high-risk services exposed
