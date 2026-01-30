@@ -55,21 +55,25 @@ def validate_port(port: int) -> bool:
 def parse_version_number(version: str) -> tuple:
     """
     Parse version string into tuple of integers
-    
+
     Args:
         version: Version string (e.g., "0.21.1")
-        
+
     Returns:
         Tuple of version components or None if invalid
     """
     try:
-        # Extract numeric version
-        match = re.search(r'(\d+)\.(\d+)\.(\d+)', version)
+        # Limit input length to prevent ReDoS attacks
+        if not isinstance(version, str) or len(version) > 100:
+            return None
+
+        # Extract numeric version using bounded quantifiers to prevent ReDoS
+        match = re.search(r'(\d{1,10})\.(\d{1,10})\.(\d{1,10})', version)
         if match:
             return tuple(map(int, match.groups()))
     except (ValueError, AttributeError):
         pass
-    
+
     return None
 
 
