@@ -38,19 +38,23 @@ EOF
 }
 
 log_info() {
-    echo -e "${GREEN}[✓]${NC} $1"
+    local message="${1:-No message provided}"
+    echo -e "${GREEN}[✓]${NC} $message"
     return 0
 }
 
 log_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
+    local message="${1:-Warning}"
+    echo -e "${YELLOW}[!]${NC} $message"
     return 0
 }
 
 log_error() {
-    echo -e "${RED}[✗]${NC} $1"
+    local message="${1:-Unknown error}"
+    echo -e "${RED}[✗]${NC} $message"
     return 0
 }
+
 
 print_usage() {
     cat << EOF
