@@ -39,14 +39,17 @@ EOF
 
 log_info() {
     echo -e "${GREEN}[✓]${NC} $1"
+    return 0
 }
 
 log_warning() {
     echo -e "${YELLOW}[!]${NC} $1"
+    return 0
 }
 
 log_error() {
     echo -e "${RED}[✗]${NC} $1"
+    return 0
 }
 
 print_usage() {
@@ -81,6 +84,7 @@ Credit Savings:
     Savings:                ~44% query, ~90% scan credits
 
 EOF
+    return 0
 }
 
 check_credits() {
@@ -89,6 +93,7 @@ check_credits() {
     # shellcheck source=/dev/null
     source "$VENV_DIR/bin/activate"
     python "$OPTIMIZED_SCANNER" --check-credits
+    return 0
 }
 
 run_optimized_scan() {
@@ -166,6 +171,7 @@ run_optimized_scan() {
         log_error "Scan failed"
         exit 1
     fi
+    return 0
 }
 
 show_results() {
@@ -194,6 +200,7 @@ show_results() {
         local cache_size=$(wc -l < "$PROJECT_ROOT/cache/nodes_cache.json" 2>/dev/null || echo "0")
         log_info "Cache: $cache_size cached nodes"
     fi
+    return 0
 }
 
 load_env_file() {
@@ -208,6 +215,7 @@ load_env_file() {
     else
         log_warning "No .env file found at $env_file"
     fi
+    return 0
 }
 
 setup_environment() {
@@ -231,6 +239,7 @@ setup_environment() {
     
     # Create cache directory
     mkdir -p "$PROJECT_ROOT/cache"
+    return 0
 }
 
 ################################################################################
