@@ -52,7 +52,7 @@ def validate_port(port: int) -> bool:
     return isinstance(port, int) and 1 <= port <= 65535
 
 
-def parse_version_number(version: str) -> tuple:
+def parse_version_number(version: str) -> tuple | None:
     """
     Parse version string into tuple of integers
     
