@@ -25,6 +25,91 @@ class SecurityReporter:
         self.analyzer = analyzer
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     
+    def _calculate_percentage(self, count: int, total: int) -> float:
+        """Calculate percentage with zero division protection"""
+        return (count / total * 100) if total > 0 else 0
+    
+    def _add_report_header(self, report: List[str]) -> None:
+        """Add report header section"""
+        report.append("="*80)
+        report.append("BITCOIN NODE SECURITY SCAN REPORT")
+        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        report.append(f"Scan ID: {self.timestamp}")
+        report.append("="*80)
+        report.append("")
+    
+    def _add_executive_summary(self, report: List[str], stats: Dict) -> None:
+        """Add executive summary section"""
+        report.append("EXECUTIVE SUMMARY")
+        report.append("-"*80)
+        report.append(f"Total nodes found: {stats['total_results']}")
+        report.append(f"Unique IPs: {stats['unique_ips']}")
+        report.append(f"Vulnerable nodes: {stats.get('vulnerable_nodes', 0)}")
+        report.append(f"RPC exposed: {stats.get('rpc_exposed', 0)} (CRITICAL)")
+        report.append(f"Dev versions: {stats.get('dev_versions', 0)}")
+        report.append("")
+    
+    def _add_risk_distribution(self, report: List[str], stats: Dict) -> None:
+        """Add risk distribution section"""
+        report.append("RISK DISTRIBUTION")
+        report.append("-"*80)
+        risk_order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
+        for risk_level in risk_order:
+            count = stats.get('risk_distribution', {}).get(risk_level, 0)
+            percentage = self._calculate_percentage(count, stats['total_results'])
+            report.append(f"{risk_level:12} {count:6} ({percentage:5.2f}%)")
+        report.append("")
+    
+    def _add_port_distribution(self, report: List[str], stats: Dict) -> None:
+        """Add port distribution section"""
+        report.append("PORT DISTRIBUTION")
+        report.append("-"*80)
+        for port, count in sorted(stats['port_distribution'].items(), key=lambda x: x[1], reverse=True):
+            port_name = self.config.BITCOIN_PORTS.get(port, 'Unknown')
+            percentage = self._calculate_percentage(count, stats['total_results'])
+            report.append(f"{port:6} ({port_name:30}) {count:6} ({percentage:5.2f}%)")
+        report.append("")
+    
+    def _get_version_flags(self, version: str) -> str:
+        """Get vulnerability and dev flags for version"""
+        vulnerable = "⚠ VULNERABLE" if self.analyzer.is_vulnerable_version(version) else ""
+        dev = "🔧 DEV" if self.analyzer.is_dev_version(version) else ""
+        return f"{vulnerable} {dev}".strip()
+    
+    def _add_version_distribution(self, report: List[str], stats: Dict) -> None:
+        """Add version distribution section"""
+        report.append("TOP 20 VERSIONS")
+        report.append("-"*80)
+        for version, count in list(stats['version_distribution'].items())[:20]:
+            percentage = self._calculate_percentage(count, stats['total_results'])
+            flags = self._get_version_flags(version)
+            report.append(f"{version:40} {count:6} ({percentage:5.2f}%) {flags}")
+        report.append("")
+    
+    def _add_country_distribution(self, report: List[str], stats: Dict) -> None:
+        """Add country distribution section"""
+        report.append("TOP 20 COUNTRIES")
+        report.append("-"*80)
+        for country, count in list(stats['country_distribution'].items())[:20]:
+            percentage = self._calculate_percentage(count, stats['total_results'])
+            report.append(f"{country:6} {count:6} ({percentage:5.2f}%)")
+        report.append("")
+    
+    def _add_asn_distribution(self, report: List[str], stats: Dict) -> None:
+        """Add ASN distribution section"""
+        report.append("TOP 20 ASNs")
+        report.append("-"*80)
+        for asn, count in list(stats['asn_distribution'].items())[:20]:
+            percentage = self._calculate_percentage(count, stats['total_results'])
+            report.append(f"{asn:15} {count:6} ({percentage:5.2f}%)")
+        report.append("")
+    
+    def _add_report_footer(self, report: List[str]) -> None:
+        """Add report footer section"""
+        report.append("="*80)
+        report.append("END OF REPORT")
+        report.append("="*80)
+    
     def generate_text_report(self, stats: Dict, results: List[Dict]) -> str:
         """
         Generate human-readable text report
@@ -37,72 +122,15 @@ class SecurityReporter:
             Formatted text report
         """
         report = []
-        report.append("="*80)
-        report.append("BITCOIN NODE SECURITY SCAN REPORT")
-        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        report.append(f"Scan ID: {self.timestamp}")
-        report.append("="*80)
-        report.append("")
         
-        # Executive Summary
-        report.append("EXECUTIVE SUMMARY")
-        report.append("-"*80)
-        report.append(f"Total nodes found: {stats['total_results']}")
-        report.append(f"Unique IPs: {stats['unique_ips']}")
-        report.append(f"Vulnerable nodes: {stats.get('vulnerable_nodes', 0)}")
-        report.append(f"RPC exposed: {stats.get('rpc_exposed', 0)} (CRITICAL)")
-        report.append(f"Dev versions: {stats.get('dev_versions', 0)}")
-        report.append("")
-        
-        # Risk Distribution
-        report.append("RISK DISTRIBUTION")
-        report.append("-"*80)
-        risk_order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
-        for risk_level in risk_order:
-            count = stats.get('risk_distribution', {}).get(risk_level, 0)
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{risk_level:12} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Port Distribution
-        report.append("PORT DISTRIBUTION")
-        report.append("-"*80)
-        for port, count in sorted(stats['port_distribution'].items(), key=lambda x: x[1], reverse=True):
-            port_name = self.config.BITCOIN_PORTS.get(port, 'Unknown')
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{port:6} ({port_name:30}) {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Top Versions
-        report.append("TOP 20 VERSIONS")
-        report.append("-"*80)
-        for version, count in list(stats['version_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            vulnerable = "⚠ VULNERABLE" if self.analyzer.is_vulnerable_version(version) else ""
-            dev = "🔧 DEV" if self.analyzer.is_dev_version(version) else ""
-            flags = f"{vulnerable} {dev}".strip()
-            report.append(f"{version:40} {count:6} ({percentage:5.2f}%) {flags}")
-        report.append("")
-        
-        # Top Countries
-        report.append("TOP 20 COUNTRIES")
-        report.append("-"*80)
-        for country, count in list(stats['country_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{country:6} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        # Top ASNs
-        report.append("TOP 20 ASNs")
-        report.append("-"*80)
-        for asn, count in list(stats['asn_distribution'].items())[:20]:
-            percentage = (count / stats['total_results'] * 100) if stats['total_results'] > 0 else 0
-            report.append(f"{asn:15} {count:6} ({percentage:5.2f}%)")
-        report.append("")
-        
-        report.append("="*80)
-        report.append("END OF REPORT")
-        report.append("="*80)
+        self._add_report_header(report)
+        self._add_executive_summary(report, stats)
+        self._add_risk_distribution(report, stats)
+        self._add_port_distribution(report, stats)
+        self._add_version_distribution(report, stats)
+        self._add_country_distribution(report, stats)
+        self._add_asn_distribution(report, stats)
+        self._add_report_footer(report)
         
         return '\n'.join(report)
     
