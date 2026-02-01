@@ -12,7 +12,7 @@ echo "=========================================="
 echo ""
 
 # Check if SHODAN_API_KEY is set
-if [ -z "$SHODAN_API_KEY" ]; then
+if [[ -z "$SHODAN_API_KEY" ]]; then
     echo "ERROR: SHODAN_API_KEY environment variable not set"
     echo "Please set it with: export SHODAN_API_KEY='your_key_here'"
     exit 1
