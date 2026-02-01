@@ -124,13 +124,13 @@ class CreditTracker:
         days_remaining = days_in_month - day_of_month
         
         # Calculate daily average
-        if day_of_month > 0:
-            query_per_day = monthly['query_credits_used'] / day_of_month
-            scan_per_day = monthly['scan_credits_used'] / day_of_month
-        else:
-            query_per_day = 0
-            scan_per_day = 0
-        
+	try:
+    	    	query_per_day = monthly['query_credits_used'] / day_of_month
+	    	scan_per_day = monthly['scan_credits_used'] / day_of_month
+	except (ZeroDivisionError, TypeError):
+    		query_per_day = 0
+    		scan_per_day = 0
+ 
         # Project end of month
         projected_query = monthly['query_credits_used'] + (query_per_day * days_remaining)
         projected_scan = monthly['scan_credits_used'] + (scan_per_day * days_remaining)
