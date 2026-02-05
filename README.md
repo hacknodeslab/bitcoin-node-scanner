@@ -32,7 +32,7 @@ This scanner helps identify:
 - **Multiple Output Formats**: JSON, CSV, and human-readable reports
 - **Rate Limiting**: Built-in protections to respect Shodan API limits
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Python 3.8+
 - Shodan API key (get one at [shodan.io](https://account.shodan.io/))
