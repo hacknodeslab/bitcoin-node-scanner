@@ -18,7 +18,7 @@ echo "Found Python $python_version"
 
 # Check if version is 3.8 or higher
 required_version="3.8"
-if [ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]; then 
+if [[ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]]; then 
     echo "ERROR: Python 3.8 or higher is required"
     exit 1
 fi
@@ -39,7 +39,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 # Create .env file if it doesn't exist
-if [ ! -f .env ]; then
+if [[ ! -f .env ]]; then
     echo ""
     echo "Creating .env file from template..."
     cp .env.example .env

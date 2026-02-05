@@ -11,7 +11,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+export BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
@@ -38,16 +38,23 @@ EOF
 }
 
 log_info() {
-    echo -e "${GREEN}[✓]${NC} $1"
+    local message="${1:-No message provided}"
+    echo -e "${GREEN}[✓]${NC} $message"
+    return 0
 }
 
 log_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
+    local message="${1:-Warning}"
+    echo -e "${YELLOW}[!]${NC} $message"
+    return 0
 }
 
 log_error() {
-    echo -e "${RED}[✗]${NC} $1"
+    local message="${1:-Unknown error}"
+    echo -e "${RED}[✗]${NC} $message"
+    return 0
 }
+
 
 print_usage() {
     cat << EOF
@@ -81,13 +88,16 @@ Credit Savings:
     Savings:                ~44% query, ~90% scan credits
 
 EOF
+    return 0
 }
 
 check_credits() {
     log_info "Checking Shodan credits..."
     
+    # shellcheck source=/dev/null
     source "$VENV_DIR/bin/activate"
     python "$OPTIMIZED_SCANNER" --check-credits
+    return 0
 }
 
 run_optimized_scan() {
@@ -102,29 +112,30 @@ run_optimized_scan() {
     echo ""
     
     # Activate venv
+    # shellcheck source=/dev/null
     source "$VENV_DIR/bin/activate"
     
     # Build command
     local cmd="python $OPTIMIZED_SCANNER --max-enrich $max_enrich"
     
-    if [ "$use_cache" = "false" ]; then
+    if [[ "$use_cache" = "false" ]]; then
         cmd="$cmd --no-cache"
     fi
     
-    if [ "$scan_mode" = "quick" ]; then
+    if [[ "$scan_mode" = "quick" ]]; then
         cmd="$cmd --quick"
     fi
     
-    if [ -n "$API_KEY_ARG" ]; then
+    if [[ -n "$API_KEY_ARG" ]]; then
         cmd="$cmd --api-key $API_KEY_ARG"
     fi
     
     # Show credit estimate
     echo -e "${CYAN}Estimated Credit Usage:${NC}"
-    if [ "$scan_mode" = "quick" ]; then
+    if [[ "$scan_mode" = "quick" ]]; then
         echo "  Query credits:  ~5"
         echo "  Scan credits:   ~50"
-    elif [ "$scan_mode" = "medium" ]; then
+    elif [[ "$scan_mode" = "medium" ]]; then
         echo "  Query credits:  ~5"
         echo "  Scan credits:   ~75"
     else
@@ -164,6 +175,7 @@ run_optimized_scan() {
         log_error "Scan failed"
         exit 1
     fi
+    return 0
 }
 
 show_results() {
@@ -173,14 +185,14 @@ show_results() {
     local output_dir="$PROJECT_ROOT/output"
     
     # Find latest files
-    if [ -d "$output_dir/reports" ]; then
+    if [[ -d "$output_dir/reports" ]]; then
         local latest_report=$(ls -t "$output_dir/reports"/report_*.txt 2>/dev/null | head -1)
-        if [ -n "$latest_report" ]; then
+        if [[ -n "$latest_report" ]]; then
             echo "  📄 Report: $latest_report"
         fi
         
         local latest_critical=$(ls -t "$output_dir/reports"/critical_nodes_*.json 2>/dev/null | head -1)
-        if [ -n "$latest_critical" ]; then
+        if [[ -n "$latest_critical" ]]; then
             echo "  ⚠️  Critical Nodes: $latest_critical"
         fi
     fi
@@ -188,16 +200,17 @@ show_results() {
     echo ""
     
     # Show cache stats
-    if [ -f "$PROJECT_ROOT/cache/nodes_cache.json" ]; then
+    if [[ -f "$PROJECT_ROOT/cache/nodes_cache.json" ]]; then
         local cache_size=$(wc -l < "$PROJECT_ROOT/cache/nodes_cache.json" 2>/dev/null || echo "0")
         log_info "Cache: $cache_size cached nodes"
     fi
+    return 0
 }
 
 load_env_file() {
     local env_file="$PROJECT_ROOT/.env"
     
-    if [ -f "$env_file" ]; then
+    if [[ -f "$env_file" ]]; then
         log_info "Loading environment from .env file"
         # Load .env file (export each line that doesn't start with # and contains =)
         set -a  # automatically export all variables
@@ -206,6 +219,7 @@ load_env_file() {
     else
         log_warning "No .env file found at $env_file"
     fi
+    return 0
 }
 
 setup_environment() {
@@ -213,14 +227,14 @@ setup_environment() {
     load_env_file
     
     # Check virtualenv
-    if [ ! -d "$VENV_DIR" ]; then
+    if [[ ! -d "$VENV_DIR" ]]; then
         log_error "Virtual environment not found"
         log_info "Run: ./scripts/setup.sh"
         exit 1
     fi
     
     # Check API key
-    if [ -z "$SHODAN_API_KEY" ] && [ -z "$API_KEY_ARG" ]; then
+    if [[ -z "$SHODAN_API_KEY" ]] && [[ -z "$API_KEY_ARG" ]]; then
         log_error "SHODAN_API_KEY not set"
         log_info "Set it with: export SHODAN_API_KEY='your_key'"
         log_info "Or add it to .env file: SHODAN_API_KEY=your_key"
@@ -229,6 +243,7 @@ setup_environment() {
     
     # Create cache directory
     mkdir -p "$PROJECT_ROOT/cache"
+    return 0
 }
 
 ################################################################################
@@ -297,7 +312,7 @@ echo ""
 
 setup_environment
 
-if [ "$CHECK_CREDITS_ONLY" = "true" ]; then
+if [[ "$CHECK_CREDITS_ONLY" = "true" ]]; then
     check_credits
 else
     run_optimized_scan "$MODE" "$USE_CACHE" "$MAX_ENRICH"

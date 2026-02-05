@@ -133,6 +133,39 @@ Based on recent scans:
 - Top vulnerable versions: 0.18.x, 0.20.x, 0.21.x
 - Geographic concentration: US (28%), Germany (15%), France (9%)
 
+## Testing
+
+The project includes comprehensive test coverage for all core modules:
+
+```bash
+# Install testing dependencies (already included in requirements.txt)
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Run all tests
+python -m pytest tests/ -v
+
+# Run tests with coverage report
+python -m pytest tests/ --cov=src --cov-report=term-missing
+
+# Run tests with HTML coverage report
+python -m pytest tests/ --cov=src --cov-report=html
+
+# Run specific test module
+python -m pytest tests/test_utils.py -v
+python -m pytest tests/test_analyzer.py -v
+python -m pytest tests/test_credit_tracker.py -v
+python -m pytest tests/test_reporter.py -v
+```
+
+**Test Coverage:**
+- **test_utils.py** (22 tests) - Utility functions, validation, data processing
+- **test_analyzer.py** (24 tests) - Security analysis, vulnerability detection, risk assessment
+- **test_credit_tracker.py** (15 tests) - Credit tracking, usage projections, recommendations
+- **test_reporter.py** (18 tests) - Report generation, data export, file handling
+
+**Total: 79 tests covering 67% of the codebase**
+
 ## Configuration
 
 Edit `config/config.yaml` to customize:
