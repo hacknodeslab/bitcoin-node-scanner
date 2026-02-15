@@ -13,14 +13,14 @@ echo ""
 
 # Check if SHODAN_API_KEY is set
 if [[ -z "$SHODAN_API_KEY" ]]; then
-    echo "ERROR: SHODAN_API_KEY environment variable not set"
+    echo "ERROR: SHODAN_API_KEY environment variable not set" >&2
     echo "Please set it with: export SHODAN_API_KEY='your_key_here'"
     exit 1
 fi
 
 # Check if Python is installed
 if ! command -v python3 &> /dev/null; then
-    echo "ERROR: Python 3 is not installed"
+    echo "ERROR: Python 3 is not installed" >&2
     exit 1
 fi
 
