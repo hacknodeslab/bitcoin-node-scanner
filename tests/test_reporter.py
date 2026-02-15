@@ -503,6 +503,18 @@ class TestSecurityReporterEdgeCases:
         # This depends on analyzer implementation - adjust based on actual behavior
         flags3 = self.reporter._get_version_flags("0.16.3rc1")  # Both vulnerable and dev
         # Should contain both flags if analyzer detects both conditions
+    
+    def test_save_csv_data_without_subdir(self):
+        """Test CSV saving without subdir uses OUTPUT_DIR directly"""
+        data = [
+            {'ip': '1.1.1.1', 'port': 8333},
+        ]
+        
+        file_path = self.reporter.save_csv_data(data, 'test_no_subdir')
+        
+        assert os.path.exists(file_path)
+        assert self.config.OUTPUT_DIR in file_path
+        assert 'test_no_subdir_' in file_path
 
 
 if __name__ == "__main__":

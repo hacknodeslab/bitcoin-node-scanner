@@ -31,6 +31,7 @@ from utils import (
     batch_list,
     extract_asn_number,
     is_private_ip,
+    retry_on_failure,
     ProgressTracker
 )
 
@@ -50,6 +51,14 @@ class TestValidation:
         assert validate_ip_address("192.168.1") == False
         assert validate_ip_address("192.168.1.1.1") == False
         assert validate_ip_address("192.168.1.-1") == False
+    
+    def test_validate_ip_address_ipv6(self):
+        """Test IPv6 address validation (full-form only)"""
+        assert validate_ip_address("2001:0db8:85a3:0000:0000:8a2e:0370:7334") == True
+        assert validate_ip_address("0000:0000:0000:0000:0000:0000:0000:0001") == True
+        # Compressed forms not supported by simplified regex
+        assert validate_ip_address("::1") == False
+        assert validate_ip_address("fe80::1") == False
     
     def test_validate_ip_address_invalid(self):
         """Test invalid IP address formats"""
@@ -84,6 +93,8 @@ class TestVersionParsing:
         assert parse_version_number("invalid") == None
         assert parse_version_number("") == None
         assert parse_version_number("a" * 200) == None  # Too long
+        assert parse_version_number(None) == None  # Non-string input
+        assert parse_version_number(123) == None  # Non-string input
     
     def test_compare_versions(self):
         """Test version comparison"""
@@ -191,6 +202,8 @@ class TestNetworkUtils:
         assert extract_asn_number("AS1234") == 1234
         assert extract_asn_number("1234") == 1234
         assert extract_asn_number("invalid") == 0
+        assert extract_asn_number(None) == 0
+        assert extract_asn_number("") == 0
     
     def test_is_private_ip(self):
         """Test private IP detection"""
@@ -249,6 +262,64 @@ class TestProgressTracker:
         
         assert tracker.current == 10
         mock_print.assert_called()
+
+
+class TestRetryOnFailure:
+    """Test retry on failure decorator"""
+    
+    @patch('utils.time.sleep')
+    def test_retry_succeeds_first_attempt(self, mock_sleep):
+        """Test retry decorator when function succeeds immediately"""
+        from utils import retry_on_failure
+        
+        @retry_on_failure(max_attempts=3, delay=0.1)
+        def good_func():
+            return "success"
+        
+        assert good_func() == "success"
+        mock_sleep.assert_not_called()
+    
+    @patch('utils.time.sleep')
+    def test_retry_succeeds_after_failures(self, mock_sleep):
+        """Test retry decorator succeeds after transient failures"""
+        from utils import retry_on_failure
+        
+        call_count = 0
+        
+        @retry_on_failure(max_attempts=3, delay=0.1)
+        def flaky_func():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ValueError("transient error")
+            return "success"
+        
+        assert flaky_func() == "success"
+        assert call_count == 3
+        assert mock_sleep.call_count == 2
+    
+    @patch('utils.time.sleep')
+    def test_retry_exhausts_attempts(self, mock_sleep):
+        """Test retry decorator raises after all attempts fail"""
+        from utils import retry_on_failure
+        
+        @retry_on_failure(max_attempts=2, delay=0.1)
+        def always_fails():
+            raise RuntimeError("permanent error")
+        
+        with pytest.raises(RuntimeError, match="permanent error"):
+            always_fails()
+        
+        assert mock_sleep.call_count == 1
+
+
+class TestFormatTimestampEdgeCases:
+    """Test format_timestamp edge cases"""
+    
+    def test_format_timestamp_unknown_type(self):
+        """Test format_timestamp with unsupported type falls back to str()"""
+        result = format_timestamp([2023, 1, 1])
+        assert result == "[2023, 1, 1]"
 
 
 class TestRateLimitDecorator:

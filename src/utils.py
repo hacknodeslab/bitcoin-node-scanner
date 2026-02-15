@@ -375,7 +375,7 @@ def extract_asn_number(asn: str) -> int:
         match = re.search(r'(\d+)', asn)
         if match:
             return int(match.group(1))
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         pass
     
     return 0

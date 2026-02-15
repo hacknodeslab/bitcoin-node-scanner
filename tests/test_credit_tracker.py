@@ -202,6 +202,60 @@ class TestCreditTracker:
         assert any("Good scan credit usage" in rec for rec in recommendations)
         assert any("increase scan frequency" in rec for rec in recommendations)
     
+    def test_get_recommendations_high_query_usage(self):
+        """Test recommendations when query usage is high but not exceeded"""
+        projection = {
+            'query_credits': {
+                'projected_eom': 90,
+                'limit': 100
+            },
+            'scan_credits': {
+                'projected_eom': 40,
+                'limit': 100
+            }
+        }
+        
+        recommendations = self.tracker.get_recommendations(projection)
+        
+        assert any("High query credit usage" in rec for rec in recommendations)
+        assert any("Monitor usage closely" in rec for rec in recommendations)
+    
+    def test_get_recommendations_scan_exceeded(self):
+        """Test recommendations when scan credits exceed limit"""
+        projection = {
+            'query_credits': {
+                'projected_eom': 40,
+                'limit': 100
+            },
+            'scan_credits': {
+                'projected_eom': 120,
+                'limit': 100
+            }
+        }
+        
+        recommendations = self.tracker.get_recommendations(projection)
+        
+        assert any("exceed scan credit limit" in rec for rec in recommendations)
+        assert any("Reduce enrichment scope" in rec for rec in recommendations)
+    
+    def test_get_recommendations_high_scan_usage(self):
+        """Test recommendations when scan usage is high but not exceeded"""
+        projection = {
+            'query_credits': {
+                'projected_eom': 40,
+                'limit': 100
+            },
+            'scan_credits': {
+                'projected_eom': 85,
+                'limit': 100
+            }
+        }
+        
+        recommendations = self.tracker.get_recommendations(projection)
+        
+        assert any("High scan credit usage" in rec for rec in recommendations)
+        assert any("Limit enrichment to critical nodes only" in rec for rec in recommendations)
+    
     @patch('builtins.print')
     def test_print_report(self, mock_print):
         """Test report printing"""
@@ -220,6 +274,49 @@ class TestCreditTracker:
         assert "SHODAN CREDIT USAGE REPORT" in report_text
         assert "QUERY CREDITS" in report_text
         assert "SCAN CREDITS" in report_text
+    
+    @patch('builtins.print')
+    def test_print_report_with_api_credits(self, mock_print):
+        """Test report printing with real API credit values"""
+        self.tracker.log_usage(10, 20, 'medium', 'Test')
+        
+        projection = self.tracker.project_monthly_usage(
+            plan_limit=100,
+            current_query_credits=85,
+            current_scan_credits=65
+        )
+        self.tracker.print_report(projection)
+        
+        all_calls = [str(call) for call in mock_print.call_args_list]
+        report_text = ' '.join(all_calls)
+        
+        assert "Remaining (API)" in report_text
+    
+    @patch('builtins.print')
+    def test_print_report_without_api_credits(self, mock_print):
+        """Test report printing without API credit values"""
+        self.tracker.log_usage(10, 20, 'medium', 'Test')
+        
+        projection = self.tracker.project_monthly_usage(plan_limit=100)
+        self.tracker.print_report(projection)
+        
+        all_calls = [str(call) for call in mock_print.call_args_list]
+        report_text = ' '.join(all_calls)
+        
+        assert "Remaining:" in report_text
+    
+    @patch('builtins.print')
+    def test_print_report_with_scan_type_breakdown(self, mock_print):
+        """Test report printing includes scan type breakdown"""
+        self.tracker.log_usage(5, 10, 'quick', 'Test 1')
+        self.tracker.log_usage(10, 25, 'full', 'Test 2')
+        
+        self.tracker.print_report()
+        
+        all_calls = [str(call) for call in mock_print.call_args_list]
+        report_text = ' '.join(all_calls)
+        
+        assert "SCAN TYPE BREAKDOWN" in report_text
     
     def test_load_invalid_json(self):
         """Test loading invalid JSON file"""
