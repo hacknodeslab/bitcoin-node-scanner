@@ -262,7 +262,7 @@ class BitcoinNodeScanner:
         for result in self.results:
             if result['port'] == 8332:  # RPC
                 critical_ips.add(result['ip'])
-            elif self.is_vulnerable_version(result.get('version', '')):
+            elif self.is_vulnerable_version(self.extract_version_from_banner(result)):
                 critical_ips.add(result['ip'])
 
         self.log(f"Critical nodes identified: {len(critical_ips)}")
@@ -307,10 +307,11 @@ class BitcoinNodeScanner:
         if result['port'] == 8332:
             return 'CRITICAL'
 
-        if self.is_vulnerable_version(result.get('version', '')):
+        version_str = self.extract_version_from_banner(result)
+        if self.is_vulnerable_version(version_str):
             risk_factors.append('vulnerable_version')
 
-        if '.99.' in result.get('version', ''):
+        if '.99.' in version_str:
             risk_factors.append('dev_version')
 
         enrichment = result.get('enrichment', {})
@@ -359,7 +360,7 @@ class BitcoinNodeScanner:
 
         vulnerable_count = sum(
             1 for r in self.results
-            if self.is_vulnerable_version(r.get('version', ''))
+            if self.is_vulnerable_version(self.extract_version_from_banner(r))
         )
         stats['vulnerable_nodes'] = vulnerable_count
 
@@ -587,7 +588,7 @@ class OptimizedConfig(Config):
     
     # Smart pagination limits
     MAX_RESULTS_CRITICAL = 1000    # For port 8332 (RPC)
-    MAX_RESULTS_NORMAL = 100       # For other queries
+    MAX_RESULTS_NORMAL = 1000      # For other queries
     
     # Enrichment limits
     MAX_ENRICHMENTS = 100          # Stay within scan credit limit

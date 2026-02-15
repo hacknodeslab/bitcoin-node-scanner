@@ -70,10 +70,11 @@ class SecurityAnalyzer:
             return 'CRITICAL'
         
         # HIGH risk factors
-        if self.is_vulnerable_version(result.get('version', '')):
+        version_str = self.extract_version_from_banner(result)
+        if self.is_vulnerable_version(version_str):
             risk_factors.append('vulnerable_version')
         
-        if self.is_dev_version(result.get('version', '')):
+        if self.is_dev_version(version_str):
             risk_factors.append('dev_version')
         
         # Check for multiple high-risk services
@@ -108,8 +109,8 @@ class SecurityAnalyzer:
         if result['port'] == 8332:
             reasons.append("RPC_EXPOSED")
         
-        if self.is_vulnerable_version(result.get('version', '')):
-            version = result.get('version', '')
+        version = self.extract_version_from_banner(result)
+        if self.is_vulnerable_version(version):
             # Try to find specific CVE
             for vuln_ver, cve in self.config.VULNERABLE_VERSIONS.items():
                 if vuln_ver in version:
@@ -118,7 +119,7 @@ class SecurityAnalyzer:
             else:
                 reasons.append("VULNERABLE_VERSION")
         
-        if self.is_dev_version(result.get('version', '')):
+        if self.is_dev_version(version):
             reasons.append("DEV_VERSION")
         
         enrichment = result.get('enrichment', {})
@@ -205,7 +206,7 @@ class SecurityAnalyzer:
         # Vulnerable nodes count
         vulnerable_count = sum(
             1 for r in results 
-            if self.is_vulnerable_version(r.get('version', ''))
+            if self.is_vulnerable_version(self.extract_version_from_banner(r))
         )
         stats['vulnerable_nodes'] = vulnerable_count
         
