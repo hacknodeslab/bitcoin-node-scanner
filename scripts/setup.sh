@@ -5,10 +5,12 @@
 
 set -e
 
-echo "=========================================="
+
+readonly message="=========================================="
+echo $message
 echo "Bitcoin Node Security Scanner"
 echo "Setup Script"
-echo "=========================================="
+echo $message 
 echo ""
 
 # Check Python version
@@ -19,7 +21,7 @@ echo "Found Python $python_version"
 # Check if version is 3.8 or higher
 required_version="3.8"
 if [[ "$(printf '%s\n' "$required_version" "$python_version" | sort -V | head -n1)" != "$required_version" ]]; then 
-    echo "ERROR: Python 3.8 or higher is required"
+    echo "ERROR: Python 3.8 or higher is required" >&2
     exit 1
 fi
 
@@ -53,9 +55,9 @@ echo "Creating output directories..."
 mkdir -p output/{raw_data,reports,logs}
 
 echo ""
-echo "=========================================="
+echo $message 
 echo "Setup completed successfully!"
-echo "=========================================="
+echo $message
 echo ""
 echo "Next steps:"
 echo "1. Edit .env file and add your Shodan API key"
