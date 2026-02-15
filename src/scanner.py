@@ -23,6 +23,21 @@ load_dotenv(find_dotenv(), override=True)
 # CONFIGURATION
 # ============================================================================
 
+def _load_config_yaml() -> Dict:
+    """Load configuration from config/config.yaml"""
+    config_paths = [
+        os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml'),
+        os.path.join('config', 'config.yaml'),
+    ]
+    for path in config_paths:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                return yaml.safe_load(f) or {}
+    return {}
+
+_CONFIG_YAML = _load_config_yaml()
+
+
 class Config:
     """Centralized configuration"""
     SHODAN_API_KEY = os.getenv('SHODAN_API_KEY', 'YOUR_API_KEY_HERE')
@@ -58,31 +73,8 @@ class Config:
         6443: 'Kubernetes API',
     }
 
-    # Known vulnerable versions
-    VULNERABLE_VERSIONS = {
-        '0.13.0': 'Multiple CVEs',
-        '0.13.1': 'Multiple CVEs',
-        '0.13.2': 'Multiple CVEs',
-        '0.14.0': 'CVE-2017-12842',
-        '0.14.1': 'CVE-2017-12842',
-        '0.14.2': 'CVE-2017-12842',
-        '0.15.0': 'CVE-2018-17144',
-        '0.15.1': 'CVE-2018-17144',
-        '0.16.0': 'CVE-2018-17144',
-        '0.16.1': 'CVE-2018-17144',
-        '0.16.2': 'CVE-2018-17144',
-        '0.16.3': 'Multiple CVEs',
-        '0.17.0': 'Multiple CVEs',
-        '0.17.1': 'Multiple CVEs',
-        '0.18.0': 'Multiple CVEs',
-        '0.18.1': 'Multiple CVEs',
-        '0.19.0': 'Multiple CVEs',
-        '0.19.1': 'Multiple CVEs',
-        '0.20.0': 'Multiple CVEs',
-        '0.20.1': 'Multiple CVEs',
-        '0.21.0': 'CVE-2021-31876',
-        '0.21.1': 'CVE-2021-31876',
-    }
+    # Known vulnerable versions (loaded from config/config.yaml)
+    VULNERABLE_VERSIONS = _CONFIG_YAML.get('vulnerable_versions', {})
 
     # Output directories
     OUTPUT_DIR = 'output'
