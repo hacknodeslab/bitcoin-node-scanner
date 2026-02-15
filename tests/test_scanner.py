@@ -225,8 +225,8 @@ class TestBitcoinNodeScanner:
 
     def test_is_not_vulnerable_version(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
-        assert scanner.is_vulnerable_version('25.0') is False
-        assert scanner.is_vulnerable_version('27.0') is False
+        assert scanner.is_vulnerable_version('30.0') is False
+        assert scanner.is_vulnerable_version('31.0') is False
 
     def test_is_vulnerable_satoshi_old(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
@@ -234,7 +234,7 @@ class TestBitcoinNodeScanner:
 
     def test_is_vulnerable_satoshi_new(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
-        assert scanner.is_vulnerable_version('Satoshi:0.22.0') is False
+        assert scanner.is_vulnerable_version('Satoshi:0.30.0') is False
 
     def test_is_vulnerable_invalid_format(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
@@ -263,7 +263,7 @@ class TestBitcoinNodeScanner:
 
     def test_risk_low_no_factors(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
-        result = {'port': 8333, 'version': '25.0'}
+        result = {'port': 8333, 'version': '30.0'}
         assert scanner.analyze_risk_level(result) == 'LOW'
 
     def test_risk_high_multiple_services(self, tmp_path):
@@ -335,7 +335,7 @@ class TestBitcoinNodeScanner:
 
     def test_risk_reason_unknown(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
-        result = {'port': 8333, 'version': '25.0'}
+        result = {'port': 8333, 'version': '30.0'}
         reason = scanner.get_risk_reason(result, 'LOW')
         assert reason == 'UNKNOWN'
 
@@ -421,8 +421,8 @@ class TestBitcoinNodeScanner:
         scanner, _ = self._make_scanner(tmp_path)
         scanner.unique_ips = {'1.2.3.4', '5.6.7.8'}
         scanner.results = [
-            {'port': 8333, 'country_code': 'US', 'banner': '/Satoshi:25.0/',
-             'product': '', 'version': '25.0', 'asn': 'AS1'},
+            {'port': 8333, 'country_code': 'US', 'banner': '/Satoshi:30.0/',
+             'product': '', 'version': '30.0', 'asn': 'AS1'},
             {'port': 8332, 'country_code': 'DE', 'banner': '',
              'product': 'Bitcoin', 'version': '0.15.0', 'asn': 'AS2'},
         ]

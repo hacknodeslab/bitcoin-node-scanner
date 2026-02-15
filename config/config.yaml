@@ -42,28 +42,77 @@ ports:
     6443: 'Kubernetes API'
 
 vulnerable_versions:
+  # Source: https://bitcoincore.org/en/security-advisories/
+  # 0.10.x
+  '0.10.0': 'CVE-2015-3641 - Large incomplete messages memory DoS'
+  # 0.11.x
+  '0.11.0': 'CVE-2015-20111 - RCE via miniupnpc bug'
+  '0.11.1': 'CVE-2015-20111 - RCE via miniupnpc bug'
+  '0.11.2': 'CVE-2015-20111 - RCE via miniupnpc bug'
+  # 0.12.x
+  '0.12.0': 'Multiple CVEs'
+  '0.12.1': 'Multiple CVEs'
+  # 0.13.x
   '0.13.0': 'Multiple CVEs'
   '0.13.1': 'Multiple CVEs'
   '0.13.2': 'Multiple CVEs'
-  '0.14.0': 'CVE-2017-12842'
-  '0.14.1': 'CVE-2017-12842'
-  '0.14.2': 'CVE-2017-12842'
-  '0.15.0': 'CVE-2018-17144'
-  '0.15.1': 'CVE-2018-17144'
-  '0.16.0': 'CVE-2018-17144'
-  '0.16.1': 'CVE-2018-17144'
-  '0.16.2': 'CVE-2018-17144'
+  # 0.14.x
+  '0.14.0': 'CVE-2017-12842, CVE-2024-52916 - Memory DoS low-difficulty headers'
+  '0.14.1': 'CVE-2017-12842, CVE-2024-52916 - Memory DoS low-difficulty headers'
+  '0.14.2': 'CVE-2017-12842, CVE-2024-52916 - Memory DoS low-difficulty headers'
+  # 0.15.x (fix for CVE-2017-18350 in 0.15.1, fix for CVE-2018-17144 in 0.16.3)
+  '0.15.0': 'CVE-2018-17144 - DoS/inflation, CVE-2017-18350 - Buffer overflow SOCKS'
+  '0.15.1': 'CVE-2018-17144 - DoS/inflation attack'
+  # 0.16.x (fix for CVE-2018-17144 in 0.16.3)
+  '0.16.0': 'CVE-2018-17144 - DoS/inflation attack'
+  '0.16.1': 'CVE-2018-17144 - DoS/inflation attack'
+  '0.16.2': 'CVE-2018-17144 - DoS/inflation attack'
   '0.16.3': 'Multiple CVEs'
+  # 0.17.x
   '0.17.0': 'Multiple CVEs'
   '0.17.1': 'Multiple CVEs'
+  '0.17.2': 'Multiple CVEs'
+  # 0.18.x
   '0.18.0': 'Multiple CVEs'
   '0.18.1': 'Multiple CVEs'
-  '0.19.0': 'Multiple CVEs'
-  '0.19.1': 'Multiple CVEs'
-  '0.20.0': 'Multiple CVEs'
-  '0.20.1': 'Multiple CVEs'
-  '0.21.0': 'CVE-2021-31876'
-  '0.21.1': 'CVE-2021-31876'
+  # 0.19.x (fix for CVE-2024-52918 in 0.20.0, fix for CVE-2019-25220 in 0.21.0)
+  '0.19.0': 'CVE-2024-52918 - BIP72 URI crash, CVE-2019-25220 - Headers spam memory DoS'
+  '0.19.1': 'CVE-2024-52918 - BIP72 URI crash, CVE-2019-25220 - Headers spam memory DoS'
+  '0.19.2': 'CVE-2024-52918 - BIP72 URI crash, CVE-2019-25220 - Headers spam memory DoS'
+  # 0.20.x (fix for CVE-2020-14198 in 0.20.1, fix for CVE-2024-52912/52913 in 0.21.0)
+  '0.20.0': 'CVE-2020-14198 - CPU/memory DoS, CVE-2024-52912, CVE-2024-52913'
+  '0.20.1': 'CVE-2024-52912 - Netsplit timestamp, CVE-2024-52913 - Tx censorship'
+  # 0.21.x (fix for CVE-2024-52919/52917 in 22.0)
+  '0.21.0': 'CVE-2021-31876, CVE-2024-52919 - addr spam crash, CVE-2024-52917 - miniupnp loop'
+  '0.21.1': 'CVE-2021-31876, CVE-2024-52919 - addr spam crash, CVE-2024-52917 - miniupnp loop'
+  '0.21.2': 'CVE-2021-31876, CVE-2024-52919 - addr spam crash, CVE-2024-52917 - miniupnp loop'
+  # 22.x (fix for inv-to-send DoS and CVE-2024-35202 in 25.0)
+  '22.0': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '22.1': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  # 23.x
+  '23.0': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '23.1': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '23.2': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  # 24.x
+  '24.0': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '24.0.1': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '24.1': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  '24.2': 'CVE-2024-35202 - blocktxn assertion crash, DoS inv-to-send sets'
+  # 25.x - 28.x (fix for CVE-2024-52919 part 2 in 29.0)
+  '25.0': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '25.1': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '25.2': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '26.0': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '26.1': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '26.2': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '27.0': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '27.1': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '27.2': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '28.0': 'CVE-2024-52919 - addr spam crash (part 2)'
+  '28.1': 'CVE-2024-52919 - addr spam crash (part 2)'
+  # 29.x (fix for CVE-2025-46597/46598/54604/54605 in 30.0)
+  '29.0': 'CVE-2025-46597 - 32-bit crash, CVE-2025-46598 - CPU DoS, CVE-2025-54604/54605 - Disk fill'
+  '29.0.1': 'CVE-2025-46597 - 32-bit crash, CVE-2025-46598 - CPU DoS, CVE-2025-54604/54605 - Disk fill'
 
 scan:
   max_results_per_query: 1000
