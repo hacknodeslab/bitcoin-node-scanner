@@ -87,7 +87,10 @@ bitcoin-node-scanner/
 ├── tests/
 │   ├── __init__.py
 │   ├── test_scanner.py
-│   └── test_analyzer.py
+│   ├── test_analyzer.py
+│   ├── test_credit_tracker.py
+│   ├── test_reporter.py
+│   └── test_utils.py
 └── scripts/
     ├── quick_scan.sh
     └── setup.sh
@@ -152,6 +155,7 @@ python -m pytest tests/ --cov=src --cov-report=term-missing
 python -m pytest tests/ --cov=src --cov-report=html
 
 # Run specific test module
+python -m pytest tests/test_scanner.py -v
 python -m pytest tests/test_utils.py -v
 python -m pytest tests/test_analyzer.py -v
 python -m pytest tests/test_credit_tracker.py -v
@@ -159,12 +163,13 @@ python -m pytest tests/test_reporter.py -v
 ```
 
 **Test Coverage:**
-- **test_utils.py** (22 tests) - Utility functions, validation, data processing
+- **test_scanner.py** (68 tests) - Config, BitcoinNodeScanner, CachedNodeManager, OptimizedBitcoinScanner
 - **test_analyzer.py** (24 tests) - Security analysis, vulnerability detection, risk assessment
-- **test_credit_tracker.py** (15 tests) - Credit tracking, usage projections, recommendations
-- **test_reporter.py** (18 tests) - Report generation, data export, file handling
+- **test_credit_tracker.py** (21 tests) - Credit tracking, usage projections, recommendations
+- **test_reporter.py** (19 tests) - Report generation, data export, file handling
+- **test_utils.py** (27 tests) - Utility functions, validation, data processing
 
-**Total: 79 tests covering 67% of the codebase**
+**Total: 159 tests covering 83% of the codebase**
 
 ## Configuration
 
