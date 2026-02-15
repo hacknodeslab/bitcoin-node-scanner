@@ -39,6 +39,10 @@ jobs:
           scandir: './scripts'
         continue-on-error: true
       
+      - name: Run tests with coverage
+        run: |
+          pytest --cov=src --cov-report=xml:coverage.xml tests/
+
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
         env:
