@@ -5,10 +5,11 @@
 
 set -e
 
-echo "=========================================="
+readonly message="=========================================="
+echo $message
 echo "Bitcoin Node Security Scanner"
 echo "Quick Scan Script"
-echo "=========================================="
+echo $message 
 echo ""
 
 # Check if SHODAN_API_KEY is set
@@ -37,7 +38,7 @@ echo ""
 python3 src/scanner.py "$@"
 
 echo ""
-echo "=========================================="
+echo $message 
 echo "Scan completed!"
 echo "Check the 'output' directory for results"
-echo "=========================================="
+echo $message 
