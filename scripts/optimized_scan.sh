@@ -149,7 +149,7 @@ run_optimized_scan() {
     log_info "Executing: $cmd"
     echo ""
     
-    cmd_array=($cmd)
+    read -ra cmd_array <<< "$cmd"
     if "${cmd_array[@]}"; then
     #if eval $cmd; then
         echo ""
@@ -163,9 +163,9 @@ run_optimized_scan() {
         local scan_credits=$max_enrich
         
         python "$CREDIT_TRACKER" --log \
-            --query-credits $query_credits \
-            --scan-credits $scan_credits \
-            --type $scan_mode \
+            --query-credits "$query_credits" \
+            --scan-credits "$scan_credits" \
+            --type "$scan_mode" \
             --notes "Optimized scan via script"
         
         # Show updated usage report
@@ -189,22 +189,25 @@ show_results() {
     
     # Find latest files
     if [[ -d "$output_dir/reports" ]]; then
-        local latest_report=$(ls -t "$output_dir/reports"/report_*.txt 2>/dev/null | head -1)
+        local latest_report
+        latest_report=$(find "$output_dir/reports" -name 'report_*.txt' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
         if [[ -n "$latest_report" ]]; then
             echo "  📄 Report: $latest_report"
         fi
-        
-        local latest_critical=$(ls -t "$output_dir/reports"/critical_nodes_*.json 2>/dev/null | head -1)
+
+        local latest_critical
+        latest_critical=$(find "$output_dir/reports" -name 'critical_nodes_*.json' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
         if [[ -n "$latest_critical" ]]; then
             echo "  ⚠️  Critical Nodes: $latest_critical"
         fi
     fi
-    
+
     echo ""
-    
+
     # Show cache stats
     if [[ -f "$PROJECT_ROOT/cache/nodes_cache.json" ]]; then
-        local cache_size=$(wc -l < "$PROJECT_ROOT/cache/nodes_cache.json" 2>/dev/null || echo "0")
+        local cache_size
+        cache_size=$(wc -l < "$PROJECT_ROOT/cache/nodes_cache.json" 2>/dev/null || echo "0")
         log_info "Cache: $cache_size cached nodes"
     fi
     return 0
@@ -217,6 +220,7 @@ load_env_file() {
         log_info "Loading environment from .env file"
         # Load .env file (export each line that doesn't start with # and contains =)
         set -a  # automatically export all variables
+        # shellcheck source=/dev/null
         source "$env_file"
         set +a  # disable automatic export
     else

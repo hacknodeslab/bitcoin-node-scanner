@@ -32,6 +32,7 @@ python3 -m venv venv
 
 # Activate virtual environment
 echo "Activating virtual environment..."
+# shellcheck source=/dev/null
 source venv/bin/activate
 
 # Install dependencies
