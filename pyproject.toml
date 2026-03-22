@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bitcoin-node-scanner"
+version = "1.0.0"
+description = "A comprehensive security assessment tool for Bitcoin nodes"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    { name = "HackNodes Lab", email = "security@hacknodes.com" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "shodan>=1.31.0",
+    "pyyaml>=6.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "colorama>=0.4.6",
+    "tabulate>=0.9.0",
+    "matplotlib>=3.8.0",
+    "pandas>=2.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-mock>=3.11.0",
+    "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+bitcoin-scanner = "scanner:main"
+
+[project.urls]
+Homepage = "https://github.com/hacknodes-lab/bitcoin-node-scanner"
+
+[tool.setuptools.packages.find]
+where = ["src"]

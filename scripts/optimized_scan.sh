@@ -149,7 +149,9 @@ run_optimized_scan() {
     log_info "Executing: $cmd"
     echo ""
     
-    if eval $cmd; then
+    cmd_array=($cmd)
+    if "${cmd_array[@]}"; then
+    #if eval $cmd; then
         echo ""
         log_info "Scan completed successfully ✓"
         

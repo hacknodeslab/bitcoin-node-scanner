@@ -1,3 +1,4 @@
+setuptools>=68.0.0
 shodan>=1.31.0
 pyyaml>=6.0
 requests>=2.31.0
