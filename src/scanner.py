@@ -588,7 +588,7 @@ class OptimizedConfig(Config):
     
     # Smart pagination limits
     MAX_RESULTS_CRITICAL = 1000    # For port 8332 (RPC)
-    MAX_RESULTS_NORMAL = 1000      # For other queries
+    MAX_RESULTS_NORMAL = 500       # For other queries
     
     # Enrichment limits
     MAX_ENRICHMENTS = 100          # Stay within scan credit limit
