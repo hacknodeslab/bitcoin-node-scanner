@@ -31,6 +31,8 @@ This scanner helps identify:
 - **Statistical Analysis**: Comprehensive statistics and visualizations
 - **Multiple Output Formats**: JSON, CSV, and human-readable reports
 - **Rate Limiting**: Built-in protections to respect Shodan API limits
+- **Database Support**: Optional PostgreSQL/SQLite persistence for historical analysis
+- **Historical Analysis**: Track vulnerability trends and node lifecycle over time
 
 ## Prerequisites
 
@@ -49,6 +51,10 @@ pip install -r requirements.txt
 
 # Configure your API key
 export SHODAN_API_KEY="your_api_key_here"
+
+# (Optional) Configure database for historical tracking
+export DATABASE_URL="postgresql://user:pass@localhost/bitcoin_scanner"
+# Or use SQLite: export DATABASE_URL="sqlite:///./bitcoin_scanner.db"
 
 # Run a scan
 python src/scanner.py
@@ -103,6 +109,7 @@ bitcoin-node-scanner/
 - [Usage Guide](docs/USAGE.md)
 - [API Reference](docs/API.md)
 - [Methodology](docs/METHODOLOGY.md)
+- [Database Support](docs/DATABASE.md)
 
 ## Example Output
 
@@ -179,6 +186,15 @@ Edit `config/config.yaml` to customize:
 - Vulnerable version database
 - Output directories
 - Risk assessment thresholds
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SHODAN_API_KEY` | Yes | Your Shodan API key |
+| `DATABASE_URL` | No | Database connection string for persistence |
+| `QUERIES` | No | Comma-separated list of Shodan queries |
+| `QUERIES_OPTIMIZED` | No | Optimized query set for credit-efficient scans |
 
 ## Contributing
 

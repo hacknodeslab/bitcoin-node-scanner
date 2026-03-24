@@ -10,36 +10,38 @@ jobs:
   quality-checks:
     name: Code Quality & Security
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pylint flake8 bandit
-      
+
       - name: Run security scan (Bandit)
         continue-on-error: true
         run: |
           bandit -r src/ -f json -o bandit-report.json || true
-      
+
       - name: ShellCheck
         uses: ludeeus/action-shellcheck@master
         with:
           scandir: './scripts'
         continue-on-error: true
-      
+
       - name: Run tests with coverage
+        env:
+          DATABASE_URL: sqlite:///:memory:
         run: |
           pytest --cov=src --cov-report=xml:coverage.xml tests/
 
@@ -48,3 +50,42 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+
+  database-integration-tests:
+    name: Database Integration Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: bitcoin_scanner_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Run database integration tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/bitcoin_scanner_test
+        run: |
+          pytest tests/test_db_*.py -v --tb=short
