@@ -33,6 +33,7 @@ class DatabaseScannerMixin:
         super().__init__(*args, **kwargs)
         self._db_enabled = is_database_configured()
         self._current_scan: Optional[Scan] = None
+        self._current_scan_id: Optional[int] = None
         self._scan_start_time: Optional[float] = None
 
         if self._db_enabled:
@@ -74,10 +75,12 @@ class DatabaseScannerMixin:
 
             node = node_repo.upsert(db_data)
 
-            # Associate with current scan
-            if self._current_scan and node:
+            # Associate with current scan (re-fetch to avoid DetachedInstanceError)
+            if self._current_scan_id and node:
                 scan_repo = ScanRepository(session)
-                scan_repo.add_node(self._current_scan, node)
+                scan = scan_repo.get_by_id(self._current_scan_id)
+                if scan:
+                    scan_repo.add_node(scan, node)
 
             return node
 
@@ -120,10 +123,10 @@ class DatabaseScannerMixin:
                 queries_executed=queries,
                 status="running"
             )
-            # Flush to get the ID and keep the object valid
+            # Flush to get the ID before session closes
             session.flush()
-            scan_id = self._current_scan.id
-            self.log(f"Database scan session created: ID={scan_id}")
+            self._current_scan_id = self._current_scan.id
+            self.log(f"Database scan session created: ID={self._current_scan_id}")
             return self._current_scan
 
     def _complete_scan_session(self, stats: Dict[str, Any]) -> None:
@@ -133,7 +136,7 @@ class DatabaseScannerMixin:
         Args:
             stats: Statistics dictionary from generate_statistics()
         """
-        if not self._db_enabled or self._current_scan is None:
+        if not self._db_enabled or self._current_scan_id is None:
             return
 
         duration = None
@@ -146,8 +149,8 @@ class DatabaseScannerMixin:
 
             scan_repo = ScanRepository(session)
 
-            # Refresh the scan object in this session
-            scan = scan_repo.get_by_id(self._current_scan.id)
+            # Fetch fresh scan object in this session
+            scan = scan_repo.get_by_id(self._current_scan_id)
             if scan:
                 scan_repo.complete(
                     scan,
@@ -161,6 +164,7 @@ class DatabaseScannerMixin:
                 self.log(f"Database scan session completed: ID={scan.id}")
 
         self._current_scan = None
+        self._current_scan_id = None
         self._scan_start_time = None
 
     def _save_nodes_bulk(self, nodes_data: List[Dict[str, Any]]) -> int:

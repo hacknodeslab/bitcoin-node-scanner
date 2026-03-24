@@ -200,8 +200,8 @@ def cmd_import(args):
         return 1
 
     # Delegate to the import script
-    import subprocess
-    result = subprocess.run(
+    import subprocess  # nosec B404
+    result = subprocess.run(  # nosec B603
         [sys.executable, "scripts/import_json_to_db.py", args.file],
         cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
