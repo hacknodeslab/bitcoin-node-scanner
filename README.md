@@ -34,6 +34,90 @@ This scanner helps identify:
 - **Database Support**: Optional PostgreSQL/SQLite persistence for historical analysis
 - **Historical Analysis**: Track vulnerability trends and node lifecycle over time
 
+## MaxMind GeoIP Setup
+
+The scanner can enrich node geo data (city, region, coordinates, ASN) using MaxMind's free GeoLite2 databases. This is optional — the scanner works without it, but geo fields will be less complete.
+
+### 1. Get a free MaxMind license key
+
+Create a free account at [maxmind.com/en/geolite2/signup](https://www.maxmind.com/en/geolite2/signup), then generate a license key in your account portal.
+
+### 2. Download the databases
+
+```bash
+export MAXMIND_LICENSE_KEY=your_license_key_here
+./scripts/download_geoip_dbs.sh
+```
+
+This downloads `GeoLite2-City.mmdb`, `GeoLite2-ASN.mmdb`, and `GeoLite2-Country.mmdb` into `./geoip_dbs/` (configurable via `GEOIP_DB_DIR`). Re-run monthly to keep the databases current.
+
+### 3. Configure the path (optional)
+
+```bash
+export GEOIP_DB_DIR=./geoip_dbs   # default — no change needed if you used the script
+```
+
+GeoIP enrichment is automatic during scans once the databases are present. If the files are missing, the scanner logs a warning and continues without geo enrichment.
+
+### 4. Enrich existing nodes retroactively
+
+```bash
+python -m src.db.cli enrich-geo
+```
+
+This fills in missing geo fields (city, region, coordinates, ASN) for all nodes already in the database, processing them in batches of 500.
+
+> **Attribution**: This product includes GeoLite2 data created by MaxMind, available from [maxmind.com](https://www.maxmind.com).
+
+---
+
+## Web Interface
+
+The scanner includes an optional FastAPI web server that provides a REST API and browser dashboard for exploring scan results without using the CLI.
+
+### Starting the web server
+
+```bash
+# Set required environment variables
+export DATABASE_URL="sqlite:///./bitcoin_scanner.db"   # or PostgreSQL URL
+export WEB_API_KEY="your-strong-random-secret"         # protects all API endpoints
+export WEB_HOST="127.0.0.1"                            # default: 127.0.0.1
+export WEB_PORT="8000"                                 # default: 8000
+
+# Start the server
+python -m src.web.main
+# or, after installing the package:
+bitcoin-scanner-web
+```
+
+Open `http://127.0.0.1:8000/` in a browser. You will be prompted for the API key.
+
+### API reference
+
+Interactive docs are available at `http://127.0.0.1:8000/docs` (Swagger UI) and `/redoc`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/nodes` | List scanned nodes (supports `risk_level`, `limit`, `offset` query params) |
+| GET | `/api/v1/stats` | Aggregate statistics (counts by risk level, top countries, last scan time) |
+| POST | `/api/v1/scans` | Trigger a background scan; returns `job_id` |
+| GET | `/api/v1/scans/{job_id}` | Get scan job status (`pending`/`running`/`completed`/`failed`) |
+
+All endpoints require the `X-API-Key` header.
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `WEB_API_KEY` | Yes | — | Secret key sent in `X-API-Key` header |
+| `WEB_HOST` | No | `127.0.0.1` | Host the server binds to |
+| `WEB_PORT` | No | `8000` | Port the server listens on |
+| `DATABASE_URL` | Yes | — | SQLAlchemy database URL (SQLite or PostgreSQL) |
+
+> **Security note**: Do not expose the web server on a public interface without a TLS-terminating reverse proxy (e.g., nginx). The API key provides authentication but not encryption.
+
+---
+
 ## Prerequisites
 
 - Python 3.8+

@@ -43,6 +43,7 @@ dev = [
 
 [project.scripts]
 bitcoin-scanner = "scanner:main"
+bitcoin-scanner-web = "src.web.main:start"
 
 [project.urls]
 Homepage = "https://github.com/hacknodes-lab/bitcoin-node-scanner"

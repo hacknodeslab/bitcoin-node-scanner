@@ -3,6 +3,7 @@ SQLAlchemy models for Bitcoin Node Scanner database.
 """
 from datetime import datetime
 from typing import List, Optional
+import uuid
 
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, ForeignKey, Index, Table
@@ -32,12 +33,16 @@ class Node(Base):
     ip: Mapped[str] = mapped_column(String(45), nullable=False)  # IPv6 max length
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=8333)
 
-    # Geographic information
+    # Geographic information (Shodan-sourced; Shodan takes precedence)
     country_code: Mapped[Optional[str]] = mapped_column(String(2))
     country_name: Mapped[Optional[str]] = mapped_column(String(100))
     city: Mapped[Optional[str]] = mapped_column(String(100))
+    subdivision: Mapped[Optional[str]] = mapped_column(String(100))  # region/state from MaxMind
     latitude: Mapped[Optional[float]] = mapped_column(Float)
     longitude: Mapped[Optional[float]] = mapped_column(Float)
+    # MaxMind-specific country (always from GeoLite2, never overwritten by Shodan)
+    geo_country_code: Mapped[Optional[str]] = mapped_column(String(2))
+    geo_country_name: Mapped[Optional[str]] = mapped_column(String(100))
 
     # Network information
     asn: Mapped[Optional[str]] = mapped_column(String(20))
@@ -193,3 +198,22 @@ class NodeVulnerability(Base):
 
     def __repr__(self) -> str:
         return f"<NodeVulnerability(node_id={self.node_id}, vulnerability_id={self.vulnerability_id})>"
+
+
+class ScanJob(Base):
+    """Model representing a background scan job triggered via the web API."""
+    __tablename__ = 'scan_jobs'
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_scan_jobs_status', 'status'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ScanJob(id={self.id}, status={self.status})>"

@@ -58,5 +58,9 @@ bandit-report.json
 coverage.xml
 .coverage
 
+# MaxMind GeoIP database files (binary, must not be committed)
+geoip_dbs/
+*.mmdb
+
 # Claude and Agents
 .claude/

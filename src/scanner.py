@@ -100,6 +100,10 @@ class BitcoinNodeScanner:
         self.unique_ips = set()
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
+        # GeoIP enrichment (fail-open: works without .mmdb files)
+        from src.geoip import GeoIPService  # noqa: PLC0415
+        self._geoip = GeoIPService()
+
         # Create directories
         for directory in [Config.OUTPUT_DIR, Config.RAW_DATA_DIR,
                          Config.REPORTS_DIR, Config.LOGS_DIR]:
@@ -176,11 +180,32 @@ class BitcoinNodeScanner:
         return results
 
     def parse_node_data(self, result: Dict, query: str) -> Dict:
-        """Parse node data"""
+        """Parse node data, enriching geo fields with MaxMind where Shodan leaves gaps."""
+        ip = result.get('ip_str')
+        shodan_country = result.get('location', {}).get('country_name', '')
+        shodan_country_code = result.get('location', {}).get('country_code', '')
+        shodan_city = result.get('location', {}).get('city', '')
+        shodan_asn = result.get('asn', '')
+
+        # MaxMind enrichment — fill gaps left by Shodan
+        geo = self._geoip.lookup(ip) if ip else None
+
+        country = shodan_country or (geo.country_name if geo else '')
+        country_code = shodan_country_code or (geo.country_code if geo else '')
+        city = shodan_city or (geo.city if geo else '')
+        asn = shodan_asn or (geo.asn if geo else '')
+        # Shodan does not provide subdivision, lat, lon — always use MaxMind
+        subdivision = geo.subdivision if geo else None
+        latitude = geo.latitude if geo else None
+        longitude = geo.longitude if geo else None
+        # MaxMind country stored separately (never overwritten by Shodan)
+        geo_country_code = geo.country_code if geo else None
+        geo_country_name = geo.country_name if geo else None
+
         return {
             'timestamp': self.timestamp,
             'query': query,
-            'ip': result.get('ip_str'),
+            'ip': ip,
             'port': result.get('port'),
             'transport': result.get('transport', 'tcp'),
             'product': result.get('product', ''),
@@ -188,10 +213,15 @@ class BitcoinNodeScanner:
             'banner': result.get('data', ''),
             'organization': result.get('org', ''),
             'isp': result.get('isp', ''),
-            'asn': result.get('asn', ''),
-            'country': result.get('location', {}).get('country_name', ''),
-            'country_code': result.get('location', {}).get('country_code', ''),
-            'city': result.get('location', {}).get('city', ''),
+            'asn': asn,
+            'country': country,
+            'country_code': country_code,
+            'city': city,
+            'subdivision': subdivision,
+            'latitude': latitude,
+            'longitude': longitude,
+            'geo_country_code': geo_country_code,
+            'geo_country_name': geo_country_name,
             'hostnames': result.get('hostnames', []),
             'domains': result.get('domains', []),
             'timestamp_shodan': result.get('timestamp', ''),

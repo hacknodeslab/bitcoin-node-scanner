@@ -250,6 +250,108 @@ def cmd_node(args):
     return 0
 
 
+def cmd_enrich_geo(args):
+    """Retroactively enrich all nodes in the database with MaxMind GeoIP data."""
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+
+    from src.geoip import GeoIPService
+
+    db_dir = os.getenv("GEOIP_DB_DIR", "./geoip_dbs")
+    geoip = GeoIPService(db_dir=db_dir)
+
+    # Trigger lazy init to check availability before iterating the whole DB
+    geoip._init_readers()
+    if not geoip._available:
+        print(
+            f"Error: MaxMind GeoLite2 databases not found in '{db_dir}'.\n"
+            "Run scripts/download_geoip_dbs.sh to download them, then re-run this command."
+        )
+        return 1
+
+    init_db()
+
+    BATCH_SIZE = 500
+    total = updated = skipped = no_match = 0
+
+    from src.db.models import Node
+    from sqlalchemy import select
+
+    with get_db_session() as session:
+        if session is None:
+            print("Error: Could not connect to database")
+            return 1
+
+        # Count total
+        total = session.query(Node).count()
+        print(f"Enriching {total} nodes with MaxMind GeoIP data...")
+
+        offset = 0
+        while True:
+            stmt = select(Node).offset(offset).limit(BATCH_SIZE)
+            batch = list(session.scalars(stmt).all())
+            if not batch:
+                break
+
+            for node in batch:
+                geo = geoip.lookup(node.ip)
+                if geo is None:
+                    no_match += 1
+                    continue
+
+                changed = False
+                # Fill geo gaps (Shodan-provided values take precedence)
+                if not node.country_code and geo.country_code:
+                    node.country_code = geo.country_code
+                    changed = True
+                if not node.country_name and geo.country_name:
+                    node.country_name = geo.country_name
+                    changed = True
+                if not node.city and geo.city:
+                    node.city = geo.city
+                    changed = True
+                if not node.asn and geo.asn:
+                    node.asn = geo.asn
+                    changed = True
+                if not node.asn_name and geo.asn_name:
+                    node.asn_name = geo.asn_name
+                    changed = True
+                # Always use MaxMind for these (Shodan doesn't provide them)
+                if geo.subdivision is not None:
+                    node.subdivision = geo.subdivision
+                    changed = True
+                if geo.latitude is not None:
+                    node.latitude = geo.latitude
+                    node.longitude = geo.longitude
+                    changed = True
+                # Always store MaxMind country separately (independent of Shodan)
+                if geo.country_code is not None:
+                    node.geo_country_code = geo.country_code
+                    node.geo_country_name = geo.country_name
+                    changed = True
+
+                if changed:
+                    updated += 1
+                else:
+                    skipped += 1
+
+            session.flush()
+            offset += BATCH_SIZE
+            print(f"  Processed {min(offset, total)}/{total}...", end="\r")
+
+    geoip.close()
+    print()
+    print("=" * 50)
+    print("GEO ENRICHMENT COMPLETE")
+    print("=" * 50)
+    print(f"  Total nodes:  {total}")
+    print(f"  Updated:      {updated}")
+    print(f"  Skipped:      {skipped}  (already complete)")
+    print(f"  No match:     {no_match}  (not in MaxMind DB)")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bitcoin Node Scanner Database CLI"
@@ -278,6 +380,12 @@ def main():
     node_parser = subparsers.add_parser("db-node", help="Get node lifecycle information")
     node_parser.add_argument("ip", help="IP address of the node")
 
+    # enrich-geo command
+    subparsers.add_parser(
+        "enrich-geo",
+        help="Retroactively enrich all nodes with MaxMind GeoIP data (requires GEOIP_DB_DIR)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "db-stats":
@@ -290,6 +398,8 @@ def main():
         return cmd_import(args)
     elif args.command == "db-node":
         return cmd_node(args)
+    elif args.command == "enrich-geo":
+        return cmd_enrich_geo(args)
     else:
         parser.print_help()
         return 1
