@@ -23,4 +23,4 @@
 
 ## 5. Tests
 
-- [ ] 5.1 Add tests to `tests/test_web_api.py` covering: sort by `ip` asc, sort by `last_seen` desc, invalid `sort_by` falls back gracefully, `country` filter returns matching nodes only, `GET /api/v1/nodes/countries` returns sorted list and requires API key
+- [x] 5.1 Add tests to `tests/test_web_api.py` covering: sort by `ip` asc, sort by `last_seen` desc, invalid `sort_by` falls back gracefully, `country` filter returns matching nodes only, `GET /api/v1/nodes/countries` returns sorted list and requires API key
