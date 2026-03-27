@@ -6,6 +6,8 @@ capabilities to the scanner without modifying the original class.
 """
 import json
 import logging
+import socket
+import struct
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -84,10 +86,32 @@ class DatabaseScannerMixin:
 
             return node
 
+    @staticmethod
+    def _ip_to_int(ip: str) -> int:
+        try:
+            return struct.unpack("!I", socket.inet_aton(ip))[0]
+        except Exception:
+            return 0
+
     def _map_node_data(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
         """Map scanner node data to database model fields."""
+        ip = node_data.get("ip")
+
+        # JSON-serialise list fields; None if empty/missing
+        hostnames = node_data.get("hostnames") or []
+        vulns = node_data.get("vulns") or []
+        cpe = node_data.get("cpe") or []
+        tags = node_data.get("tags") or []
+
+        # Enrichment (full host scan) — open_ports_json and tags override
+        enrichment = node_data.get("enrichment") or {}
+        all_services = enrichment.get("all_services") or []
+        enrichment_tags = enrichment.get("tags") or tags  # prefer enrichment tags if present
+        enrichment_os = enrichment.get("os") or node_data.get("os") or None
+
         return {
-            "ip": node_data.get("ip"),
+            "ip": ip,
+            "ip_numeric": self._ip_to_int(ip) if ip else None,
             "port": node_data.get("port", 8333),
             "country_code": node_data.get("country_code"),
             "country_name": node_data.get("country"),
@@ -102,6 +126,15 @@ class DatabaseScannerMixin:
             "version": node_data.get("version"),
             "user_agent": node_data.get("product"),
             "banner": node_data.get("banner"),
+            # Enrichment fields
+            "hostname": hostnames[0] if hostnames else None,
+            "os_info": enrichment_os or None,
+            "isp": node_data.get("isp") or None,
+            "org": node_data.get("organization") or None,
+            "vulns_json": json.dumps(vulns) if vulns else None,
+            "cpe_json": json.dumps(cpe) if cpe else None,
+            "tags_json": json.dumps(enrichment_tags) if enrichment_tags else None,
+            "open_ports_json": json.dumps(all_services) if all_services else None,
         }
 
     def _start_scan_session(self, queries: List[str]) -> Optional[Scan]:

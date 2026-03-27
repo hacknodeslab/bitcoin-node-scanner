@@ -22,7 +22,7 @@ class StatsOut(BaseModel):
     last_scan_at: Optional[str]
 
 
-@router.get("/stats", response_model=StatsOut, dependencies=[Depends(require_api_key)])
+@router.get("/stats", response_model=StatsOut)
 def get_stats(db: Session = Depends(get_db)):
     node_repo = NodeRepository(db)
     scan_repo = ScanRepository(db)

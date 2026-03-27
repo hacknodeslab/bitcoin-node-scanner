@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 import uuid
 
+import sqlalchemy as sa
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, ForeignKey, Index, Table
 )
@@ -31,6 +32,7 @@ class Node(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     ip: Mapped[str] = mapped_column(String(45), nullable=False)  # IPv6 max length
+    ip_numeric: Mapped[Optional[int]] = mapped_column(sa.BigInteger(), nullable=True)  # for numeric IP sort
     port: Mapped[int] = mapped_column(Integer, nullable=False, default=8333)
 
     # Geographic information (Shodan-sourced; Shodan takes precedence)
@@ -54,6 +56,16 @@ class Node(Base):
     banner: Mapped[Optional[str]] = mapped_column(Text)
     protocol_version: Mapped[Optional[int]] = mapped_column(Integer)
     services: Mapped[Optional[str]] = mapped_column(String(50))
+
+    # Shodan enrichment — host-level data
+    hostname: Mapped[Optional[str]] = mapped_column(String(255))       # first hostname
+    os_info: Mapped[Optional[str]] = mapped_column(String(255))        # OS detected by Shodan
+    isp: Mapped[Optional[str]] = mapped_column(String(255))            # ISP name
+    org: Mapped[Optional[str]] = mapped_column(String(255))            # Organisation
+    open_ports_json: Mapped[Optional[str]] = mapped_column(Text)       # JSON: [{port, transport, product, version}]
+    vulns_json: Mapped[Optional[str]] = mapped_column(Text)            # JSON: [CVE-IDs]
+    tags_json: Mapped[Optional[str]] = mapped_column(Text)             # JSON: [tags]
+    cpe_json: Mapped[Optional[str]] = mapped_column(Text)              # JSON: [CPE strings]
 
     # Risk assessment
     risk_level: Mapped[Optional[str]] = mapped_column(String(20))  # CRITICAL, HIGH, MEDIUM, LOW

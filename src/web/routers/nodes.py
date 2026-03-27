@@ -3,7 +3,8 @@ GET /api/v1/nodes            — paginated node list with filtering and sorting.
 GET /api/v1/nodes/countries  — distinct country_name values for filter dropdown.
 GET /api/v1/nodes/{id}/geo   — full geo detail for a single node.
 """
-from typing import List, Optional
+import json
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
@@ -19,7 +20,7 @@ router = APIRouter()
 
 # Whitelist of allowed sort columns mapped to Node attributes
 _SORT_COLUMNS = {
-    "ip": Node.ip,
+    "ip": Node.ip_numeric,  # sort numerically, not lexicographically
     "port": Node.port,
     "version": Node.version,
     "risk_level": Node.risk_level,
@@ -36,14 +37,32 @@ class NodeOut(BaseModel):
     ip: str
     port: int
     version: Optional[str]
+    user_agent: Optional[str]
+    protocol_version: Optional[int]
+    services: Optional[str]
     risk_level: Optional[str]
+    is_vulnerable: bool
+    has_exposed_rpc: bool
+    is_dev_version: bool
     country_code: Optional[str]
     country_name: Optional[str]
-    geo_country_code: Optional[str]
-    geo_country_name: Optional[str]
     city: Optional[str]
     subdivision: Optional[str]
+    asn: Optional[str]
+    asn_name: Optional[str]
+    geo_country_code: Optional[str]
+    geo_country_name: Optional[str]
+    first_seen: Optional[str]
     last_seen: Optional[str]
+    # Shodan enrichment
+    hostname: Optional[str]
+    os_info: Optional[str]
+    isp: Optional[str]
+    org: Optional[str]
+    open_ports: Optional[List[Any]]
+    vulns: Optional[List[str]]
+    tags: Optional[List[str]]
+    cpe: Optional[List[str]]
 
 
 class NodeGeoOut(BaseModel):
@@ -74,24 +93,50 @@ def get_db() -> Session:
         db.close()
 
 
+def _parse_json_col(value: Optional[str]) -> Optional[List]:
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return None
+
+
 def _make_node_out(n: Node) -> NodeOut:
     return NodeOut(
         id=n.id,
         ip=n.ip,
         port=n.port,
         version=n.version,
+        user_agent=n.user_agent,
+        protocol_version=n.protocol_version,
+        services=n.services,
         risk_level=n.risk_level,
+        is_vulnerable=n.is_vulnerable,
+        has_exposed_rpc=n.has_exposed_rpc,
+        is_dev_version=n.is_dev_version,
         country_code=n.country_code,
         country_name=n.country_name,
-        geo_country_code=getattr(n, "geo_country_code", None),
-        geo_country_name=getattr(n, "geo_country_name", None),
         city=n.city,
         subdivision=getattr(n, "subdivision", None),
+        asn=n.asn,
+        asn_name=n.asn_name,
+        geo_country_code=getattr(n, "geo_country_code", None),
+        geo_country_name=getattr(n, "geo_country_name", None),
+        first_seen=n.first_seen.isoformat() if n.first_seen else None,
         last_seen=n.last_seen.isoformat() if n.last_seen else None,
+        hostname=getattr(n, "hostname", None),
+        os_info=getattr(n, "os_info", None),
+        isp=getattr(n, "isp", None),
+        org=getattr(n, "org", None),
+        open_ports=_parse_json_col(getattr(n, "open_ports_json", None)),
+        vulns=_parse_json_col(getattr(n, "vulns_json", None)),
+        tags=_parse_json_col(getattr(n, "tags_json", None)),
+        cpe=_parse_json_col(getattr(n, "cpe_json", None)),
     )
 
 
-@router.get("/nodes/countries", response_model=List[str], dependencies=[Depends(require_api_key)])
+@router.get("/nodes/countries", response_model=List[str])
 def list_countries(db: Session = Depends(get_db)):
     """Return distinct non-null country_name values, alphabetically sorted (max 100)."""
     stmt = (
@@ -104,7 +149,7 @@ def list_countries(db: Session = Depends(get_db)):
     return list(db.scalars(stmt).all())
 
 
-@router.get("/nodes", response_model=List[NodeOut], dependencies=[Depends(require_api_key)])
+@router.get("/nodes", response_model=List[NodeOut])
 def list_nodes(
     risk_level: Optional[str] = Query(None, description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW"),
     country: Optional[str] = Query(None, description="Filter by server location country name (case-insensitive)"),
@@ -134,7 +179,6 @@ def list_nodes(
 @router.get(
     "/nodes/{node_id}/geo",
     response_model=NodeGeoOut,
-    dependencies=[Depends(require_api_key)],
 )
 def get_node_geo(node_id: int, db: Session = Depends(get_db)):
     repo = NodeRepository(db)

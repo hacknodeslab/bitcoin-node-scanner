@@ -22,6 +22,11 @@ os.environ["DATABASE_URL"] = "sqlite://"  # in-memory
 from src.db.models import Base, Node, ScanJob
 from src.web.routers.nodes import get_db
 
+# Re-assert after imports: src/__init__.py triggers scanner.py which calls
+# load_dotenv(override=True), overwriting env vars set above if .env has them.
+os.environ["WEB_API_KEY"] = "integration-test-key"
+os.environ["DATABASE_URL"] = "sqlite://"
+
 API_KEY = "integration-test-key"
 HEADERS = {"X-API-Key": API_KEY}
 
@@ -98,9 +103,9 @@ class TestNodesEndpoint:
         assert len(data) == 1
         assert data[0]["risk_level"] == "CRITICAL"
 
-    def test_requires_api_key(self, client):
+    def test_accessible_without_api_key(self, client):
         r = client.get("/api/v1/nodes")
-        assert r.status_code == 401
+        assert r.status_code == 200
 
 
 class TestStatsEndpoint:
@@ -124,9 +129,9 @@ class TestStatsEndpoint:
         assert d["by_risk_level"].get("CRITICAL") == 2
         assert d["by_risk_level"].get("HIGH") == 1
 
-    def test_requires_api_key(self, client):
+    def test_accessible_without_api_key(self, client):
         r = client.get("/api/v1/stats")
-        assert r.status_code == 401
+        assert r.status_code == 200
 
 
 class TestScansEndpoint:
@@ -208,9 +213,9 @@ class TestNodeGeoEndpoint:
         r = client.get("/api/v1/nodes/99999/geo", headers=HEADERS)
         assert r.status_code == 404
 
-    def test_requires_api_key(self, client, db_session):
-        r = client.get("/api/v1/nodes/1/geo")
-        assert r.status_code == 401
+    def test_accessible_without_api_key_returns_404(self, client, db_session):
+        r = client.get("/api/v1/nodes/99999/geo")
+        assert r.status_code == 404  # public endpoint, no such node
 
 
 class TestNodeSortingAndFiltering:
@@ -300,6 +305,6 @@ class TestCountriesEndpoint:
         assert r.status_code == 200
         assert r.json() == []
 
-    def test_requires_api_key(self, client):
+    def test_accessible_without_api_key(self, client):
         r = client.get("/api/v1/nodes/countries")
-        assert r.status_code == 401
+        assert r.status_code == 200

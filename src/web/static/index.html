@@ -7,9 +7,9 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
-    header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem; }
-    header h1 { font-size: 1.25rem; font-weight: 600; color: #f97316; }
-    header span { font-size: 0.8rem; color: #64748b; }
+    header { background: #1a1d27; border-bottom: 1px solid #2d3148; padding: 0.75rem 2rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.25rem; font-weight: 600; color: #f97316; flex-shrink: 0; }
+    header span#last-scan-at { font-size: 0.8rem; color: #64748b; flex: 1; }
     main { max-width: 1400px; margin: 0 auto; padding: 1.5rem 2rem; }
 
     /* Stats cards */
@@ -50,6 +50,10 @@
     .badge-LOW      { background: #14532d; color: #86efac; }
     .badge-UNKNOWN  { background: #1e293b; color: #94a3b8; }
 
+    /* Clickable IP */
+    .ip-link { background: none; border: none; color: #60a5fa; font-family: monospace; font-size: inherit; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+    .ip-link:hover { color: #93c5fd; }
+
     /* Pagination */
     .pagination { display: flex; gap: 0.5rem; margin-top: 1rem; align-items: center; font-size: 0.875rem; color: #94a3b8; }
     .pagination button { padding: 0.3rem 0.7rem; border-radius: 5px; border: 1px solid #2d3148; background: #1a1d27; color: #e2e8f0; cursor: pointer; }
@@ -57,12 +61,93 @@
 
     /* Last updated */
     #last-updated { font-size: 0.75rem; color: #475569; margin-top: 0.5rem; }
+
+    /* Admin login / logout in header */
+    #login-form { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    #login-form input { padding: 0.35rem 0.6rem; border-radius: 6px; border: 1px solid #2d3148; background: #0f1117; color: #e2e8f0; font-size: 0.8rem; width: 120px; }
+    #login-form input::placeholder { color: #475569; }
+    #login-form button { padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid #2d3148; background: #1a1d27; color: #e2e8f0; font-size: 0.8rem; cursor: pointer; }
+    #login-form button:hover { border-color: #60a5fa; color: #60a5fa; }
+    #login-error { font-size: 0.75rem; color: #ef4444; }
+
+    #admin-controls { display: none; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+    #admin-label { font-size: 0.8rem; color: #94a3b8; }
+    #logout-btn { padding: 0.35rem 0.75rem; border-radius: 6px; border: 1px solid #2d3148; background: #1a1d27; color: #94a3b8; font-size: 0.8rem; cursor: pointer; }
+    #logout-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+    /* ── Node detail modal ───────────────────────────────────────────────────── */
+    #node-modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    #node-modal-backdrop.open { display: flex; }
+
+    #node-modal {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 640px;
+      max-height: 85vh;
+      overflow-y: auto;
+      padding: 1.5rem;
+      position: relative;
+    }
+
+    #node-modal-close {
+      position: absolute; top: 0.75rem; right: 1rem;
+      background: none; border: none; color: #64748b;
+      font-size: 1.4rem; cursor: pointer; line-height: 1;
+    }
+    #node-modal-close:hover { color: #e2e8f0; }
+
+    #node-modal h2 { font-size: 1rem; font-weight: 600; color: #f97316; margin-bottom: 1.25rem; font-family: monospace; }
+
+    .modal-section { margin-bottom: 1.25rem; }
+    .modal-section h3 { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; margin-bottom: 0.6rem; border-bottom: 1px solid #2d3148; padding-bottom: 0.3rem; }
+
+    .field-grid { display: grid; grid-template-columns: 140px 1fr; gap: 0.3rem 0.75rem; font-size: 0.82rem; }
+    .field-label { color: #64748b; align-self: start; padding-top: 0.05rem; }
+    .field-value { color: #e2e8f0; word-break: break-all; }
+    .field-value.mono { font-family: monospace; font-size: 0.8rem; }
+    .field-value.muted { color: #475569; }
+    .field-value.ok { color: #22c55e; }
+    .field-value.warn { color: #f97316; }
+
+    /* Ports mini-table inside modal */
+    .ports-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; margin-top: 0.5rem; }
+    .ports-table th { background: #0f1117; color: #64748b; font-weight: 500; text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid #2d3148; }
+    .ports-table td { padding: 0.3rem 0.6rem; border-bottom: 1px solid #1e2130; color: #e2e8f0; }
+    .ports-table tr:last-child td { border-bottom: none; }
+
+    /* CVE / tag pills */
+    .pill { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 3px; font-size: 0.72rem; margin: 0.1rem; background: #2d3148; color: #94a3b8; }
+    .pill.cve { background: #7f1d1d; color: #fca5a5; }
+    .pill.tag { background: #1e3a5f; color: #93c5fd; }
   </style>
 </head>
 <body>
 <header>
   <h1>&#x20BF; Bitcoin Node Scanner</h1>
   <span id="last-scan-at">Last scan: —</span>
+
+  <!-- Login form (shown when not admin) -->
+  <form id="login-form" onsubmit="handleLogin(event)">
+    <input type="text" id="login-username" placeholder="Username" value="admin" autocomplete="username" />
+    <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" />
+    <button type="submit">Login</button>
+    <span id="login-error"></span>
+  </form>
+
+  <!-- Admin badge + logout (shown when admin) -->
+  <div id="admin-controls">
+    <span id="admin-label">Admin &#9660;</span>
+    <button id="logout-btn" onclick="handleLogout()">Logout</button>
+  </div>
 </header>
 <main>
   <!-- Stats -->
@@ -87,8 +172,11 @@
     <select id="country-filter">
       <option value="">All Countries</option>
     </select>
-    <button id="scan-btn" onclick="triggerScan()">&#9654; Start Scan</button>
-    <span id="scan-status"></span>
+    <!-- Scan controls: only visible when admin is logged in -->
+    <div id="scan-controls" style="display:none;align-items:center;gap:1rem">
+      <button id="scan-btn" onclick="triggerScan()">&#9654; Start Scan</button>
+      <span id="scan-status"></span>
+    </div>
   </div>
 
   <!-- Node Table -->
@@ -125,8 +213,27 @@
   </p>
 </main>
 
+<!-- Node detail modal -->
+<div id="node-modal-backdrop">
+  <div id="node-modal">
+    <button id="node-modal-close" onclick="closeNodeModal()" title="Close">&times;</button>
+    <h2 id="modal-title">—</h2>
+
+    <!-- Shodan section -->
+    <div class="modal-section">
+      <h3>Shodan data</h3>
+      <div class="field-grid" id="modal-shodan"></div>
+    </div>
+
+    <!-- GeoIP section -->
+    <div class="modal-section">
+      <h3>GeoIP data (MaxMind)</h3>
+      <div class="field-grid" id="modal-geoip"><span class="field-label">Status</span><span class="field-value muted">Loading…</span></div>
+    </div>
+  </div>
+</div>
+
 <script>
-  const API_KEY = prompt("Enter API key:") || "";
   const PAGE_SIZE = 50;
 
   let currentPage = 0;
@@ -137,9 +244,48 @@
   let activeScanJobId = null;
   let scanPollInterval = null;
 
-  const headers = { "X-API-Key": API_KEY };
+  // ── Admin session ────────────────────────────────────────────────────────────
+  function getAdminKey() {
+    return sessionStorage.getItem("adminKey");
+  }
 
-  // ── Sort headers ────────────────────────────────────────────────────────────
+  function enterAdminMode(key) {
+    sessionStorage.setItem("adminKey", key);
+    document.getElementById("login-form").style.display = "none";
+    document.getElementById("admin-controls").style.display = "flex";
+    document.getElementById("scan-controls").style.display = "flex";
+    document.getElementById("login-error").textContent = "";
+  }
+
+  function exitAdminMode() {
+    sessionStorage.removeItem("adminKey");
+    document.getElementById("login-form").style.display = "flex";
+    document.getElementById("admin-controls").style.display = "none";
+    document.getElementById("scan-controls").style.display = "none";
+    document.getElementById("login-password").value = "";
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    const password = document.getElementById("login-password").value;
+    if (!password) return;
+    try {
+      const r = await fetch("/api/v1/scans/ping", { headers: { "X-API-Key": password } });
+      if (r.status === 401) {
+        document.getElementById("login-error").textContent = "Invalid credentials";
+        return;
+      }
+      enterAdminMode(password);
+    } catch (err) {
+      document.getElementById("login-error").textContent = "Network error";
+    }
+  }
+
+  function handleLogout() {
+    exitAdminMode();
+  }
+
+  // ── Sort headers ─────────────────────────────────────────────────────────────
   function updateSortHeaders() {
     document.querySelectorAll("#table-head th").forEach(th => {
       const col = th.dataset.col;
@@ -169,10 +315,10 @@
     });
   });
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
+  // ── Stats ────────────────────────────────────────────────────────────────────
   async function fetchStats() {
     try {
-      const r = await fetch("/api/v1/stats", { headers });
+      const r = await fetch("/api/v1/stats");
       if (!r.ok) return;
       const d = await r.json();
       document.getElementById("stat-total").textContent = d.total_nodes ?? "—";
@@ -186,10 +332,10 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ── Countries dropdown ──────────────────────────────────────────────────────
+  // ── Countries dropdown ───────────────────────────────────────────────────────
   async function fetchCountries() {
     try {
-      const r = await fetch("/api/v1/nodes/countries", { headers });
+      const r = await fetch("/api/v1/nodes/countries");
       if (!r.ok) return;
       const countries = await r.json();
       const sel = document.getElementById("country-filter");
@@ -208,7 +354,7 @@
     fetchNodes();
   });
 
-  // ── Nodes ───────────────────────────────────────────────────────────────────
+  // ── Nodes ────────────────────────────────────────────────────────────────────
   async function fetchNodes() {
     const offset = currentPage * PAGE_SIZE;
     const qs = new URLSearchParams({ limit: PAGE_SIZE, offset, sort_by: sortBy, sort_dir: sortDir });
@@ -219,7 +365,7 @@
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:2rem">Loading…</td></tr>`;
 
     try {
-      const r = await fetch("/api/v1/nodes?" + qs, { headers });
+      const r = await fetch("/api/v1/nodes?" + qs);
       if (!r.ok) { tbody.innerHTML = `<tr><td colspan="7" style="color:#ef4444;padding:1rem">Error: ${r.status}</td></tr>`; return; }
       const nodes = await r.json();
 
@@ -230,9 +376,10 @@
           const shodan = n.country_name ?? n.country_code ?? "—";
           const maxmind = n.geo_country_name ?? n.geo_country_code ?? "—";
           const mismatch = n.country_name && n.geo_country_name && n.country_name !== n.geo_country_name;
+          const nodeJson = encodeURIComponent(JSON.stringify(n));
           return `
           <tr>
-            <td style="font-family:monospace">${n.ip}</td>
+            <td><button class="ip-link" data-node-id="${n.id}" data-node-json="${nodeJson}">${n.ip}</button></td>
             <td>${n.port}</td>
             <td style="font-family:monospace;font-size:0.8rem">${n.version ?? "—"}</td>
             <td><span class="badge badge-${n.risk_level ?? "UNKNOWN"}">${n.risk_level ?? "Unknown"}</span></td>
@@ -252,6 +399,15 @@
     }
   }
 
+  // Delegated click on tbody for IP buttons
+  document.getElementById("node-tbody").addEventListener("click", e => {
+    const btn = e.target.closest("[data-node-id]");
+    if (!btn) return;
+    const nodeId = btn.dataset.nodeId;
+    const nodeData = JSON.parse(decodeURIComponent(btn.dataset.nodeJson));
+    openNodeModal(nodeId, nodeData);
+  });
+
   function changePage(delta) {
     currentPage = Math.max(0, currentPage + delta);
     fetchNodes();
@@ -263,13 +419,139 @@
     fetchNodes();
   });
 
-  // ── Scan trigger ────────────────────────────────────────────────────────────
+  // ── Node detail modal ─────────────────────────────────────────────────────────
+  function fv(val, cls) {
+    // Render a field value; val may be null/undefined
+    const display = (val === null || val === undefined || val === "") ? "—" : String(val);
+    const isMuted = display === "—";
+    return `<span class="field-value${cls ? " " + cls : ""}${isMuted ? " muted" : ""}">${display}</span>`;
+  }
+
+  function bool(val) {
+    return val ? '<span class="field-value warn">Yes</span>' : '<span class="field-value ok">No</span>';
+  }
+
+  function openNodeModal(nodeId, n) {
+    document.getElementById("modal-title").textContent = n.ip + ":" + n.port;
+
+    // Helper: render pill list
+    function pills(list, cls) {
+      if (!list || list.length === 0) return '<span class="field-value muted">—</span>';
+      return list.map(x => `<span class="pill ${cls}">${x}</span>`).join("");
+    }
+
+    // Shodan fields
+    const shodan = document.getElementById("modal-shodan");
+
+    // Open ports table (only if present)
+    let portsHtml = "";
+    if (n.open_ports && n.open_ports.length > 0) {
+      portsHtml = `
+        <span class="field-label" style="align-self:start;padding-top:0.4rem">Open Ports</span>
+        <div>
+          <table class="ports-table">
+            <thead><tr><th>Port</th><th>Proto</th><th>Service</th><th>Product</th><th>Version</th></tr></thead>
+            <tbody>
+              ${n.open_ports.map(p => `<tr>
+                <td style="font-family:monospace">${p.port ?? "—"}</td>
+                <td>${p.transport ?? "—"}</td>
+                <td>${p.service || "—"}</td>
+                <td>${p.product || "—"}</td>
+                <td style="color:#64748b">${p.version || "—"}</td>
+              </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    shodan.innerHTML = `
+      <span class="field-label">IP</span>${fv(n.ip, "mono")}
+      <span class="field-label">Port</span>${fv(n.port)}
+      <span class="field-label">Hostname</span>${fv(n.hostname)}
+      <span class="field-label">OS</span>${fv(n.os_info)}
+      <span class="field-label">ISP</span>${fv(n.isp)}
+      <span class="field-label">Org</span>${fv(n.org)}
+      <span class="field-label">Version</span>${fv(n.version, "mono")}
+      <span class="field-label">User Agent</span>${fv(n.user_agent, "mono")}
+      <span class="field-label">Protocol Ver.</span>${fv(n.protocol_version)}
+      <span class="field-label">Services</span>${fv(n.services)}
+      <span class="field-label">Risk Level</span><span class="field-value"><span class="badge badge-${n.risk_level ?? "UNKNOWN"}">${n.risk_level ?? "Unknown"}</span></span>
+      <span class="field-label">Vulnerable</span>${bool(n.is_vulnerable)}
+      <span class="field-label">Exposed RPC</span>${bool(n.has_exposed_rpc)}
+      <span class="field-label">Dev Version</span>${bool(n.is_dev_version)}
+      <span class="field-label">Country (Shodan)</span>${fv(n.country_name ? n.country_name + (n.country_code ? " (" + n.country_code + ")" : "") : n.country_code)}
+      <span class="field-label">City</span>${fv(n.city)}
+      <span class="field-label">ASN</span>${fv(n.asn, "mono")}
+      <span class="field-label">ASN Name</span>${fv(n.asn_name)}
+      <span class="field-label">CVEs</span><span class="field-value">${pills(n.vulns, "cve")}</span>
+      <span class="field-label">Tags</span><span class="field-value">${pills(n.tags, "tag")}</span>
+      <span class="field-label">CPE</span><span class="field-value" style="font-size:0.75rem">${pills(n.cpe, "")}</span>
+      <span class="field-label">First Seen</span>${fv(n.first_seen ? new Date(n.first_seen).toLocaleString() : null)}
+      <span class="field-label">Last Seen</span>${fv(n.last_seen ? new Date(n.last_seen).toLocaleString() : null)}
+      ${portsHtml}
+    `;
+
+    // Show modal immediately, GeoIP loading
+    const geoDiv = document.getElementById("modal-geoip");
+    geoDiv.innerHTML = `<span class="field-label">Status</span><span class="field-value muted">Loading…</span>`;
+
+    document.getElementById("node-modal-backdrop").classList.add("open");
+    document.getElementById("node-modal-close").focus();
+
+    // Fetch GeoIP data
+    fetch("/api/v1/nodes/" + nodeId + "/geo")
+      .then(r => r.ok ? r.json() : null)
+      .then(g => {
+        if (!g) {
+          geoDiv.innerHTML = `<span class="field-label">Status</span><span class="field-value muted">Unavailable</span>`;
+          return;
+        }
+        const mismatch = g.country_name && g.geo_country_name && g.country_name !== g.geo_country_name;
+        geoDiv.innerHTML = `
+          <span class="field-label">Country</span>${fv(g.geo_country_name ? g.geo_country_name + (g.geo_country_code ? " (" + g.geo_country_code + ")" : "") : g.geo_country_code)}
+          <span class="field-label">Subdivision</span>${fv(g.subdivision)}
+          <span class="field-label">Latitude</span>${fv(g.latitude)}
+          <span class="field-label">Longitude</span>${fv(g.longitude)}
+          ${mismatch ? `<span class="field-label">⚠ Mismatch</span><span class="field-value warn">Shodan: ${g.country_name} / MaxMind: ${g.geo_country_name}</span>` : ""}
+        `;
+      })
+      .catch(() => {
+        geoDiv.innerHTML = `<span class="field-label">Status</span><span class="field-value muted">Unavailable</span>`;
+      });
+  }
+
+  function closeNodeModal() {
+    document.getElementById("node-modal-backdrop").classList.remove("open");
+  }
+
+  // Close on backdrop click
+  document.getElementById("node-modal-backdrop").addEventListener("click", e => {
+    if (e.target === document.getElementById("node-modal-backdrop")) closeNodeModal();
+  });
+
+  // Close on Escape
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") closeNodeModal();
+  });
+
+  // ── Scan trigger ─────────────────────────────────────────────────────────────
   async function triggerScan() {
+    const adminKey = getAdminKey();
+    if (!adminKey) return;
     const btn = document.getElementById("scan-btn");
     btn.disabled = true;
     setScanStatus("Starting scan…", "");
     try {
-      const r = await fetch("/api/v1/scans", { method: "POST", headers });
+      const r = await fetch("/api/v1/scans", {
+        method: "POST",
+        headers: { "X-API-Key": adminKey }
+      });
+      if (r.status === 401) {
+        setScanStatus("Session expired — please log in again", "failed");
+        handleLogout();
+        btn.disabled = false;
+        return;
+      }
       if (r.status === 409) {
         setScanStatus("Scan already running", "running");
         btn.disabled = true;
@@ -299,8 +581,10 @@
 
   async function pollScanJob() {
     if (!activeScanJobId) return;
+    const adminKey = getAdminKey();
+    if (!adminKey) return;
     try {
-      const r = await fetch("/api/v1/scans/" + activeScanJobId, { headers });
+      const r = await fetch("/api/v1/scans/" + activeScanJobId, { headers: { "X-API-Key": adminKey } });
       if (!r.ok) return;
       const d = await r.json();
       if (d.status === "completed") {
@@ -320,7 +604,11 @@
     } catch (e) { /* ignore */ }
   }
 
-  // ── Init ────────────────────────────────────────────────────────────────────
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  if (getAdminKey()) {
+    enterAdminMode(getAdminKey());
+  }
+
   updateSortHeaders();
   fetchStats();
   fetchCountries();

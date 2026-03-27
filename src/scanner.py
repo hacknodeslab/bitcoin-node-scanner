@@ -224,6 +224,8 @@ class BitcoinNodeScanner:
             'geo_country_name': geo_country_name,
             'hostnames': result.get('hostnames', []),
             'domains': result.get('domains', []),
+            'os': result.get('os', ''),
+            'tags': result.get('tags', []),
             'timestamp_shodan': result.get('timestamp', ''),
             'ssl': self.extract_ssl_info(result),
             'vulns': result.get('vulns', []),
@@ -268,6 +270,8 @@ class BitcoinNodeScanner:
                 'all_services': [
                     {
                         'port': service.get('port'),
+                        'transport': service.get('transport', 'tcp'),
+                        'service': service.get('_shodan', {}).get('module', ''),
                         'product': service.get('product', ''),
                         'version': service.get('version', ''),
                     }
