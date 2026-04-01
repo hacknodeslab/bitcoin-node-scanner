@@ -69,11 +69,10 @@ class DatabaseScannerMixin:
             # Determine risk level
             risk_level = self.analyze_risk_level(node_data)
             db_data["risk_level"] = risk_level
-            db_data["is_vulnerable"] = self.is_vulnerable_version(
-                node_data.get("version", "")
-            )
+            version_str = self.extract_version_from_banner(node_data)
+            db_data["is_vulnerable"] = self.is_vulnerable_version(version_str)
             db_data["has_exposed_rpc"] = node_data.get("port") == 8332
-            db_data["is_dev_version"] = ".99." in node_data.get("version", "")
+            db_data["is_dev_version"] = self.is_dev_version(version_str)
 
             node = node_repo.upsert(db_data)
 
@@ -229,11 +228,10 @@ class DatabaseScannerMixin:
             for node_data in nodes_data:
                 db_data = self._map_node_data(node_data)
                 db_data["risk_level"] = self.analyze_risk_level(node_data)
-                db_data["is_vulnerable"] = self.is_vulnerable_version(
-                    node_data.get("version", "")
-                )
+                version_str = self.extract_version_from_banner(node_data)
+                db_data["is_vulnerable"] = self.is_vulnerable_version(version_str)
                 db_data["has_exposed_rpc"] = node_data.get("port") == 8332
-                db_data["is_dev_version"] = ".99." in node_data.get("version", "")
+                db_data["is_dev_version"] = self.is_dev_version(version_str)
                 db_nodes.append(db_data)
 
             count = node_repo.bulk_upsert(db_nodes)

@@ -54,6 +54,23 @@ class MockBaseScanner:
     def is_vulnerable_version(self, version):
         return "0.15" in (version or "")
 
+    def is_dev_version(self, version):
+        return ".99." in (version or "") or "rc" in (version or "").lower() or "beta" in (version or "").lower()
+
+    def extract_version_from_banner(self, result):
+        banner = result.get("banner", "")
+        product = result.get("product", "")
+        version = result.get("version", "")
+        if "/Satoshi:" in banner:
+            try:
+                version_part = banner.split("/Satoshi:")[1].split("/")[0]
+                return f"Satoshi:{version_part}"
+            except (IndexError, ValueError):
+                pass
+        if product and version:
+            return f"{product}:{version}"
+        return version or "Unknown"
+
     def generate_statistics(self):
         return {
             "total_results": len(self.results),
