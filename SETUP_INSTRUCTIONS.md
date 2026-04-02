@@ -59,13 +59,13 @@ pip install -r requirements.txt
 
 # 4. Configure API key
 cp .env.example .env
-nano .env  # Add your SHODAN_API_KEY
+vi .env  # Add your SHODAN_API_KEY
 
 # 5. Create the main scanner.py
 # Copy the full Python script from the conversation above into src/scanner.py
 
 # 6. Test
-python src/scanner.py --check-credits
+python3 -m src.scanner --check-credits
 ```
 
 ## Next Steps

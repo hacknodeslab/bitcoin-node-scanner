@@ -801,7 +801,8 @@ class OptimizedBitcoinScanner(BitcoinNodeScanner):
             return info
         
         # Show credit usage report with real API values
-        from credit_tracker import CreditTracker
+        # from credit_tracker import CreditTracker
+        from src.credit_tracker import CreditTracker
         tracker = CreditTracker()
         
         # Get current credits from API
