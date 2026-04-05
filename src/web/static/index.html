@@ -128,6 +128,20 @@
     .pill { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 3px; font-size: 0.72rem; margin: 0.1rem; background: #2d3148; color: #94a3b8; }
     .pill.cve { background: #7f1d1d; color: #fca5a5; }
     .pill.tag { background: #1e3a5f; color: #93c5fd; }
+
+    /* ── Tabs ───────────────────────────────────────────────────────────────────── */
+    .tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border-bottom: 1px solid #2d3148; }
+    .tab-btn { padding: 0.55rem 1.25rem; background: none; border: none; border-bottom: 2px solid transparent; color: #64748b; font-size: 0.875rem; font-weight: 500; cursor: pointer; margin-bottom: -1px; }
+    .tab-btn:hover { color: #e2e8f0; }
+    .tab-btn.active { color: #f97316; border-bottom-color: #f97316; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── Vulnerabilities table ──────────────────────────────────────────────────── */
+    #vuln-subtitle { font-size: 0.75rem; color: #475569; margin-bottom: 0.75rem; }
+    #vuln-error { color: #ef4444; font-size: 0.875rem; padding: 1rem 0; }
+    .vuln-desc { max-width: 480px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; font-size: 0.8rem; }
+    .cvss-score { font-family: monospace; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -150,6 +164,15 @@
   </div>
 </header>
 <main>
+  <!-- Tab navigation -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('nodes', this)">Nodes</button>
+    <button class="tab-btn" onclick="switchTab('vulnerabilities', this)">Vulnerabilities</button>
+  </div>
+
+  <!-- ── Nodes tab ─────────────────────────────────────────────────────────────── -->
+  <div id="tab-nodes" class="tab-panel active">
+
   <!-- Stats -->
   <div class="stats-grid">
     <div class="card total"><div class="label">Total Nodes</div><div class="value" id="stat-total">—</div></div>
@@ -211,6 +234,31 @@
     This product includes GeoLite2 data created by MaxMind, available from
     <a href="https://www.maxmind.com" style="color:#475569">maxmind.com</a>.
   </p>
+
+  </div><!-- end #tab-nodes -->
+
+  <!-- ── Vulnerabilities tab ───────────────────────────────────────────────────── -->
+  <div id="tab-vulnerabilities" class="tab-panel">
+    <div id="vuln-subtitle">Loading vulnerability data…</div>
+    <div id="vuln-error" style="display:none"></div>
+    <div class="table-wrap">
+      <table id="vuln-table">
+        <thead>
+          <tr>
+            <th>CVE ID</th>
+            <th>Severity</th>
+            <th>CVSS Score</th>
+            <th>Published</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody id="vuln-tbody">
+          <tr><td colspan="5" style="text-align:center;color:#64748b;padding:2rem">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div><!-- end #tab-vulnerabilities -->
+
 </main>
 
 <!-- Node detail modal -->
@@ -602,6 +650,93 @@
         activeScanJobId = null;
       }
     } catch (e) { /* ignore */ }
+  }
+
+  // ── Tab switching ─────────────────────────────────────────────────────────────
+  let vulnLoaded = false;
+
+  function switchTab(tabId, btn) {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + tabId).classList.add("active");
+    if (tabId === "vulnerabilities" && !vulnLoaded) {
+      fetchVulnerabilities();
+    }
+  }
+
+  // ── Vulnerabilities ───────────────────────────────────────────────────────────
+  async function fetchVulnerabilities() {
+    const tbody = document.getElementById("vuln-tbody");
+    const subtitle = document.getElementById("vuln-subtitle");
+    const errorEl = document.getElementById("vuln-error");
+
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#64748b;padding:2rem">Loading…</td></tr>`;
+    subtitle.textContent = "Loading vulnerability data…";
+    errorEl.style.display = "none";
+
+    try {
+      const r = await fetch("/api/v1/vulnerabilities");
+      if (!r.ok) {
+        throw new Error("HTTP " + r.status);
+      }
+      const data = await r.json();
+      vulnLoaded = true;
+
+      // Show cache age
+      if (data.items && data.items.length > 0) {
+        const fetchedAt = data.items[0].fetched_at;
+        subtitle.textContent = "Last updated: " + relativeTime(fetchedAt) + " — " + data.total + " CVEs";
+      } else {
+        subtitle.textContent = "No vulnerability data available.";
+      }
+
+      if (!data.items || data.items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#64748b;padding:2rem">No CVE entries found.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.items.map(cve => {
+        const published = cve.published ? new Date(cve.published).toLocaleDateString() : "—";
+        const score = cve.cvss_score != null ? cve.cvss_score.toFixed(1) : "—";
+        const desc = cve.description ? cve.description.slice(0, 120) + (cve.description.length > 120 ? "…" : "") : "—";
+        return `
+          <tr>
+            <td style="font-family:monospace;white-space:nowrap"><a href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(cve.cve_id)}" target="_blank" rel="noopener" style="color:#60a5fa;text-decoration:none">${cve.cve_id}</a></td>
+            <td><span class="badge badge-${cve.severity}">${cve.severity}</span></td>
+            <td class="cvss-score" style="color:${scoreColor(cve.cvss_score)}">${score}</td>
+            <td style="color:#64748b;font-size:0.8rem;white-space:nowrap">${published}</td>
+            <td class="vuln-desc" title="${escHtml(cve.description || "")}">${escHtml(desc)}</td>
+          </tr>`;
+      }).join("");
+
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="5"></td></tr>`;
+      subtitle.textContent = "";
+      errorEl.textContent = "Could not load vulnerability data. Try again later.";
+      errorEl.style.display = "block";
+    }
+  }
+
+  function scoreColor(score) {
+    if (score == null) return "#64748b";
+    if (score >= 9.0) return "#ef4444";
+    if (score >= 7.0) return "#f97316";
+    if (score >= 4.0) return "#eab308";
+    return "#22c55e";
+  }
+
+  function escHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  function relativeTime(isoStr) {
+    if (!isoStr) return "unknown";
+    const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+    if (diff < 60) return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + " min ago";
+    if (diff < 86400) return Math.floor(diff / 3600) + " hours ago";
+    return Math.floor(diff / 86400) + " days ago";
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────

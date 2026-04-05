@@ -212,6 +212,28 @@ class NodeVulnerability(Base):
         return f"<NodeVulnerability(node_id={self.node_id}, vulnerability_id={self.vulnerability_id})>"
 
 
+class CVEEntry(Base):
+    """Model representing a cached CVE entry fetched from the NVD API."""
+    __tablename__ = 'cve_entries'
+
+    cve_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    published: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_modified: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default='UNKNOWN')
+    cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    affected_versions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_cve_entries_severity', 'severity'),
+        Index('idx_cve_entries_fetched_at', 'fetched_at'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<CVEEntry(cve_id={self.cve_id}, severity={self.severity}, cvss_score={self.cvss_score})>"
+
+
 class ScanJob(Base):
     """Model representing a background scan job triggered via the web API."""
     __tablename__ = 'scan_jobs'

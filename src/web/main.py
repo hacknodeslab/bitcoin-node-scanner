@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from .routers import nodes, stats, scans
+from .routers import nodes, stats, scans, vulnerabilities
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -31,6 +31,7 @@ app = FastAPI(
 app.include_router(nodes.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
 app.include_router(scans.router, prefix="/api/v1")
+app.include_router(vulnerabilities.router, prefix="/api/v1")
 
 # Serve dashboard
 if _STATIC_DIR.is_dir():
