@@ -25,6 +25,9 @@ app = FastAPI(
     title="Bitcoin Node Scanner",
     description="Web interface for the Bitcoin Node Security Scanner",
     version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # API routers

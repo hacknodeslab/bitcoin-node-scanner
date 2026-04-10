@@ -2,6 +2,7 @@
 API key authentication dependency for the web interface.
 """
 import os
+import secrets
 
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
@@ -21,10 +22,10 @@ def require_api_key(api_key: str = Security(_api_key_header)) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Server misconfiguration: WEB_API_KEY not set.",
         )
-    if not api_key or api_key != expected:
+    if not api_key or not secrets.compare_digest(api_key, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key.",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    return api_key
+    return None
