@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from ...db.repositories import ScanJobRepository
-from ..auth import require_api_key
+from ..auth import require_api_key, require_csrf_token
 from .nodes import get_db
 
 router = APIRouter()
@@ -28,7 +28,7 @@ class ScanJobOut(BaseModel):
     "/scans",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=ScanJobOut,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_csrf_token)],
 )
 def trigger_scan(
     background_tasks: BackgroundTasks,

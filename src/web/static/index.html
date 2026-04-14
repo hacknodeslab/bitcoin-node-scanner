@@ -303,6 +303,7 @@
     document.getElementById("admin-controls").style.display = "flex";
     document.getElementById("scan-controls").style.display = "flex";
     document.getElementById("login-error").textContent = "";
+    fetchStats();
   }
 
   function exitAdminMode() {
@@ -365,8 +366,10 @@
 
   // ── Stats ────────────────────────────────────────────────────────────────────
   async function fetchStats() {
+    const adminKey = getAdminKey();
+    if (!adminKey) return;
     try {
-      const r = await fetch("/api/v1/stats");
+      const r = await fetch("/api/v1/stats", { headers: { "X-API-Key": adminKey } });
       if (!r.ok) return;
       const d = await r.json();
       document.getElementById("stat-total").textContent = d.total_nodes ?? "—";
@@ -592,7 +595,7 @@
     try {
       const r = await fetch("/api/v1/scans", {
         method: "POST",
-        headers: { "X-API-Key": adminKey }
+        headers: { "X-API-Key": adminKey, "X-CSRF-Token": getCsrfToken() }
       });
       if (r.status === 401) {
         setScanStatus("Session expired — please log in again", "failed");
@@ -739,16 +742,37 @@
     return Math.floor(diff / 86400) + " days ago";
   }
 
-  // ── Init ─────────────────────────────────────────────────────────────────────
-  if (getAdminKey()) {
-    enterAdminMode(getAdminKey());
+  // ── CSRF ─────────────────────────────────────────────────────────────────────
+  let _csrfToken = null;
+
+  async function fetchCsrfToken() {
+    try {
+      const r = await fetch("/api/v1/csrf-token");
+      if (r.ok) {
+        const d = await r.json();
+        _csrfToken = d.csrfToken;
+      }
+    } catch (e) { /* ignore, token remains null */ }
   }
 
-  updateSortHeaders();
-  fetchStats();
-  fetchCountries();
-  fetchNodes();
-  setInterval(fetchStats, 30000);
+  function getCsrfToken() {
+    return _csrfToken;
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+  (async () => {
+    await fetchCsrfToken();
+
+    if (getAdminKey()) {
+      enterAdminMode(getAdminKey());
+    }
+
+    updateSortHeaders();
+    fetchStats();
+    fetchCountries();
+    fetchNodes();
+    setInterval(fetchStats, 30000);
+  })();
 </script>
 </body>
 </html>

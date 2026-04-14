@@ -338,16 +338,14 @@ class ElectrumConnection:
 
 # ── Per-server worker ─────────────────────────────────────────────────────────
 
-async def _collect_metadata(conn: ElectrumConnection, db: DB, loop: asyncio.AbstractEventLoop) -> None:
-    try:
-        version_res = await asyncio.wait_for(
-            conn.send_request("server.version", ["electrum_monitor/1.0", "1.4"]), timeout=10
-        )
-        protocol_version = version_res[1] if isinstance(version_res, list) and len(version_res) > 1 else None
-        server_software = version_res[0] if isinstance(version_res, list) and len(version_res) > 0 else None
-    except Exception:
-        protocol_version = server_software = None
-
+async def _collect_metadata(
+    conn: ElectrumConnection,
+    db: DB,
+    loop: asyncio.AbstractEventLoop,
+    protocol_version: Optional[str] = None,
+    server_software: Optional[str] = None,
+) -> None:
+    """Collect server banner and donation address. read_loop must already be running."""
     try:
         banner = await asyncio.wait_for(conn.send_request("server.banner", []), timeout=10)
     except Exception:
@@ -387,9 +385,6 @@ async def _ping_loop(conn: ElectrumConnection, db: DB, loop: asyncio.AbstractEve
 
 async def _fee_loop(conn: ElectrumConnection, db: DB, loop: asyncio.AbstractEventLoop) -> None:
     while conn.is_connected():
-        await asyncio.sleep(FEE_INTERVAL)
-        if not conn.is_connected():
-            break
         for target in FEE_TARGETS:
             try:
                 fee_rate = await asyncio.wait_for(
@@ -411,13 +406,11 @@ async def _fee_loop(conn: ElectrumConnection, db: DB, loop: asyncio.AbstractEven
                 )
         except Exception:
             pass
+        await asyncio.sleep(FEE_INTERVAL)
 
 
 async def _histogram_loop(conn: ElectrumConnection, db: DB, loop: asyncio.AbstractEventLoop) -> None:
     while conn.is_connected():
-        await asyncio.sleep(HISTOGRAM_INTERVAL)
-        if not conn.is_connected():
-            break
         try:
             histogram = await asyncio.wait_for(
                 conn.send_request("mempool.get_fee_histogram", []), timeout=15
@@ -428,6 +421,7 @@ async def _histogram_loop(conn: ElectrumConnection, db: DB, loop: asyncio.Abstra
                 )
         except Exception:
             pass
+        await asyncio.sleep(HISTOGRAM_INTERVAL)
 
 
 async def server_worker(host: str, port: int, use_ssl: bool, server_id: int, db: DB) -> None:
@@ -448,7 +442,23 @@ async def server_worker(host: str, port: int, use_ssl: bool, server_id: int, db:
                 None, db.insert_availability, server_id, "connect", None, None
             )
 
-            # Subscribe to block headers
+            # ── FIX: start read_loop immediately so send_request futures resolve ──
+            read_task = asyncio.ensure_future(conn.read_loop())
+
+            # 1. Protocol handshake — MUST be the first message per Electrum spec
+            protocol_version = server_software = None
+            try:
+                version_res = await asyncio.wait_for(
+                    conn.send_request("server.version", ["electrum_monitor/1.0", "1.4"]), timeout=15
+                )
+                if isinstance(version_res, list):
+                    server_software = version_res[0] if len(version_res) > 0 else None
+                    protocol_version = version_res[1] if len(version_res) > 1 else None
+                log.info(f"[{label}] Handshake OK: {server_software} proto={protocol_version}")
+            except Exception as e:
+                log.warning(f"[{label}] Version negotiation failed: {e}")
+
+            # 2. Subscribe to block headers
             async def on_block_header(params: List[Any]) -> None:
                 ts = monotonic_ms()
                 try:
@@ -470,7 +480,6 @@ async def server_worker(host: str, port: int, use_ssl: bool, server_id: int, db:
                     log.debug(f"[{label}] Block parse error: {e}")
 
             conn.register_subscription("blockchain.headers.subscribe", on_block_header)
-
             try:
                 sub_result = await asyncio.wait_for(
                     conn.send_request("blockchain.headers.subscribe", []), timeout=15
@@ -481,12 +490,12 @@ async def server_worker(host: str, port: int, use_ssl: bool, server_id: int, db:
             except Exception as e:
                 log.debug(f"[{label}] Subscribe error: {e}")
 
-            # Collect metadata
-            await _collect_metadata(conn, db, loop)
+            # 3. Collect remaining metadata (banner, donation address)
+            await _collect_metadata(conn, db, loop, protocol_version, server_software)
 
-            # Start periodic tasks
+            # 4. Start periodic tasks
             tasks = [
-                asyncio.ensure_future(conn.read_loop()),
+                read_task,
                 asyncio.ensure_future(_ping_loop(conn, db, loop)),
                 asyncio.ensure_future(_fee_loop(conn, db, loop)),
                 asyncio.ensure_future(_histogram_loop(conn, db, loop)),

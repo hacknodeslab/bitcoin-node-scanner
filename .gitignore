@@ -61,6 +61,11 @@ coverage.xml
 # MaxMind GeoIP database files (binary, must not be committed)
 geoip_dbs/
 *.mmdb
+geoip_dbs.zip
+
+# Database files
+bitcoin_scanner.db
+electrum_monitor.db*
 
 # Claude and Agents
 .claude/
