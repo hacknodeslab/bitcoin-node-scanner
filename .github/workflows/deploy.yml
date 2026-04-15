@@ -20,5 +20,6 @@ jobs:
             git pull origin main
             source venv/bin/activate
             pip install -r requirements.txt --quiet
+            sudo systemctl daemon-reload
             sudo systemctl restart bitcoin-scanner
             sudo systemctl status bitcoin-scanner --no-pager
