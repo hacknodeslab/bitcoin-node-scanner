@@ -152,13 +152,13 @@ def list_countries(db: Annotated[Session, Depends(get_db)]):
 
 @router.get("/nodes", response_model=List[NodeOut])
 def list_nodes(
+    db: Annotated[Session, Depends(get_db)],
     risk_level: Annotated[Optional[str], Query(description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW")] = None,
     country: Annotated[Optional[str], Query(description="Filter by server location country name (case-insensitive)")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
-    db: Annotated[Session, Depends(get_db)],    
 ):
     # Resolve sort column (fall back to last_seen for unknown values)
     sort_col = _SORT_COLUMNS.get(sort_by or "", Node.last_seen)
