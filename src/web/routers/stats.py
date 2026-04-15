@@ -4,7 +4,6 @@ GET /api/v1/stats — aggregate scan statistics.
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends
-from ..auth import require_api_key
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -22,7 +21,7 @@ class StatsOut(BaseModel):
     last_scan_at: Optional[str]
 
 
-@router.get("/stats", response_model=StatsOut, dependencies=[Depends(require_api_key)])
+@router.get("/stats", response_model=StatsOut)
 def get_stats(db: Session = Depends(get_db)):
     node_repo = NodeRepository(db)
     scan_repo = ScanRepository(db)
