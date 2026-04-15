@@ -4,7 +4,7 @@ GET /api/v1/nodes/countries  — distinct country_name values for filter dropdow
 GET /api/v1/nodes/{id}/geo   — full geo detail for a single node.
 """
 import json
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
