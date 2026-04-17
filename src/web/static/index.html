@@ -230,10 +230,24 @@
   </div>
 
   <div id="last-updated"></div>
-  <p style="margin-top:2rem;font-size:0.7rem;color:#334155">
-    This product includes GeoLite2 data created by MaxMind, available from
-    <a href="https://www.maxmind.com" style="color:#475569">maxmind.com</a>.
-  </p>
+  <footer style="margin-top:2rem;font-size:0.7rem;color:#475569;border-top:1px solid #1e293b;padding-top:1rem;line-height:1.8">
+    <p style="margin:0 0 0.25rem">
+      ⚠ This tool is intended <strong>for research and educational purposes only</strong>.
+      Any use outside of authorized security research is prohibited.
+    </p>
+    <p style="margin:0 0 0.1rem">
+      Node discovery data provided by <a href="https://www.shodan.io" target="_blank" rel="noopener" style="color:#64748b">Shodan</a>.
+    </p>
+    <p style="margin:0 0 0.1rem">
+      This product includes GeoLite2 data created by MaxMind, available from
+      <a href="https://www.maxmind.com" target="_blank" rel="noopener" style="color:#64748b">maxmind.com</a>.
+    </p>
+    <p style="margin:0">
+      Vulnerability data sourced from the
+      <a href="https://nvd.nist.gov" target="_blank" rel="noopener" style="color:#64748b">National Vulnerability Database (NVD)</a>,
+      provided by NIST.
+    </p>
+  </footer>
 
   </div><!-- end #tab-nodes -->
 
@@ -366,10 +380,10 @@
 
   // ── Stats ────────────────────────────────────────────────────────────────────
   async function fetchStats() {
-    const adminKey = getAdminKey();
-    if (!adminKey) return;
+    const key = getAdminKey();
+    if (!key) return;
     try {
-      const r = await fetch("/api/v1/stats", { headers: { "X-API-Key": adminKey } });
+      const r = await fetch("/api/v1/stats", { headers: { "X-API-Key": key } });
       if (!r.ok) return;
       const d = await r.json();
       document.getElementById("stat-total").textContent = d.total_nodes ?? "—";

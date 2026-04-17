@@ -129,9 +129,9 @@ class TestStatsEndpoint:
         assert d["by_risk_level"].get("CRITICAL") == 2
         assert d["by_risk_level"].get("HIGH") == 1
 
-    def test_accessible_without_api_key(self, client):
+    def test_requires_api_key(self, client):
         r = client.get("/api/v1/stats")
-        assert r.status_code == 200
+        assert r.status_code == 401
 
 
 class TestScansEndpoint:

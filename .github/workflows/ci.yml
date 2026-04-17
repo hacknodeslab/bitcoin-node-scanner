@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   quality-checks:
     name: Code Quality & Security
@@ -43,7 +46,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite:///:memory:"
         run: |
-          pytest --cov=src --cov-report=xml:coverage.xml tests/
+          pytest --cov=src --cov=scripts --cov-report=xml:coverage.xml tests/
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master

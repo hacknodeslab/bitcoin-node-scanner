@@ -4,7 +4,7 @@ GET /api/v1/nodes/countries  — distinct country_name values for filter dropdow
 GET /api/v1/nodes/{id}/geo   — full geo detail for a single node.
 """
 import json
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
@@ -137,7 +137,8 @@ def _make_node_out(n: Node) -> NodeOut:
 
 
 @router.get("/nodes/countries", response_model=List[str])
-def list_countries(db: Session = Depends(get_db)):
+#def list_countries(db: Session = Depends(get_db)):
+def list_countries(db: Annotated[Session, Depends(get_db)]):
     """Return distinct non-null country_name values, alphabetically sorted (max 100)."""
     stmt = (
         select(Node.country_name)
@@ -151,13 +152,13 @@ def list_countries(db: Session = Depends(get_db)):
 
 @router.get("/nodes", response_model=List[NodeOut])
 def list_nodes(
-    risk_level: Optional[str] = Query(None, description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW"),
-    country: Optional[str] = Query(None, description="Filter by server location country name (case-insensitive)"),
-    sort_by: Optional[str] = Query(None, description="Column to sort by"),
-    sort_dir: Optional[str] = Query("desc", description="Sort direction: asc or desc"),
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    risk_level: Annotated[Optional[str], Query(description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW")] = None,
+    country: Annotated[Optional[str], Query(description="Filter by server location country name (case-insensitive)")] = None,
+    sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
+    sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     # Resolve sort column (fall back to last_seen for unknown values)
     sort_col = _SORT_COLUMNS.get(sort_by or "", Node.last_seen)
