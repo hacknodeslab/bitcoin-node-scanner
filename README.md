@@ -318,7 +318,7 @@ Special thanks to:
 
 ## Disclaimer
 
-This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan). Do not perform active penetration testing without explicit authorization.
+This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan & MaxMind GeoIP). Do not perform active penetration testing without explicit authorization.
 
 ---
 
