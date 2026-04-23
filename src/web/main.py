@@ -2,12 +2,14 @@
 FastAPI application entry point for the Bitcoin Node Scanner web interface.
 """
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from ..db.connection import init_db
 from .routers import nodes, stats, scans, vulnerabilities, csrf
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -21,6 +23,13 @@ if not _WEB_API_KEY:
         "Set it before starting the web server."
     )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 app = FastAPI(
     title="Bitcoin Node Scanner",
     description="Web interface for the Bitcoin Node Security Scanner",
@@ -28,6 +37,7 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 # API routers
