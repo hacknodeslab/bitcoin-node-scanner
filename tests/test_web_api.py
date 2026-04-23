@@ -134,10 +134,16 @@ class TestStatsEndpoint:
         assert r.status_code == 401
 
 
+def _csrf_headers(client):
+    token = client.get("/api/v1/csrf-token").json()["csrfToken"]
+    return {**HEADERS, "X-CSRF-Token": token}
+
+
 class TestScansEndpoint:
     def test_trigger_scan_returns_202(self, client, db_session):
+        headers = _csrf_headers(client)
         with patch("src.web.background.run_scan_job", new_callable=AsyncMock):
-            r = client.post("/api/v1/scans", headers=HEADERS)
+            r = client.post("/api/v1/scans", headers=headers)
         assert r.status_code == 202
         d = r.json()
         assert d["status"] == "pending"
@@ -149,8 +155,9 @@ class TestScansEndpoint:
         db_session.add(job)
         db_session.commit()
 
+        headers = _csrf_headers(client)
         with patch("src.web.background.run_scan_job", new_callable=AsyncMock):
-            r = client.post("/api/v1/scans", headers=HEADERS)
+            r = client.post("/api/v1/scans", headers=headers)
         assert r.status_code == 409
 
     def test_get_job_status_found(self, client, db_session):
