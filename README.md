@@ -304,7 +304,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Credits
 
-Developed by HackNodes Lab
+Developed by @ifuensan with the HackNodes Lab support.
 
 Special thanks to:
 - Shodan for providing the API
@@ -318,7 +318,7 @@ Special thanks to:
 
 ## Disclaimer
 
-This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan). Do not perform active penetration testing without explicit authorization.
+This tool is for **security research and educational purposes only**. All data collected is from publicly available sources (Shodan & MaxMind GeoIP). Do not perform active penetration testing without explicit authorization.
 
 ---
 
