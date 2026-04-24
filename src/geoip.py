@@ -111,25 +111,27 @@ class GeoIPService:
         latitude = longitude = None
         asn = asn_name = None
 
-        try:
-            city_resp = self._city_reader.city(ip)
-            country_code = city_resp.country.iso_code
-            country_name = city_resp.country.name
-            city = city_resp.city.name
-            if city_resp.subdivisions:
-                subdivision = city_resp.subdivisions.most_specific.name
-            if city_resp.location.latitude is not None:
-                latitude = city_resp.location.latitude
-                longitude = city_resp.location.longitude
-        except Exception:
-            pass  # IP not in city DB — still try ASN
+        if self._city_reader:
+            try:
+                city_resp = self._city_reader.city(ip)
+                country_code = city_resp.country.iso_code
+                country_name = city_resp.country.name
+                city = city_resp.city.name
+                if city_resp.subdivisions:
+                    subdivision = city_resp.subdivisions.most_specific.name
+                if city_resp.location.latitude is not None:
+                    latitude = city_resp.location.latitude
+                    longitude = city_resp.location.longitude
+            except Exception as e:
+                logger.warning("Error looking up city for %s: %s", ip, e)
 
-        try:
-            asn_resp = self._asn_reader.asn(ip)
-            asn = f"AS{asn_resp.autonomous_system_number}"
-            asn_name = asn_resp.autonomous_system_organization
-        except Exception:
-            pass
+        if self._asn_reader:
+            try:
+                asn_resp = self._asn_reader.asn(ip)
+                asn = f"AS{asn_resp.autonomous_system_number}"
+                asn_name = asn_resp.autonomous_system_organization
+            except Exception as e:
+                logger.warning("Error looking up ASN for %s: %s", ip, e)
 
         # Return None if nothing was found at all
         if all(v is None for v in (country_code, city, asn)):
