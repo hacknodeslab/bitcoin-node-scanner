@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>bns / scanner — dashboard v0 · design ref</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-page: #050505;
+    --surface: #141414;
+    --surface-2: #1a1a1a;
+    --border: #2a2a2a;
+    --border-dim: #1e1e1e;
+    --text: #e0e0e0;
+    --text-dim: #aaa;
+    --muted: #888;
+    --dim: #555;
+    --orange: #F7931A;
+    --green: #00ff9c;
+    --amber: #ffb000;
+    --red: #ff4444;
+    --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg-page); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+  body { padding: 48px 24px 96px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+
+  /* Doc header */
+  .doc-head { margin-bottom: 56px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  .doc-head .sup { color: var(--dim); font-size: 11px; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .doc-head .sup .sep { margin: 0 8px; color: #333; }
+  .doc-head h1 { font-size: 22px; font-weight: 500; margin: 0 0 6px; color: var(--text); letter-spacing: -0.2px; }
+  .doc-head h1 .orange { color: var(--orange); }
+  .doc-head .sub { color: var(--muted); font-size: 13px; margin: 0; max-width: 640px; line-height: 1.7; }
+  .doc-head .meta { color: var(--dim); font-size: 11px; margin-top: 16px; }
+
+  /* Section */
+  section { margin-bottom: 64px; }
+  .s-label { color: var(--dim); font-size: 10px; letter-spacing: 1.2px; margin-bottom: 8px; font-weight: 500; }
+  .s-label .num { color: var(--orange); margin-right: 8px; }
+  .s-title { font-size: 17px; font-weight: 500; margin: 0 0 6px; color: var(--text); }
+  .s-desc { color: var(--muted); font-size: 13px; max-width: 680px; line-height: 1.7; margin-bottom: 20px; }
+
+  /* Notes after a mockup */
+  .notes { margin-top: 16px; padding: 14px 16px; background: var(--surface); border-left: 2px solid var(--orange); font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+  .notes b { color: var(--text); font-weight: 500; }
+  .notes ul { margin: 6px 0 0; padding-left: 18px; }
+  .notes li { margin-bottom: 4px; }
+  .notes li:last-child { margin-bottom: 0; }
+
+  /* Tokens */
+  .tokens { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .swatch { background: var(--bg); padding: 14px 14px 12px; }
+  .swatch .chip { width: 100%; height: 28px; margin-bottom: 10px; border: 1px solid var(--border); }
+  .swatch .name { font-size: 12px; color: var(--text); margin-bottom: 2px; }
+  .swatch .hex { font-size: 11px; color: var(--muted); }
+  .swatch .use { font-size: 10px; color: var(--dim); margin-top: 6px; letter-spacing: 0.3px; }
+
+  .type-samples { border: 1px solid var(--border); padding: 18px; background: var(--bg); }
+  .type-samples .row { display: flex; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px dashed var(--border-dim); }
+  .type-samples .row:last-child { border-bottom: none; }
+  .type-samples .label { color: var(--dim); font-size: 10px; letter-spacing: 0.6px; min-width: 140px; }
+  .type-samples .sample { color: var(--text); }
+
+  .vocab { border: 1px solid var(--border); background: var(--bg); }
+  .vocab-row { display: grid; grid-template-columns: 100px 1fr; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--border-dim); align-items: center; }
+  .vocab-row:last-child { border-bottom: none; }
+  .vocab-row .token { font-size: 10px; letter-spacing: 0.3px; padding: 2px 7px; justify-self: start; }
+  .vocab-row .desc { color: var(--text-dim); font-size: 12px; }
+
+  /* ----- Shared mockup styles ----- */
+  .frame { background: var(--bg); border: 1px solid var(--border); font-size: 12px; overflow: hidden; }
+  .pill { padding: 2px 7px; font-size: 10px; letter-spacing: 0.3px; display: inline-block; }
+  .pill-red { color: var(--red); background: #2a0000; }
+  .pill-amber { color: var(--amber); background: #2a1f00; }
+  .pill-green { color: var(--green); background: #002a1a; }
+
+  /* ===== Mockup 1: explorer ===== */
+  .exp-top { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  .exp-top .left { display: flex; align-items: center; gap: 18px; }
+  .exp-top .brand { font-weight: 500; }
+  .exp-top .brand .dot { color: var(--orange); }
+  .exp-top .nav { color: var(--muted); }
+  .exp-top .nav.active { color: var(--text); border-bottom: 1px solid var(--orange); padding-bottom: 7px; margin-bottom: -8px; }
+  .exp-top .right { display: flex; align-items: center; gap: 14px; color: var(--muted); }
+  .exp-top .right .live { color: var(--green); }
+
+  .query-bar { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .query-bar .prompt { color: var(--orange); }
+  .query-bar .k { color: var(--muted); }
+  .query-bar .eq { color: var(--dim); }
+  .query-bar .v-green { color: var(--green); }
+  .query-bar .v-red { color: var(--red); }
+  .query-bar .meta { margin-left: auto; color: var(--dim); font-size: 11px; }
+
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  .stat { background: var(--bg); padding: 10px 14px; }
+  .stat .k { color: var(--dim); font-size: 10px; letter-spacing: 0.5px; }
+  .stat .v { font-size: 16px; margin-top: 3px; font-weight: 500; }
+  .stat .delta { font-size: 10px; margin-left: 4px; }
+
+  .table-head { display: grid; grid-template-columns: 16px 1.4fr 70px 50px 90px 80px 70px; gap: 10px; padding: 8px 14px; color: var(--dim); font-size: 10px; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  .table-row { display: grid; grid-template-columns: 16px 1.4fr 70px 50px 90px 80px 70px; gap: 10px; padding: 9px 14px; border-bottom: 1px solid var(--border-dim); align-items: center; }
+  .table-row:last-child { border-bottom: none; }
+  .table-row .chev { color: var(--dim); }
+  .table-row .status { text-align: right; }
+
+  .row-expanded { background: var(--surface); border-left: 2px solid var(--red); }
+  .row-expanded .table-row { border-bottom: none; }
+  .findings { padding: 0 14px 14px 32px; color: var(--text-dim); font-size: 11px; line-height: 1.85; }
+  .findings .label { color: var(--dim); font-size: 10px; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .findings .row { display: flex; gap: 8px; }
+  .findings .row .mark { color: var(--red); }
+  .findings .row .mark.warn { color: var(--amber); }
+  .findings .row .mark.info { color: var(--muted); }
+  .finding-actions { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn { background: var(--surface-2); border: 1px solid var(--border); padding: 4px 10px; font-size: 10px; color: var(--text-dim); font-family: inherit; cursor: pointer; }
+  .btn:hover { border-color: #3a3a3a; color: var(--text); }
+  .btn-l402 { background: #1a1200; border: 1px solid var(--orange); color: var(--orange); }
+
+  .exp-foot { padding: 8px 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; color: var(--dim); font-size: 10px; }
+  .exp-foot .kbd { background: var(--surface-2); padding: 1px 5px; color: var(--text-dim); }
+
+  /* ===== Mockup 2: palette ===== */
+  .palette-stage { background: rgba(0,0,0,0.5); padding: 48px 16px; display: flex; justify-content: center; border: 1px solid var(--border); min-height: 480px; }
+  .palette { width: 100%; max-width: 560px; background: var(--bg); border: 1px solid var(--border); height: fit-content; }
+  .palette-input { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .palette-input .prompt { color: var(--orange); }
+  .palette-input .typed { color: var(--text); }
+  .palette-input .cursor { display: inline-block; width: 7px; height: 13px; background: var(--text); animation: blink 1.1s steps(1) infinite; }
+  .palette-input .count { margin-left: auto; color: var(--dim); font-size: 10px; }
+  @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+  .palette-group { padding: 6px 0; border-top: 1px solid var(--border-dim); }
+  .palette-group:first-of-type { border-top: none; }
+  .palette-group .label { padding: 4px 14px; color: var(--dim); font-size: 10px; letter-spacing: 0.6px; }
+  .palette-item { display: flex; align-items: center; gap: 10px; padding: 7px 14px; color: var(--text); }
+  .palette-item.focused { background: var(--surface); border-left: 2px solid var(--orange); padding-left: 12px; }
+  .palette-item .icon { width: 14px; color: var(--dim); }
+  .palette-item .icon.orange { color: var(--orange); }
+  .palette-item .sep { color: var(--dim); }
+  .palette-item .muted { color: var(--muted); }
+  .palette-item .match { color: var(--red); }
+  .palette-item .shortcut { margin-left: auto; color: var(--dim); font-size: 10px; }
+
+  .palette-foot { padding: 8px 14px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; color: var(--dim); font-size: 10px; }
+  .palette-foot .kbd { background: var(--surface-2); padding: 1px 5px; }
+
+  /* ===== Mockup 3: drawer ===== */
+  .drawer-frame { display: flex; }
+  .sliver { width: 180px; border-right: 1px solid var(--border); opacity: 0.45; flex-shrink: 0; }
+  .sliver-head { padding: 8px 12px; color: var(--dim); font-size: 10px; letter-spacing: 0.6px; border-bottom: 1px solid var(--border); }
+  .sliver-row { padding: 8px 12px; border-bottom: 1px solid var(--border-dim); color: var(--muted); }
+  .sliver-row.active { background: var(--surface); border-left: 2px solid var(--orange); color: var(--text); opacity: 1; }
+
+  .drawer { flex: 1; min-width: 0; }
+  .d-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .d-head .meta { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .d-head .meta .k { color: var(--dim); font-size: 10px; letter-spacing: 0.6px; }
+  .d-head .close { margin-left: auto; color: var(--dim); font-size: 15px; cursor: pointer; }
+  .d-head .addr { font-size: 16px; margin-bottom: 5px; }
+  .d-head .addr .port-red { color: var(--red); }
+  .d-head .copy { color: var(--dim); font-size: 11px; margin-left: 4px; }
+  .d-head .sub { color: var(--muted); font-size: 11px; }
+
+  .tabs { display: flex; padding: 0 16px; border-bottom: 1px solid var(--border); font-size: 11px; overflow-x: auto; }
+  .tab { padding: 10px 0; margin-right: 18px; color: var(--muted); border-bottom: 1px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tab.active { color: var(--text); border-bottom-color: var(--orange); }
+  .tab .count { color: var(--dim); }
+  .tab .count.red { color: var(--red); }
+
+  .d-body { padding: 14px 16px; }
+  .card { background: var(--surface); border: 1px solid var(--border-dim); margin-bottom: 14px; }
+  .card:last-child { margin-bottom: 0; }
+  .card-row { padding: 8px 12px; border-bottom: 1px solid var(--border-dim); }
+  .card-row:last-child { border-bottom: none; }
+  .port-row { display: grid; grid-template-columns: 64px 1fr 80px; gap: 12px; align-items: center; }
+  .port-row .port { font-weight: 500; }
+  .port-row .desc { color: var(--text-dim); }
+  .port-row .status-t { text-align: right; font-size: 10px; letter-spacing: 0.3px; }
+  .t-red { color: var(--red); }
+  .t-amber { color: var(--amber); }
+  .t-green { color: var(--green); }
+  .t-dim { color: var(--muted); }
+
+  .vuln-head { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .vuln-desc { color: var(--dim); font-size: 11px; line-height: 1.5; }
+
+  .xref-row { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 11px; border-bottom: 1px solid var(--border-dim); }
+  .xref-row:last-child { border-bottom: none; }
+  .xref-row .k { color: var(--muted); }
+  .xref-row .v { color: var(--text-dim); }
+
+  .d-foot { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .d-foot .btn-l402 { margin-left: auto; padding: 5px 11px; font-size: 11px; }
+
+  /* Open questions */
+  .questions { display: grid; grid-template-columns: 1fr; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .q { background: var(--bg); padding: 14px 16px; }
+  .q .q-head { color: var(--orange); font-size: 10px; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .q .q-title { color: var(--text); font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+  .q .q-body { color: var(--text-dim); font-size: 12px; line-height: 1.7; }
+
+  /* Doc footer */
+  .doc-foot { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--dim); font-size: 11px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+
+  /* Responsive */
+  @media (max-width: 720px) {
+    body { padding: 24px 12px 48px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .table-head, .table-row { grid-template-columns: 16px 1fr 60px 40px 70px; }
+    .table-head span:nth-child(6), .table-head span:nth-child(7),
+    .table-row > *:nth-child(6), .table-row > *:nth-child(7) { display: none; }
+    .table-row .status { display: block !important; }
+    .sliver { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================= DOC HEADER ============================= -->
+  <header class="doc-head">
+    <div class="sup">
+      <span>hacknodes lab</span><span class="sep">//</span><span>bitcoin-node-scanner</span><span class="sep">//</span><span>internal</span>
+    </div>
+    <h1>bns <span class="orange">/</span> scanner — Dashboard v0</h1>
+    <p class="sub">
+      Design reference for the operator-facing dashboard. Three views: the explorer (main working surface), the command palette (power-user navigation), and the node detail drawer (investigate a single node). OSINT terminal aesthetic — data-dense, monospace-first, Bitcoin orange reserved for brand and CTAs.
+    </p>
+    <div class="meta">v0 · draft · ivan@hacknodes.lab</div>
+  </header>
+
+  <!-- ============================= TOKENS ============================= -->
+  <section>
+    <div class="s-label"><span class="num">00</span>DESIGN TOKENS</div>
+    <h2 class="s-title">Palette, type, vocabulary</h2>
+    <p class="s-desc">Two principles: (1) color encodes state, never decoration. Orange is brand only. (2) Monospace everywhere — hierarchy comes from size and weight, never from switching families.</p>
+
+    <div class="tokens" style="margin-bottom:20px">
+      <div class="swatch">
+        <div class="chip" style="background:#0a0a0a"></div>
+        <div class="name">bg</div><div class="hex">#0a0a0a</div>
+        <div class="use">CANVAS</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#141414"></div>
+        <div class="name">surface</div><div class="hex">#141414</div>
+        <div class="use">CARDS · INPUTS</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#2a2a2a"></div>
+        <div class="name">border</div><div class="hex">#2a2a2a</div>
+        <div class="use">DIVIDERS · FRAMES</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#F7931A"></div>
+        <div class="name">brand / cta</div><div class="hex">#F7931A</div>
+        <div class="use">LOGO · L402 · FOCUS</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#00ff9c"></div>
+        <div class="name">live / ok</div><div class="hex">#00ff9c</div>
+        <div class="use">LIVE · HEALTHY</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#ffb000"></div>
+        <div class="name">tor / warn</div><div class="hex">#ffb000</div>
+        <div class="use">TOR · CVE · WARN</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#ff4444"></div>
+        <div class="name">exposed</div><div class="hex">#ff4444</div>
+        <div class="use">EXPOSED · STALE · ALERT</div>
+      </div>
+      <div class="swatch">
+        <div class="chip" style="background:#e0e0e0"></div>
+        <div class="name">text</div><div class="hex">#e0e0e0</div>
+        <div class="use">PRIMARY TEXT</div>
+      </div>
+    </div>
+
+    <div class="type-samples" style="margin-bottom:20px">
+      <div class="row">
+        <span class="label">DISPLAY 22/500</span>
+        <span class="sample" style="font-size:22px;font-weight:500">Every reachable node. Every onion.</span>
+      </div>
+      <div class="row">
+        <span class="label">TITLE 17/500</span>
+        <span class="sample" style="font-size:17px;font-weight:500">Node 45.33.21.118:8332</span>
+      </div>
+      <div class="row">
+        <span class="label">BODY 13/400</span>
+        <span class="sample">Timing oracle in SSH authentication lets attacker determine valid usernames.</span>
+      </div>
+      <div class="row">
+        <span class="label">META 11/400</span>
+        <span class="sample" style="font-size:11px;color:var(--muted)">v26.1.0 · US · AS63949 Linode · first seen 2024-03-12</span>
+      </div>
+      <div class="row">
+        <span class="label">LABEL 10/500 +0.6LS</span>
+        <span class="sample" style="font-size:10px;letter-spacing:0.6px;color:var(--dim);font-weight:500">OPEN PORTS</span>
+      </div>
+    </div>
+
+    <div class="vocab">
+      <div class="vocab-row"><span class="pill pill-red token">EXPOSED</span><span class="desc">A security-relevant service is reachable (RPC, unauthenticated admin API). Operator action needed.</span></div>
+      <div class="vocab-row"><span class="pill pill-amber token">TOR</span><span class="desc">Node is reached over a Tor hidden service (.onion). Informational, not a risk.</span></div>
+      <div class="vocab-row"><span class="pill pill-red token">STALE</span><span class="desc">Running a Bitcoin Core version with known advisories or out-of-support.</span></div>
+      <div class="vocab-row"><span class="pill pill-amber token">CVE</span><span class="desc">A co-located service (SSH, nginx) has a known vulnerability from cross-referenced intel.</span></div>
+      <div class="vocab-row"><span class="pill pill-green token">OK</span><span class="desc">No exposure findings. Not a guarantee — only what the scanner can see from outside.</span></div>
+    </div>
+  </section>
+
+  <!-- ============================= VIEW 1: EXPLORER ============================= -->
+  <section>
+    <div class="s-label"><span class="num">01</span>VIEW</div>
+    <h2 class="s-title">Explorer</h2>
+    <p class="s-desc">The main working surface. Query bar on top (not a search — a filter builder with saved queries), compact live stats, then a dense table. Rows expand inline to show exposure findings; the expanded row is where the product earns its keep.</p>
+
+    <div class="frame">
+      <div class="exp-top">
+        <div class="left">
+          <span class="brand"><span class="dot">●</span> bns<span style="color:var(--orange)">/</span>scanner</span>
+          <span class="nav">nodes</span>
+          <span class="nav active">explorer</span>
+          <span class="nav">alerts</span>
+          <span class="nav">api</span>
+        </div>
+        <div class="right">
+          <span><span class="live">●</span> scan tick 4s</span>
+          <span>hacknodes<span style="color:var(--dim)">/</span>ivan</span>
+        </div>
+      </div>
+
+      <div class="query-bar">
+        <span class="prompt">&gt;</span>
+        <span class="k">version</span><span class="eq">:</span><span class="v-green">&lt;26</span>
+        <span class="eq">AND</span>
+        <span class="k">country</span><span class="eq">:</span><span class="v-green">RU</span>
+        <span class="eq">AND</span>
+        <span class="k">rpc</span><span class="eq">:</span><span class="v-red">exposed</span>
+        <span class="meta">saved · 12 results · 1.3s</span>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">REACHABLE</div><div class="v">17,842 <span class="delta" style="color:var(--green)">+41</span></div></div>
+        <div class="stat"><div class="k">TOR</div><div class="v" style="color:var(--amber)">4,117</div></div>
+        <div class="stat"><div class="k">EXPOSED</div><div class="v" style="color:var(--red)">23 <span class="delta" style="color:var(--red)">+3</span></div></div>
+        <div class="stat"><div class="k">STALE &lt;v25</div><div class="v">892</div></div>
+        <div class="stat"><div class="k">COUNTRIES</div><div class="v">142</div></div>
+      </div>
+
+      <div>
+        <div class="table-head">
+          <span></span><span>ADDRESS</span><span>VERSION</span><span>CC</span><span>ASN</span><span>LAST SEEN</span><span class="status">STATE</span>
+        </div>
+
+        <div class="table-row">
+          <span class="chev">›</span>
+          <span>94.140.114.231<span style="color:var(--dim)">:8333</span></span>
+          <span class="t-red">0.21.1</span><span class="t-dim">RU</span><span class="t-dim">AS48666</span><span class="t-dim">12s ago</span>
+          <span class="status"><span class="t-red">STALE</span></span>
+        </div>
+
+        <div class="row-expanded">
+          <div class="table-row">
+            <span style="color:var(--red)">⌄</span>
+            <span>45.33.21.118<span style="color:var(--red)">:8332</span></span>
+            <span>26.1.0</span><span class="t-dim">US</span><span class="t-dim">AS63949</span><span class="t-dim">3s ago</span>
+            <span class="status"><span class="pill pill-red">EXPOSED</span></span>
+          </div>
+          <div class="findings">
+            <div class="label">EXPOSURE FINDINGS</div>
+            <div class="row"><span class="mark">✗</span><span>RPC port 8332 reachable from public internet</span></div>
+            <div class="row"><span class="mark warn">⚠</span><span>No authentication banner — possible anonymous access</span></div>
+            <div class="row"><span class="mark warn">⚠</span><span>Shodan cross-ref: SSH 22 open, OpenSSH 7.4 (CVE-2018-15473)</span></div>
+            <div class="row"><span class="mark info">·</span><span>peer-observer: 14 inbound peers, no unusual reorgs</span></div>
+            <div class="finding-actions">
+              <button class="btn">alert owner</button>
+              <button class="btn">open full report</button>
+              <button class="btn">export json</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="table-row">
+          <span class="chev">›</span>
+          <span style="color:var(--amber)">3g2upl4pq6kufc4m.onion<span style="color:var(--dim)">:8333</span></span>
+          <span>27.1.0</span><span class="t-dim">—</span><span class="t-dim">—</span><span class="t-dim">1s ago</span>
+          <span class="status"><span class="t-amber">TOR</span></span>
+        </div>
+        <div class="table-row">
+          <span class="chev">›</span>
+          <span>185.204.3.89<span style="color:var(--dim)">:8333</span></span>
+          <span>26.0.0</span><span class="t-dim">DE</span><span class="t-dim">AS24940</span><span class="t-dim">4s ago</span>
+          <span class="status"><span class="t-green">OK</span></span>
+        </div>
+      </div>
+
+      <div class="exp-foot">
+        <span>showing 4 of 12 · page 1/3</span>
+        <span><span class="kbd">⌘K</span> palette · <span class="kbd">⌘/</span> filters · <span class="kbd">g a</span> alerts</span>
+      </div>
+    </div>
+
+    <div class="notes">
+      <b>Design notes</b>
+      <ul>
+        <li>The expanded row is the product — without it this is "another bitnodes". Everything else should make it easier to reach.</li>
+        <li>Query bar is a filter builder, not a text search. Saved queries get first-class treatment.</li>
+        <li>Stats strip shows deltas vs last hour. Never absolute-only — context matters more than the number.</li>
+        <li>Map is intentionally absent from this view. It goes in a toggle or secondary tab.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================= VIEW 2: PALETTE ============================= -->
+  <section>
+    <div class="s-label"><span class="num">02</span>VIEW</div>
+    <h2 class="s-title">Command palette</h2>
+    <p class="s-desc">Opens with ⌘K. Ranked by recency and context, not alphabetically. Every command here must also exist as a CLI flag and a REST endpoint with matching grammar — the palette is the product's surface for the API.</p>
+
+    <div class="palette-stage">
+      <div class="palette">
+        <div class="palette-input">
+          <span class="prompt">&gt;</span>
+          <span class="typed">exp</span>
+          <span class="cursor"></span>
+          <span class="count">8 results</span>
+        </div>
+
+        <div class="palette-group">
+          <div class="label">RECENT</div>
+          <div class="palette-item focused">
+            <span class="icon orange">▸</span>
+            <span>Run query</span>
+            <span class="sep">·</span>
+            <span class="muted">version:&lt;26 AND country:RU AND rpc:<span class="match">exp</span>osed</span>
+            <span class="shortcut">⏎</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon">⊙</span>
+            <span>Rescan</span>
+            <span class="sep">·</span>
+            <span class="muted">45.33.21.118:8332</span>
+            <span class="shortcut">last: 3s ago</span>
+          </div>
+        </div>
+
+        <div class="palette-group">
+          <div class="label">QUERY</div>
+          <div class="palette-item">
+            <span class="icon">▸</span>
+            <span>Find all <span class="match">exp</span>osed RPC nodes</span>
+            <span class="shortcut">saved query</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon">▸</span>
+            <span>Find <span class="match">exp</span>ired TLS certs on node APIs</span>
+            <span class="shortcut">shodan</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon">+</span>
+            <span class="muted">New query from scratch</span>
+            <span class="shortcut">⌘N</span>
+          </div>
+        </div>
+
+        <div class="palette-group">
+          <div class="label">ACTIONS</div>
+          <div class="palette-item">
+            <span class="icon">↓</span>
+            <span><span class="match">Exp</span>ort results to CSV</span>
+            <span class="sep">·</span>
+            <span class="muted">12 rows</span>
+            <span class="shortcut">⌘E</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon">↓</span>
+            <span><span class="match">Exp</span>ort results to JSON</span>
+            <span class="shortcut">⌘⇧E</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon" style="color:var(--amber)">◎</span>
+            <span>Create alert from current query</span>
+            <span class="sep">·</span>
+            <span class="muted">nostr · webhook · email</span>
+            <span class="shortcut">⌘A</span>
+          </div>
+          <div class="palette-item">
+            <span class="icon orange">⚡</span>
+            <span>Pay L402 to unlock full <span class="match">exp</span>osure report</span>
+            <span class="sep">·</span>
+            <span style="color:var(--orange)">500 sats</span>
+          </div>
+        </div>
+
+        <div class="palette-group">
+          <div class="label">LOOKUP</div>
+          <div class="palette-item">
+            <span class="icon">⌕</span>
+            <span class="muted">Go to node by IP or .onion…</span>
+            <span class="shortcut">g n</span>
+          </div>
+        </div>
+
+        <div class="palette-foot">
+          <span><span class="kbd">↑↓</span> navigate &nbsp; <span class="kbd">⏎</span> select &nbsp; <span class="kbd">⇥</span> preview</span>
+          <span><span class="kbd">esc</span> close</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <b>Design notes</b>
+      <ul>
+        <li><b>Ranking is context-aware.</b> "exp" surfaces the last run query first, not the alphabetically-first "exp" item.</li>
+        <li><b>The palette is the CLI.</b> Every entry here must have a CLI form and a REST form with matching grammar.</li>
+        <li><b>L402 is a first-class action,</b> visually distinct (orange icon, sat amount), but not intrusive — it appears when there's something pay-gated in the current context.</li>
+        <li>Consider a preview pane on ⇥ (Tab) — hover-preview what an action will do before committing.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================= VIEW 3: DRAWER ============================= -->
+  <section>
+    <div class="s-label"><span class="num">03</span>VIEW</div>
+    <h2 class="s-title">Node detail drawer</h2>
+    <p class="s-desc">Opens when a row is expanded or a node is opened directly. The dimmed sliver on the left keeps context of the surrounding list. Tabs prioritize <b>exposure</b> when findings exist, <b>overview</b> otherwise. Footer holds safe actions first; L402 unlock sits on the right as the premium action.</p>
+
+    <div class="frame drawer-frame">
+      <aside class="sliver">
+        <div class="sliver-head">ADDRESS</div>
+        <div class="sliver-row">94.140.114.231</div>
+        <div class="sliver-row">3g2upl4pq6k...onion</div>
+        <div class="sliver-row active">45.33.21.118<span style="color:var(--red)">:8332</span></div>
+        <div class="sliver-row">185.204.3.89</div>
+        <div class="sliver-row">62.210.14.2</div>
+        <div class="sliver-row">176.9.241.12</div>
+        <div class="sliver-row">89.58.39.207</div>
+      </aside>
+
+      <section class="drawer">
+        <div class="d-head">
+          <div class="meta">
+            <span class="k">NODE</span>
+            <span class="pill pill-red">EXPOSED RPC</span>
+            <span class="pill pill-amber">SSH CVE</span>
+            <span class="close">✕</span>
+          </div>
+          <div class="addr">45.33.21.118<span class="port-red">:8332</span> <span class="copy">⧉ copy</span></div>
+          <div class="sub">v26.1.0 · US · AS63949 Linode · first seen 2024-03-12 · last tick 3s ago</div>
+        </div>
+
+        <nav class="tabs">
+          <span class="tab">overview</span>
+          <span class="tab">peers <span class="count">14</span></span>
+          <span class="tab">history</span>
+          <span class="tab active">exposure <span class="count red">3</span></span>
+          <span class="tab">shodan</span>
+          <span class="tab">observations</span>
+        </nav>
+
+        <div class="d-body">
+
+          <div class="s-label" style="margin-bottom:8px">OPEN PORTS</div>
+          <div class="card">
+            <div class="card-row port-row">
+              <span class="port t-red">8332</span>
+              <span class="desc">bitcoin-rpc · no auth challenge returned</span>
+              <span class="status-t t-red">EXPOSED</span>
+            </div>
+            <div class="card-row port-row">
+              <span class="port t-dim">8333</span>
+              <span class="desc">bitcoin-p2p · handshake ok · NODE_NETWORK|NODE_WITNESS</span>
+              <span class="status-t t-green">OK</span>
+            </div>
+            <div class="card-row port-row">
+              <span class="port t-amber">22</span>
+              <span class="desc">OpenSSH 7.4 · username enumeration possible</span>
+              <span class="status-t t-amber">CVE</span>
+            </div>
+            <div class="card-row port-row">
+              <span class="port t-dim">443</span>
+              <span class="desc">nginx 1.18 · TLS 1.3 · Let's Encrypt · expires 62d</span>
+              <span class="status-t t-dim">OK</span>
+            </div>
+          </div>
+
+          <div class="s-label" style="margin-bottom:8px">VULNERABILITIES</div>
+          <div class="card">
+            <div class="card-row">
+              <div class="vuln-head">
+                <span>CVE-2018-15473 <span style="color:var(--dim)">·</span> <span class="t-dim">OpenSSH user enum</span></span>
+                <span class="t-amber" style="font-size:10px">5.3 MED</span>
+              </div>
+              <div class="vuln-desc">Timing oracle in SSH authentication lets attacker determine valid usernames. Mitigation: upgrade to OpenSSH ≥ 7.8.</div>
+            </div>
+            <div class="card-row">
+              <div class="vuln-head">
+                <span>Bitcoin Core 26.1.0 <span style="color:var(--dim)">·</span> <span class="t-dim">no known CVEs</span></span>
+                <span class="t-green" style="font-size:10px">CLEAN</span>
+              </div>
+              <div class="vuln-desc">Current stable branch. Scanner tracks the bitcoin-core advisory feed and re-checks on release.</div>
+            </div>
+          </div>
+
+          <div class="s-label" style="margin-bottom:8px">CROSS-REFERENCES</div>
+          <div class="card">
+            <div class="xref-row"><span class="k">shodan</span><span class="v">tagged <span style="color:var(--text)">"bitcoin-node"</span> · banner matches · 2d ago</span></div>
+            <div class="xref-row"><span class="k">peer-observer</span><span class="v">14 inbound · no reorgs · addr relay nominal</span></div>
+            <div class="xref-row"><span class="k">tor consensus</span><span class="v" style="color:var(--dim)">not a Tor exit · not an onion address</span></div>
+            <div class="xref-row"><span class="k">bitnodes</span><span class="v">indexed as reachable · uptime 94.2%</span></div>
+          </div>
+
+        </div>
+
+        <div class="d-foot">
+          <button class="btn">alert owner</button>
+          <button class="btn">rescan ⟲</button>
+          <button class="btn">watchlist +</button>
+          <button class="btn">export json</button>
+          <button class="btn btn-l402">⚡ unlock full report · 500 sats</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="notes">
+      <b>Design notes</b>
+      <ul>
+        <li><b>Default tab depends on state.</b> When exposure findings exist, exposure opens first; otherwise overview.</li>
+        <li><b>Red badges are reserved for actionable findings.</b> Neutral counts (peers 14) stay gray — never mix.</li>
+        <li><b>Free tier shows the <i>what</i>, paid unlocks the <i>how</i>.</b> PoCs, exploit scripts, temporal correlation with similar nodes in the same ASN, concrete patch recommendations.</li>
+        <li>The dimmed sliver keeps list context visible — useful when doing a sweep across many nodes.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============================= OPEN QUESTIONS ============================= -->
+  <section>
+    <div class="s-label"><span class="num">04</span>OPEN QUESTIONS</div>
+    <h2 class="s-title">Still to decide</h2>
+    <p class="s-desc">Decisions we paused on. Each has implications for implementation and UX testing.</p>
+
+    <div class="questions">
+      <div class="q">
+        <div class="q-head">Q1 · LAYOUT</div>
+        <div class="q-title">Drawer expansion: inline vs. side panel</div>
+        <div class="q-body">Inline expansion keeps list context but gets cramped with many findings. A right-side drawer gives space but hides the list. Hybrid: brief inline summary, full drawer on "open full report". Needs prototyping against real data.</div>
+      </div>
+      <div class="q">
+        <div class="q-head">Q2 · INFORMATION</div>
+        <div class="q-title">Map placement</div>
+        <div class="q-body">Out of v0 entirely, or subordinate sidebar? Operators say they want it but don't use it day-to-day. Ship without, add in v1 if retention data shows demand.</div>
+      </div>
+      <div class="q">
+        <div class="q-head">Q3 · SEMANTICS</div>
+        <div class="q-title">Coloring ASNs by risk</div>
+        <div class="q-body">Tempting to color cheap-hosting ASNs amber and privacy-provider ASNs differently. Risks over-saturation and false signals. Start with a single badge (ASN name only) and evolve if user research demands it.</div>
+      </div>
+      <div class="q">
+        <div class="q-head">Q4 · DELIVERY</div>
+        <div class="q-title">Alerts channel</div>
+        <div class="q-body">In-product toast, email, Nostr DM, webhook, Slack? Nostr DM is the brand-aligned option and technically easy; webhooks open enterprise use cases. Email as a floor. Start with Nostr + webhook for v0.</div>
+      </div>
+      <div class="q">
+        <div class="q-head">Q5 · MONETIZATION</div>
+        <div class="q-title">What goes behind the L402 paywall</div>
+        <div class="q-body">Proposal: free tier answers "is there a problem" — paid tier answers "how do I fix it or use it". PoCs, patch recommendations, historical correlation, exportable reports. Needs a line-item breakdown validated with 3–5 potential customers before shipping.</div>
+      </div>
+      <div class="q">
+        <div class="q-head">Q6 · ACCESSIBILITY</div>
+        <div class="q-title">Light mode?</div>
+        <div class="q-body">Hacker aesthetic is dark-first, but some operators work in bright offices or share screens. Build with CSS custom properties so a light mode is possible later without refactoring. Not a v0 deliverable.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= DOC FOOTER ============================= -->
+  <footer class="doc-foot">
+    <span>bns / scanner · dashboard v0 · internal design reference</span>
+    <span>hacknodes lab · valencia · 2026</span>
+  </footer>
+
+</div>
+</body>
+</html>
