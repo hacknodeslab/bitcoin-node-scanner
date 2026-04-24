@@ -19,5 +19,6 @@ def get_csrf_token() -> JSONResponse:
         samesite="strict",
         httponly=False,
         path="/",
+        secure=True
     )
     return response
