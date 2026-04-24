@@ -69,3 +69,6 @@ electrum_monitor.db*
 
 # Claude and Agents
 .claude/
+bitcoin_scanner.db
+*.db
+*.db-journal
