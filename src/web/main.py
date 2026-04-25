@@ -6,10 +6,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..db.connection import init_db
+from . import l402
 from .routers import nodes, stats, scans, vulnerabilities, csrf
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -40,12 +42,26 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_frontend_origins = [
+    o.strip()
+    for o in os.getenv("FRONTEND_ORIGIN", "http://localhost:3000").split(",")
+    if o.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_frontend_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["X-API-Key", "X-CSRF-Token", "Content-Type", "Accept"],
+)
+
 # API routers
 app.include_router(nodes.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
 app.include_router(scans.router, prefix="/api/v1")
 app.include_router(vulnerabilities.router, prefix="/api/v1")
 app.include_router(csrf.router, prefix="/api/v1")
+app.include_router(l402.router, prefix="/api/v1")
 
 # Serve dashboard
 if _STATIC_DIR.is_dir():
@@ -54,10 +70,16 @@ if _STATIC_DIR.is_dir():
 
 @app.get("/", include_in_schema=False)
 def dashboard():
+    # Migration: the legacy static dashboard at src/web/static/index.html is being
+    # replaced by the Next.js app at frontend/ (change: redesign-dashboard-design-system).
+    # While index.html still exists, serve it for backward compatibility. Once it is
+    # removed (cutover task 11.1), this endpoint redirects to FRONTEND_ORIGIN.
+    # Deprecation reminder: drop this redirect 30 days after cutover.
     index = _STATIC_DIR / "index.html"
     if index.is_file():
         return FileResponse(str(index))
-    return {"message": "Bitcoin Node Scanner API is running. See /docs for API reference."}
+    target = _frontend_origins[0] if _frontend_origins else "http://localhost:3000"
+    return RedirectResponse(url=target, status_code=302)
 
 
 def start():

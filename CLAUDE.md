@@ -44,7 +44,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `WEB_HOST`, `WEB_PORT`, `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
 
 ## Architecture
 

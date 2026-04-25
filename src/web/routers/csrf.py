@@ -16,7 +16,7 @@ def get_csrf_token(request: Request) -> JSONResponse:
     response.set_cookie(
         key="csrftoken",
         value=token,
-        samesite="strict",
+        samesite="lax",
         httponly=True,
         path="/",
         secure=request.url.scheme == "https",
