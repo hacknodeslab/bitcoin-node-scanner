@@ -17,7 +17,7 @@ def get_csrf_token(request: Request) -> JSONResponse:
         key="csrftoken",
         value=token,
         samesite="strict",
-        httponly=False,
+        httponly=True,
         path="/",
         secure=request.url.scheme == "https",
     )
