@@ -6,7 +6,7 @@ Uses FastAPI TestClient with an in-memory SQLite database.
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch, AsyncMock
 
 import pytest
@@ -65,15 +65,27 @@ def client(db_session):
     app.dependency_overrides.clear()
 
 
-def _make_node(ip="1.2.3.4", port=8333, risk_level="LOW", version="0.21.0"):
+def _make_node(
+    ip="1.2.3.4",
+    port=8333,
+    risk_level="LOW",
+    version="0.21.0",
+    has_exposed_rpc=False,
+    last_seen=None,
+    tags_json=None,
+    hostname=None,
+):
     return Node(
         ip=ip,
         port=port,
         version=version,
         risk_level=risk_level,
         is_vulnerable=False,
+        has_exposed_rpc=has_exposed_rpc,
         first_seen=datetime.utcnow(),
-        last_seen=datetime.utcnow(),
+        last_seen=last_seen or datetime.utcnow(),
+        tags_json=tags_json,
+        hostname=hostname,
     )
 
 
@@ -132,6 +144,31 @@ class TestStatsEndpoint:
     def test_requires_api_key(self, client):
         r = client.get("/api/v1/stats")
         assert r.status_code == 401
+
+    def test_strip_token_counts(self, client, db_session):
+        # 11 days ago: stale by the default 7-day threshold.
+        old = datetime.utcnow() - timedelta(days=11)
+        # 1 fresh, exposed, LOW → EXPOSED, not OK (exposed disqualifies)
+        db_session.add(_make_node("1.1.1.1", risk_level="LOW", has_exposed_rpc=True))
+        # 1 stale, LOW, not exposed → STALE, not OK (last_seen too old)
+        db_session.add(_make_node("2.2.2.2", risk_level="LOW", last_seen=old))
+        # 1 fresh, LOW, .onion hostname → TOR + OK (no exposed, fresh)
+        db_session.add(_make_node("3.3.3.3", risk_level="LOW", hostname="abc.onion"))
+        # 1 fresh, MEDIUM, tor in tags → TOR, not OK (LOW required)
+        db_session.add(_make_node("4.4.4.4", risk_level="MEDIUM", tags_json='["tor"]'))
+        # 1 fresh, LOW, clean → OK
+        db_session.add(_make_node("5.5.5.5", risk_level="LOW"))
+        db_session.commit()
+
+        r = client.get("/api/v1/stats", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["total_nodes"] == 5
+        assert d["exposed_count"] == 1
+        assert d["stale_count"] == 1
+        assert d["tor_count"] == 2
+        assert d["ok_count"] == 2
+        assert d["stale_threshold_days"] == 7
 
 
 def _csrf_headers(client):

@@ -58,6 +58,11 @@ export interface StatsOut {
   by_risk_level: Partial<Record<RiskLevel, number>>;
   by_country: Record<string, number>;
   vulnerable_nodes_count: number;
+  exposed_count: number;
+  stale_count: number;
+  tor_count: number;
+  ok_count: number;
+  stale_threshold_days: number;
   last_scan_at: string | null;
   commit: string | null;
 }
