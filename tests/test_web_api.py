@@ -119,6 +119,43 @@ class TestNodesEndpoint:
         r = client.get("/api/v1/nodes")
         assert r.status_code == 200
 
+    def test_filter_by_exposed_true(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", has_exposed_rpc=True))
+        db_session.add(_make_node("2.2.2.2", has_exposed_rpc=False))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?exposed=true", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "1.1.1.1"
+
+    def test_filter_by_exposed_false(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", has_exposed_rpc=True))
+        db_session.add(_make_node("2.2.2.2", has_exposed_rpc=False))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?exposed=false", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "2.2.2.2"
+
+    def test_filter_by_tor_true_matches_tag_or_onion(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", tags_json='["tor","other"]'))
+        db_session.add(_make_node("2.2.2.2", hostname="abc.onion"))
+        db_session.add(_make_node("3.3.3.3"))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?tor=true", headers=HEADERS)
+        assert r.status_code == 200
+        ips = sorted(n["ip"] for n in r.json())
+        assert ips == ["1.1.1.1", "2.2.2.2"]
+
+    def test_filter_by_tor_false_returns_400(self, client):
+        r = client.get("/api/v1/nodes?tor=false", headers=HEADERS)
+        assert r.status_code == 400
+
 
 class TestStatsEndpoint:
     def test_returns_zero_counts_for_empty_db(self, client):
