@@ -62,7 +62,7 @@
 
 - [ ] 8.1 Implement `frontend/app/page.tsx` rendering the explorer layout: top nav, query bar, stats strip, table, footer
 - [ ] 8.2 Wire query bar grammar (`risk:`, `country:`, `exposed:`, `tor:`) to the API client; values flowing through the controlled colour rules (alert/ok/text)
-- [ ] 8.3 Wire stats strip to `useStats` with the five tokens (TOTAL, EXPOSED, STALE, TOR, OK); apply the "rising EXPOSED is bad → alert delta" rule
+- [x] 8.3 `frontend/components/explorer/StatsStrip.tsx` consumes `useStats` and renders TOTAL/EXPOSED/STALE>{N}D/TOR/OK with footer (last scan + build). Backend gap closed in 8.3a — `/api/v1/stats` now returns `exposed_count`/`stale_count`/`tor_count`/`ok_count` + `stale_threshold_days` (env `STALE_THRESHOLD_DAYS`, default 7). **Delta arrows deferred**: the spec's "rising EXPOSED is bad → alert delta" needs a baseline that today only exists for total/critical/vulnerable on `Scan`; reintroduce when `Scan` snapshots grow exposed/stale/tor/ok. `StatTile` already supports `DeltaDirection`. 7 vitest cases on the component.
 - [ ] 8.4 Wire node table to `useNodes`; implement sortable headers using `Glyph` (no `▲`/`▼`/`⇅` Unicode arrows); implement inline row expansion with state-coloured 2px left border
 - [ ] 8.5 Implement scan-trigger affordance in the explorer footer/query bar; wire to `useScanJob` with 10s polling
 
