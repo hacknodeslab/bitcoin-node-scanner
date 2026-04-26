@@ -32,13 +32,15 @@ async def lifespan(app: FastAPI):
     yield
 
 
+_docs_enabled = os.getenv("ENABLE_API_DOCS", "").lower() in {"1", "true", "yes"}
+
 app = FastAPI(
     title="Bitcoin Node Scanner",
     description="Web interface for the Bitcoin Node Security Scanner",
     version="1.0.0",
-    docs_url=None,
-    redoc_url=None,
-    openapi_url=None,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
     lifespan=lifespan,
 )
 

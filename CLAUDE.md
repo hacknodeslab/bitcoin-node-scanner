@@ -44,7 +44,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
 
 ## Architecture
 
@@ -88,7 +88,7 @@ FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`au
 - `GET /api/v1/vulnerabilities` — CVE lookups
 - `GET /api/v1/csrf-token` — CSRF token endpoint
 
-Background scans run via `web/background.py` (async task executor) so they don't block the HTTP API. Swagger UI at `/docs`, ReDoc at `/redoc`.
+Background scans run via `web/background.py` (async task executor) so they don't block the HTTP API. Swagger UI at `/docs`, ReDoc at `/redoc`, and `/openapi.json` are gated behind `ENABLE_API_DOCS` (set to `1`/`true`/`yes` in local dev; disabled by default to keep the public surface minimal).
 
 ### NVD Integration (`src/nvd/`)
 
