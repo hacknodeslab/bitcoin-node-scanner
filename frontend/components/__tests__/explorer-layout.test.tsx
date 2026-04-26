@@ -11,7 +11,6 @@ import { render, screen } from "@testing-library/react";
 
 import { Brand } from "../brand/Brand";
 import { TopNav } from "../explorer/TopNav";
-import { NodeTablePlaceholder } from "../explorer/NodeTablePlaceholder";
 import { ExplorerFooter } from "../explorer/ExplorerFooter";
 
 describe("Brand", () => {
@@ -34,21 +33,6 @@ describe("TopNav", () => {
     const nav = screen.getByTestId("top-nav");
     expect(nav.textContent).toContain("K");
     expect(nav.textContent?.toLowerCase()).toContain("palette");
-  });
-});
-
-describe("NodeTablePlaceholder", () => {
-  it("renders all expected column headers", () => {
-    render(<NodeTablePlaceholder />);
-    const ph = screen.getByTestId("node-table-placeholder");
-    for (const label of ["IP", "PORT", "VERSION", "CC", "RISK", "FLAGS"]) {
-      expect(ph.textContent).toContain(label);
-    }
-  });
-
-  it("shows a status note pointing to the §8.4 wiring task", () => {
-    const { container } = render(<NodeTablePlaceholder />);
-    expect(container.textContent).toContain("§8.4");
   });
 });
 
