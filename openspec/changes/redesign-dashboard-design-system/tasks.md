@@ -60,7 +60,7 @@
 
 ## 8. Explorer view
 
-- [ ] 8.1 Implement `frontend/app/page.tsx` rendering the explorer layout: top nav, query bar, stats strip, table, footer
+- [x] 8.1 `frontend/app/page.tsx` composes the five strips: `TopNav` (brand + ⌘K hint), `QueryBar` (rendered with empty query — input controller lands in 8.2), `StatsStrip` (live), `NodeTablePlaceholder` (column headers + §8.4 status note), `ExplorerFooter` (`/` focus + ⌘K palette hints; scan trigger reserved for 8.5). Brand mark in `components/brand/Brand.tsx` per the primary-allowlist rule. 9 vitest cases covering Brand, TopNav, NodeTablePlaceholder, ExplorerFooter.
 - [ ] 8.2 Wire query bar grammar (`risk:`, `country:`, `exposed:`, `tor:`) to the API client; values flowing through the controlled colour rules (alert/ok/text)
 - [x] 8.3 `frontend/components/explorer/StatsStrip.tsx` consumes `useStats` and renders TOTAL/EXPOSED/STALE>{N}D/TOR/OK with footer (last scan + build). Backend gap closed in 8.3a — `/api/v1/stats` now returns `exposed_count`/`stale_count`/`tor_count`/`ok_count` + `stale_threshold_days` (env `STALE_THRESHOLD_DAYS`, default 7). **Delta arrows deferred**: the spec's "rising EXPOSED is bad → alert delta" needs a baseline that today only exists for total/critical/vulnerable on `Scan`; reintroduce when `Scan` snapshots grow exposed/stale/tor/ok. `StatTile` already supports `DeltaDirection`. 7 vitest cases on the component.
 - [ ] 8.4 Wire node table to `useNodes`; implement sortable headers using `Glyph` (no `▲`/`▼`/`⇅` Unicode arrows); implement inline row expansion with state-coloured 2px left border
