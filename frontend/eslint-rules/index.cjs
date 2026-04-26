@@ -196,10 +196,24 @@ const noInlineColor = {
   },
 };
 
+// Files where /DESIGN.md legitimately uses Bitcoin orange (primary):
+//   - brand mark
+//   - L402 button (Button l402 variant)
+//   - active tab indicator (Tabs)
+//   - table row selection 2px left border (TableRow)
+//   - command palette focused-item left border (CommandPalette)
+//   - drawer sliver active row left border (Drawer)
+//   - query bar `›` prompt (QueryBar)
+// The "≤3 orange touchpoints per screen" rule is a runtime cap, enforced by
+// the visual-regression test (task 4.8), not by this static rule.
 const ALLOWED_PRIMARY_GLOB = [
   /\/components\/brand\//,
   /\/components\/ui\/Button\.tsx$/,
   /\/components\/ui\/Tabs\.tsx$/,
+  /\/components\/ui\/TableRow\.tsx$/,
+  /\/components\/ui\/CommandPalette\.tsx$/,
+  /\/components\/ui\/Drawer\.tsx$/,
+  /\/components\/ui\/QueryBar\.tsx$/,
 ];
 
 const primaryAllowlist = {

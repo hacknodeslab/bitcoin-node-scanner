@@ -8,16 +8,23 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"no tests yet\" && exit 0",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "tokens:gen": "tsx scripts/generate-design-tokens.ts",
     "tokens:check": "tsx scripts/generate-design-tokens.ts --check"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "1.1.15",
+    "@radix-ui/react-popover": "1.1.15",
+    "@radix-ui/react-scroll-area": "1.2.10",
+    "@radix-ui/react-tabs": "1.1.13",
+    "@radix-ui/react-tooltip": "1.2.8",
     "clsx": "2.1.1",
     "next": "16.2.4",
     "react": "19.2.5",
     "react-dom": "19.2.5",
+    "swr": "2.4.1",
     "tailwind-merge": "3.5.0"
   },
   "devDependencies": {
@@ -26,13 +33,18 @@
     "@types/react-dom": "19.2.3",
     "autoprefixer": "10.5.0",
     "@eslint/eslintrc": "3.3.5",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@vitejs/plugin-react": "6.0.1",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.4",
     "postcss": "8.5.10",
     "prettier": "3.8.3",
     "tailwindcss": "3.4.19",
+    "jsdom": "29.0.2",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
+    "vitest": "4.1.5",
     "yaml": "2.8.3"
   },
   "engines": {
