@@ -7,6 +7,7 @@ import { Pill, type CveSeverity } from "@/components/ui/Pill";
 import { TableRow, TableExpandedRow } from "@/components/ui/TableRow";
 import { cn } from "@/lib/utils";
 import type { NodeOut, RiskLevel } from "@/lib/api/types";
+import type { ExplorerFilters } from "@/lib/query-grammar";
 
 /**
  * STALE threshold mirrored from the backend default. The /api/v1/stats
@@ -200,6 +201,8 @@ export interface NodeTableProps {
   /** Initial sort column; defaults to last_seen desc. */
   initialSortBy?: string;
   initialSortDir?: SortDir;
+  /** Filters lifted from the QueryBarController — merged into the useNodes params. */
+  filters?: ExplorerFilters;
 }
 
 export function NodeTable(props: NodeTableProps = {}) {
@@ -207,10 +210,11 @@ export function NodeTable(props: NodeTableProps = {}) {
   const [sortDir, setSortDir] = useState<SortDir>(props.initialSortDir ?? "desc");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const params = useMemo(() => ({ sort_by: sortBy, sort_dir: sortDir, limit: 100 }), [
-    sortBy,
-    sortDir,
-  ]);
+  const filters = props.filters;
+  const params = useMemo(
+    () => ({ ...filters, sort_by: sortBy, sort_dir: sortDir, limit: 100 }),
+    [filters, sortBy, sortDir],
+  );
   const hook = useNodes(params);
   const hasInjected = props.nodes !== undefined;
   const nodes = hasInjected ? props.nodes : hook.nodes;

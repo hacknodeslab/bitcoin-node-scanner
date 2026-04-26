@@ -100,6 +100,8 @@ export interface CsrfTokenOut {
 export interface NodeListParams {
   risk_level?: RiskLevel;
   country?: string;
+  exposed?: boolean;
+  tor?: boolean;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
   limit?: number;

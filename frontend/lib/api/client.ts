@@ -40,7 +40,7 @@ export class ApiError extends Error {
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 interface RequestOptions {
-  query?: Record<string, string | number | undefined | null>;
+  query?: Record<string, string | number | boolean | undefined | null>;
   body?: unknown;
   headers?: Record<string, string>;
   /** Skip throwing on 402; let the caller see the raw Response. */
