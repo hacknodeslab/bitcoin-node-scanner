@@ -12,6 +12,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { Brand } from "../brand/Brand";
 import { TopNav } from "../explorer/TopNav";
 import { ExplorerFooter } from "../explorer/ExplorerFooter";
+import { ThemeProvider } from "../providers/ThemeProvider";
 import type { ScanJobOut } from "@/lib/api/types";
 
 describe("Brand", () => {
@@ -28,9 +29,14 @@ describe("Brand", () => {
 });
 
 describe("TopNav", () => {
-  it("renders the brand and the ⌘K palette hint", () => {
-    render(<TopNav />);
+  it("renders the brand, theme toggle, and the ⌘K palette hint", () => {
+    render(
+      <ThemeProvider>
+        <TopNav />
+      </ThemeProvider>,
+    );
     expect(screen.getByTestId("brand")).toBeTruthy();
+    expect(screen.getByTestId("theme-toggle")).toBeTruthy();
     const nav = screen.getByTestId("top-nav");
     expect(nav.textContent).toContain("K");
     expect(nav.textContent?.toLowerCase()).toContain("palette");

@@ -1,10 +1,11 @@
 import { Brand } from "@/components/brand/Brand";
 import { Glyph } from "@/components/ui/Glyph";
+import { ThemeToggle } from "./ThemeToggle";
 
 /**
- * Top navigation strip: brand mark on the left, command-palette hint on the
- * right. The actual ⌘K listener and palette UI land in §9; here we render the
- * affordance only.
+ * Top navigation strip: brand mark on the left, theme toggle in the middle,
+ * command-palette hint on the right. The ⌘K listener and palette UI live in
+ * `CommandPaletteRoot` — here we render the affordance only.
  */
 export function TopNav() {
   return (
@@ -13,6 +14,7 @@ export function TopNav() {
       data-testid="top-nav"
     >
       <Brand />
+      <ThemeToggle />
       <div className="flex items-center gap-[6px] text-meta text-muted">
         <Glyph name="cmd" />
         <span>K</span>
