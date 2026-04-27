@@ -68,10 +68,10 @@
 
 ## 9. Command palette
 
-- [ ] 9.1 Implement global `⌘K` / `Ctrl+K` listener at the app root; ignore the shortcut when an input has focus and the user is mid-typing a query
-- [ ] 9.2 Implement command groups for the v0 set (intersection of CLI and REST, finalised in 1.5)
-- [ ] 9.3 Implement keyboard navigation (`↑`/`↓` wrap, `↵` execute, `Esc` close); ensure focus returns to the previously focused element on close
-- [ ] 9.4 Add a CI test (palette-REST parity) that asserts every non-`NAV` palette command resolves to a registered REST endpoint; commands in the `NAV` group are skipped. Output the unmatched command name on failure.
+- [x] 9.1 Global ⌘K / Ctrl+K listener installed by the `CommandPalette` primitive (`installShortcut={true}`), mounted at the explorer client root via `CommandPaletteRoot`. The primitive's listener already gates on `isTypingInInput` (skipping when the user is mid-typing in a query/input).
+- [x] 9.2 v0 set shipped: `scan: start`, `stats: refresh`, `node: list`, `node: clear filters`, `node: filter risk {critical|high|medium|low}` (4 entries), `vuln: list`, `go: explorer`, `palette: close`. **Deferred** (need arg-input or drawer): `scan: status <job_id>`, `node: filter country <code>`, `node: open <ip>`, `drawer: close`, `drawer: copy ip` — documented in `lib/commands.ts`. Actions wired via `ExplorerCommandsContext` so the palette and the footer share one `useScanJob` instance — palette-triggered scans surface status in the footer.
+- [x] 9.3 Keyboard navigation owned by the primitive: ↑/↓ wrap on the focused-index modulo, ↵ executes, Esc closes (Radix Dialog handles focus restoration to the previously focused element).
+- [x] 9.4 `lib/__tests__/commands.test.ts` walks `COMMAND_SPECS`, skips `NAV`, and asserts each `restEndpoint` is a member of `REST_ENDPOINTS` (the registry kept in sync with `src/web/main.py` includes). On drift the test fails with the unmatched command name and target path. Also asserts NAV entries have null `restEndpoint` and ids are unique. 11 cases passing.
 
 ## 10. Node detail drawer
 
