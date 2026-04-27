@@ -23,7 +23,7 @@ Update — or add a new file — when:
 - A new top-level screen is introduced (map tab, billing page, alert config view).
 - A shared component changes meaningfully (table density, new pill vocabulary, query-bar grammar).
 - Design tokens change (new color, new type size, new spacing unit).
-- An "Open Question" (section 04) is resolved — update the doc and remove the question.
+- An "Open Question" is resolved — update the doc and remove the question.
 
 Small in-flight tweaks (copy, padding, a new filter option) don't need a new version. Edit in place and note the change in the PR description.
 
@@ -43,17 +43,11 @@ Five rules that should survive any redesign:
 
 ## Open questions
 
-See section 04 of `dashboard-v0.html` for design decisions that are still open. If you're starting implementation on a component referenced there, resolve the question first — update the doc, file an ADR in `/docs/adr/` if it's a significant architectural implication.
-
-## Related docs
-
-- `/docs/adr/` — architecture decision records.
-- `/docs/rfc/` — larger proposals under discussion.
-- `/README.md` — project overview and setup.
+See section 04 of `dashboard-v0.html` for design decisions that are still open. Resolve a question by editing the doc directly — update the relevant view, remove the question from section 04, note the change in the PR.
 
 ## Contributing
 
-Changes go through PRs like any other code. Tag `@ivan` for design review. Large redesigns: file an RFC first.
+Changes go through PRs like any other code. Tag `@ifuensan` for design review.
 
 ---
 
