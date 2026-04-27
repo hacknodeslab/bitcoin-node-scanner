@@ -55,7 +55,7 @@ for EDITION in "${EDITION_IDS[@]}"; do
   echo "Downloading $EDITION..."
   TMP_TAR="$(mktemp /tmp/geoip_XXXXXX)"
 
-  curl --silent --show-error --fail --location \
+  curl --proto "=https" --silent --show-error --fail --location \
     "${BASE_URL}?edition_id=${EDITION}&license_key=${MAXMIND_LICENSE_KEY}&suffix=tar.gz" \
     -o "$TMP_TAR"
 

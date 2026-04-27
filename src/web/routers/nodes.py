@@ -8,7 +8,7 @@ from typing import Annotated, Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import asc, desc, func, select
+from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...db.connection import get_session_factory
@@ -155,6 +155,8 @@ def list_nodes(
     db: Annotated[Session, Depends(get_db)],
     risk_level: Annotated[Optional[str], Query(description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW")] = None,
     country: Annotated[Optional[str], Query(description="Filter by server location country name (case-insensitive)")] = None,
+    exposed: Annotated[Optional[bool], Query(description="Filter by has_exposed_rpc.")] = None,
+    tor: Annotated[Optional[bool], Query(description="Filter by tor signal (tags include 'tor' or hostname ends in '.onion'). Only `true` is supported in v0.")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -170,6 +172,19 @@ def list_nodes(
         stmt = stmt.where(Node.risk_level == risk_level.upper())
     if country:
         stmt = stmt.where(func.lower(Node.country_name) == country.lower())
+    if exposed is not None:
+        stmt = stmt.where(Node.has_exposed_rpc == exposed)
+    if tor is True:
+        # Same predicate as NodeRepository.count_tor — keep them in sync.
+        stmt = stmt.where(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
+    elif tor is False:
+        # NULL-aware negation is fiddly across dialects; defer until a
+        # dedicated `is_tor` column exists. The query bar in §8.2 doesn't
+        # emit this combination, so dropping it here is safe for v0.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tor=false is not supported in v0; omit the filter or use tor=true.",
+        )
 
     stmt = stmt.order_by(order_fn(sort_col)).offset(offset).limit(limit)
     nodes = list(db.scalars(stmt).all())

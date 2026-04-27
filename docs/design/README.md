@@ -1,14 +1,23 @@
 # Design
 
-Internal design references for `bitcoin-node-scanner`. Source of truth for operator-facing UI — what screens exist, how they behave, why decisions were made.
+Internal design references for `bitcoin-node-scanner`. This folder contains the **visual spec** — concrete renderings of the system in operation.
 
-Not marketing material. Not an exported Figma. Working documents that get forked and edited as the product evolves.
+For canonical token values, naming, and design rationale, see [`/DESIGN.md`](../../DESIGN.md) at the repository root. That file is the machine-readable source of truth and is what coding agents read first.
+
+## How the two pieces fit together
+
+| File | Role | Audience |
+|------|------|----------|
+| `/DESIGN.md` (root) | Tokens (YAML) + rationale (prose). Source of truth for values and naming. | Coding agents, developers implementing components. |
+| `docs/design/dashboard-v0.html` | Visual spec. Shows how the tokens compose into real screens. | Humans reviewing the design, designers iterating on it. |
+
+The two must stay in sync. If a token changes in `DESIGN.md`, the HTML must reflect it. If a component layout changes in the HTML and introduces new tokens, they must be added to `DESIGN.md`.
 
 ## Contents
 
 | File | What it is |
 |------|------------|
-| `dashboard-v0.html` | First-pass design reference for the operator dashboard: design tokens, explorer view, command palette, node detail drawer, and open questions. |
+| `dashboard-v0.html` | First-pass visual spec for the operator dashboard: tokens demo, explorer view, command palette, node detail drawer, and open questions. |
 
 ## Viewing
 
@@ -16,13 +25,13 @@ Open any `.html` file in a browser. Self-contained, no build step. Only external
 
 ## When to update
 
-Update the design refs **before** implementation starts, not after. Treat them as spec.
+Update before implementation starts, not after. Treat the HTML as spec.
 
 Update — or add a new file — when:
 
 - A new top-level screen is introduced (map tab, billing page, alert config view).
 - A shared component changes meaningfully (table density, new pill vocabulary, query-bar grammar).
-- Design tokens change (new color, new type size, new spacing unit).
+- Design tokens change in `/DESIGN.md` — reflect the change visually here too.
 - An "Open Question" is resolved — update the doc and remove the question.
 
 Small in-flight tweaks (copy, padding, a new filter option) don't need a new version. Edit in place and note the change in the PR description.
@@ -33,13 +42,7 @@ A new major design direction = a new file: `dashboard-v1.html`, `dashboard-v2.ht
 
 ## Design principles
 
-Five rules that should survive any redesign:
-
-1. **Monospace everywhere.** Hierarchy comes from size and weight, never from switching type family.
-2. **Color encodes state, not decoration.** Orange is brand only. Red = actionable finding. Amber = warn / tor. Green = healthy / live.
-3. **Data density over whitespace.** This is an operator tool, not a landing page. Dense tables beat heroes.
-4. **L402 is a first-class action.** Pay-to-unlock is a feature, not a paywall. Always visible, never intrusive.
-5. **The palette is the API.** Every command has a matching CLI flag and REST endpoint with the same grammar.
+The five rules that should survive any redesign are documented in `/DESIGN.md` under the Overview and Do's and Don'ts sections. Implementation details and component-level reasoning live there; this folder shows what they look like applied.
 
 ## Open questions
 

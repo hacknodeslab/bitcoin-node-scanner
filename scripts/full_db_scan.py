@@ -178,10 +178,8 @@ def main():
                 time.sleep(PAGE_DELAY)
 
     except shodan.APIError as e:
-        print(f"\nError Shodan: {e}")
-
-    except shodan.APIError as e:
         print(f"\nError Shodan (posiblemente sin créditos): {e}")
+
     finally:
         elapsed = time.time() - start_time
         # Complete scan record

@@ -219,6 +219,38 @@ class NodeRepository:
         ).group_by(Node.risk_level).all()
         return {level or "Unknown": count for level, count in result}
 
+    def count_exposed(self) -> int:
+        """Count nodes with exposed RPC."""
+        return self.session.query(Node).filter(Node.has_exposed_rpc == True).count()
+
+    def count_stale(self, before: datetime) -> int:
+        """Count nodes whose last_seen is older than `before`."""
+        return self.session.query(Node).filter(Node.last_seen < before).count()
+
+    def count_tor(self) -> int:
+        """Count nodes with a tor signal — `tor` in the tag set or a `.onion` hostname."""
+        return (
+            self.session.query(Node)
+            .filter(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
+            .count()
+        )
+
+    def count_ok(self, stale_before: datetime) -> int:
+        """
+        Count nodes considered "clean": LOW risk, no exposed RPC, recent last_seen.
+        Stricter than the complement of EXPOSED/STALE/TOR — those categories can
+        overlap with each other, so a strip-friendly OK count uses positive criteria.
+        """
+        return (
+            self.session.query(Node)
+            .filter(
+                Node.risk_level == "LOW",
+                Node.has_exposed_rpc == False,
+                Node.last_seen >= stale_before,
+            )
+            .count()
+        )
+
     def get_by_id(self, node_id: int) -> Optional[Node]:
         """Get node by ID."""
         return self.session.get(Node, node_id)

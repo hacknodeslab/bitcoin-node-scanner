@@ -2,6 +2,7 @@
 GET /api/v1/stats — aggregate scan statistics.
 """
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -12,6 +13,14 @@ from sqlalchemy.orm import Session
 
 from ...db.repositories import NodeRepository, ScanRepository
 from .nodes import get_db
+
+
+def _stale_threshold_days() -> int:
+    """How old (days) before a node is considered STALE. Configurable via env."""
+    try:
+        return max(1, int(os.getenv("STALE_THRESHOLD_DAYS", "7")))
+    except ValueError:
+        return 7
 
 router = APIRouter()
 
@@ -50,6 +59,14 @@ class StatsOut(BaseModel):
     by_risk_level: Dict[str, int]
     by_country: Dict[str, int]
     vulnerable_nodes_count: int
+    # Strip tokens — see frontend StatsStrip (§8.3). EXPOSED/STALE/TOR/OK use
+    # positive criteria; OK is strict (LOW + not exposed + fresh) and is not
+    # the inverse of the other three.
+    exposed_count: int
+    stale_count: int
+    tor_count: int
+    ok_count: int
+    stale_threshold_days: int
     last_scan_at: Optional[str]
     commit: Optional[str]
 
@@ -70,6 +87,13 @@ def get_stats(db: Session = Depends(get_db)):
 
     vulnerable_count = node_repo.count_vulnerable()
 
+    threshold_days = _stale_threshold_days()
+    stale_before = datetime.utcnow() - timedelta(days=threshold_days)
+    exposed_count = node_repo.count_exposed()
+    stale_count = node_repo.count_stale(stale_before)
+    tor_count = node_repo.count_tor()
+    ok_count = node_repo.count_ok(stale_before)
+
     # Last completed scan timestamp
     last_scan_at = None
     latest_scan = scan_repo.get_latest()
@@ -81,6 +105,11 @@ def get_stats(db: Session = Depends(get_db)):
         by_risk_level=by_risk,
         by_country=top_countries,
         vulnerable_nodes_count=vulnerable_count,
+        exposed_count=exposed_count,
+        stale_count=stale_count,
+        tor_count=tor_count,
+        ok_count=ok_count,
+        stale_threshold_days=threshold_days,
         last_scan_at=last_scan_at,
         commit=_COMMIT,
     )
