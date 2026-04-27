@@ -2,7 +2,7 @@
  * NodeTable wires sortable headers, inline row expansion, and the FLAGS
  * pill set. Tests inject `nodes` directly so SWR doesn't run.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 import { NodeTable } from "../explorer/NodeTable";
@@ -107,21 +107,17 @@ describe("NodeTable", () => {
     expect(pill?.className).toMatch(/text-alert/);
   });
 
-  it("clicking a row toggles inline expansion", () => {
-    render(<NodeTable nodes={[NODE_LOW]} />);
-    const row = screen.getByTestId("node-row-1.1.1.1");
-    expect(screen.queryByText("hostname")).toBeNull();
-    fireEvent.click(row);
-    expect(screen.getByText("hostname")).toBeTruthy();
-    fireEvent.click(row);
-    expect(screen.queryByText("hostname")).toBeNull();
+  it("clicking a row calls onSelectNode with that IP", () => {
+    const onSelectNode = vi.fn();
+    render(<NodeTable nodes={[NODE_LOW, NODE_EXPOSED]} onSelectNode={onSelectNode} />);
+    fireEvent.click(screen.getByTestId("node-row-2.2.2.2"));
+    expect(onSelectNode).toHaveBeenCalledWith("2.2.2.2");
   });
 
-  it("expanded row state colour follows the risk level (CRITICAL → alert border)", () => {
-    render(<NodeTable nodes={[NODE_EXPOSED]} />);
-    fireEvent.click(screen.getByTestId("node-row-2.2.2.2"));
-    const expanded = document.querySelector("[data-state]");
-    expect(expanded?.getAttribute("data-state")).toBe("alert");
+  it("selectedIp marks the matching row with data-selected", () => {
+    render(<NodeTable nodes={[NODE_LOW, NODE_EXPOSED]} selectedIp="2.2.2.2" />);
+    expect(screen.getByTestId("node-row-2.2.2.2").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("node-row-1.1.1.1").getAttribute("data-selected")).toBeNull();
   });
 
   it("clicking a sortable header toggles sort direction; aria-sort tracks the active column", () => {

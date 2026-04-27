@@ -75,12 +75,14 @@
 
 ## 10. Node detail drawer
 
-- [ ] 10.1 Implement drawer layout: sliver (180px, opacity 0.45 with active row at full opacity) + main panel
-- [ ] 10.2 Implement drawer header (meta row, IP+port with port in `alert` when exposed, copy action, subtitle in `meta`/`muted`, close `✗` glyph)
-- [ ] 10.3 Implement tabs row with count badges; CVE count renders in `alert` when nonzero
-- [ ] 10.4 Implement the three cards: open ports (3-col grid), vulnerabilities (CVE pills with severity), cross-references
-- [ ] 10.5 Implement footer action row with right-anchored `button-l402`; wire click to fetch the bound protected resource (v0: `GET /api/v1/l402/example`); on a `402` response whose `WWW-Authenticate` header begins with `L402 `, surface an inline `· l402 not yet available` note (no modal)
-- [ ] 10.6 Implement focus trap and `Esc`-to-close; sliver row activation swaps detail in place without dismissing the drawer
+- [x] 10.1 `NodeDetailDrawer` consumes the existing `Drawer` primitive (180px sliver, active row full opacity + 2px primary left border, dim rest at 0.45). Sliver feed is a stable `useNodes({sort_by:'last_seen', sort_dir:'desc', limit:20})` from `Explorer` so opening the drawer always reads "RECENT", independent of the table's current sort/filter.
+- [x] 10.2 Header: meta row (last_seen + asn) above IP+port (port `text-alert` when `has_exposed_rpc`), copy IP affordance + Radix close button (✗ glyph). Subtitle line (country + user-agent) in `text-meta text-muted`.
+- [x] 10.3 Tabs row: ports / vulnerabilities / refs with right-aligned counts; `tab-count-vulns` renders `text-alert` when count > 0, `text-dim` otherwise. Tabs primitive (Radix anatomy) handles active-state primary underline.
+- [x] 10.4 Three cards rendered per active tab — `card-ports` (3-col grid of port + service), `card-vulns` (CVE pills with severity derived from `risk_level`), `card-refs` (v0 stub with deferral note). Empty states explicit per card.
+- [x] 10.5 Footer: right-anchored `Button` with `variant="l402"`. Click fires `fetchL402Example()` (= `GET /api/v1/l402/example`); on the discriminated `kind:'l402-challenge'` response, surfaces `· l402 not yet available` inline (`role=status`, `text-warn`). 2xx → `· l402 demo OK`. Errors → `· l402 fetch failed`.
+- [x] 10.6 Focus trap and Esc-to-close inherited from Radix Dialog (`Drawer` primitive). Sliver row click invokes `onActivateIp(ip)` which swaps `selectedIp` in `Explorer` without dismissing — `useNodeDetail(ip)` re-fetches the new detail in place.
+
+Inline row expansion (the v0 stand-in shipped in §8.4) is replaced by the drawer. NodeTable now exposes `selectedIp` + `onSelectNode`; `selected={true}` rows render the existing primary left-border treatment from the `TableRow` primitive. 9 vitest cases cover the drawer; NodeTable's two expansion tests are replaced by row-click and selectedIp tests.
 
 ## 11. Cutover and cleanup
 

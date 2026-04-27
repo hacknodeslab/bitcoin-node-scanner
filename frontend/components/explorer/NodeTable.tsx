@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useNodes } from "@/lib/hooks";
 import { Glyph } from "@/components/ui/Glyph";
 import { Pill, type CveSeverity } from "@/components/ui/Pill";
-import { TableRow, TableExpandedRow } from "@/components/ui/TableRow";
+import { TableRow } from "@/components/ui/TableRow";
 import { cn } from "@/lib/utils";
 import type { NodeOut, RiskLevel } from "@/lib/api/types";
 import type { ExplorerFilters } from "@/lib/query-grammar";
@@ -36,13 +36,6 @@ const COLUMNS: ColumnDef[] = [
 
 const GRID_TEMPLATE = `grid-cols-[180px_60px_180px_40px_80px_1fr]`;
 type SortDir = "asc" | "desc";
-
-const RISK_TO_STATE: Record<RiskLevel, "alert" | "warn" | "ok"> = {
-  CRITICAL: "alert",
-  HIGH: "alert",
-  MEDIUM: "warn",
-  LOW: "ok",
-};
 
 const RISK_TO_CVE_SEVERITY: Record<RiskLevel, CveSeverity> = {
   CRITICAL: "critical",
@@ -127,69 +120,33 @@ function HeaderCell({ col, sortBy, sortDir, onSort }: HeaderCellProps) {
 
 function NodeRow({
   node,
-  expanded,
-  onToggle,
+  selected,
+  onSelect,
 }: {
   node: NodeOut;
-  expanded: boolean;
-  onToggle: () => void;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const portClass = node.has_exposed_rpc ? "text-alert" : "text-text";
   return (
-    <>
-      <TableRow
-        onClick={onToggle}
-        className={cn("cursor-pointer", `grid ${GRID_TEMPLATE} gap-[14px]`)}
-        data-testid={`node-row-${node.ip}`}
-      >
-        <span className="flex items-center gap-[6px] text-body-sm">
-          <Glyph
-            name="chevron"
-            className={cn("text-dim", expanded ? "rotate-90" : "")}
-          />
-          {node.ip}
-        </span>
-        <span className={cn("text-body-sm", portClass)}>{node.port}</span>
-        <span className="text-body-sm text-text-dim truncate">
-          {node.version ?? "—"}
-        </span>
-        <span className="text-body-sm text-muted">{node.country_code ?? "—"}</span>
-        <span className="text-body-sm text-text">{node.risk_level ?? "—"}</span>
-        <span className="flex flex-wrap gap-[4px]">{pillsFor(node)}</span>
-      </TableRow>
-      {expanded ? (
-        <TableExpandedRow state={node.risk_level ? RISK_TO_STATE[node.risk_level] : "dim"}>
-          <div className="grid grid-cols-2 gap-x-[24px] gap-y-[4px]">
-            <div>
-              <span className="text-dim">hostname </span>
-              <span className="text-text">{node.hostname ?? "—"}</span>
-            </div>
-            <div>
-              <span className="text-dim">last seen </span>
-              <span className="text-text">{node.last_seen ?? "—"}</span>
-            </div>
-            <div>
-              <span className="text-dim">asn </span>
-              <span className="text-text">{node.asn ?? "—"}</span>
-            </div>
-            <div>
-              <span className="text-dim">country </span>
-              <span className="text-text">{node.country_name ?? "—"}</span>
-            </div>
-            <div>
-              <span className="text-dim">user-agent </span>
-              <span className="text-text">{node.user_agent ?? "—"}</span>
-            </div>
-            <div>
-              <span className="text-dim">tags </span>
-              <span className="text-text">
-                {node.tags && node.tags.length > 0 ? node.tags.join(", ") : "—"}
-              </span>
-            </div>
-          </div>
-        </TableExpandedRow>
-      ) : null}
-    </>
+    <TableRow
+      onClick={onSelect}
+      selected={selected}
+      className={cn("cursor-pointer", `grid ${GRID_TEMPLATE} gap-[14px]`)}
+      data-testid={`node-row-${node.ip}`}
+    >
+      <span className="flex items-center gap-[6px] text-body-sm">
+        <Glyph name="chevron" className="text-dim" />
+        {node.ip}
+      </span>
+      <span className={cn("text-body-sm", portClass)}>{node.port}</span>
+      <span className="text-body-sm text-text-dim truncate">
+        {node.version ?? "—"}
+      </span>
+      <span className="text-body-sm text-muted">{node.country_code ?? "—"}</span>
+      <span className="text-body-sm text-text">{node.risk_level ?? "—"}</span>
+      <span className="flex flex-wrap gap-[4px]">{pillsFor(node)}</span>
+    </TableRow>
   );
 }
 
@@ -203,12 +160,15 @@ export interface NodeTableProps {
   initialSortDir?: SortDir;
   /** Filters lifted from the QueryBarController — merged into the useNodes params. */
   filters?: ExplorerFilters;
+  /** IP currently shown in the drawer. The matching row gets the selected border. */
+  selectedIp?: string | null;
+  /** Click on any row → fired with that node's IP. */
+  onSelectNode?: (ip: string) => void;
 }
 
 export function NodeTable(props: NodeTableProps = {}) {
   const [sortBy, setSortBy] = useState<string>(props.initialSortBy ?? "last_seen");
   const [sortDir, setSortDir] = useState<SortDir>(props.initialSortDir ?? "desc");
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const filters = props.filters;
   const params = useMemo(
@@ -268,8 +228,8 @@ export function NodeTable(props: NodeTableProps = {}) {
           <NodeRow
             key={n.id}
             node={n}
-            expanded={expanded === n.ip}
-            onToggle={() => setExpanded((cur) => (cur === n.ip ? null : n.ip))}
+            selected={props.selectedIp === n.ip}
+            onSelect={() => props.onSelectNode?.(n.ip)}
           />
         ))
       )}
