@@ -174,6 +174,17 @@ describe("QueryBar grammar", () => {
     ]);
   });
 
+  it("parseQuery preserves spaces inside double-quoted values", () => {
+    expect(parseQuery('country="United States" risk=high')).toEqual([
+      { key: "country", value: "United States" },
+      { key: "risk", value: "high" },
+    ]);
+  });
+
+  it("parseQuery handles a `=` inside a bareword value as part of the value", () => {
+    expect(parseQuery("foo=bar=baz")).toEqual([{ key: "foo", value: "bar=baz" }]);
+  });
+
   it("alert-coded value renders text-alert", () => {
     const { container } = render(<QueryBar query="exposed=true" />);
     const alertSpan = Array.from(container.querySelectorAll("span")).find(

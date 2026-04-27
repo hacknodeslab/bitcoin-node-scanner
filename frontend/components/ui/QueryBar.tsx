@@ -34,19 +34,28 @@ function valueToneClass(t: QueryToken): string {
 }
 
 /**
- * Tokenises a query string into ordered key=value pairs. Whitespace-separated.
- * Tokens without `=` are dropped — the grammar requires explicit fields.
+ * Tokenises a query string into ordered key=value pairs.
+ *
+ * Grammar:
+ *   - `key=value` — bareword value, terminated by whitespace.
+ *   - `key="quoted value"` — value may contain spaces; surrounding double
+ *     quotes are stripped from the captured value.
+ *
+ * Bareword segments without `=` are dropped — the grammar requires explicit
+ * fields. The regex anchors on `\w+=` so a stray `=` inside a bareword
+ * (`foo=bar=baz`) keeps everything after the first `=` as the value.
  */
+const TOKEN_RE = /(\w+)=(?:"([^"]*)"|(\S+))/g;
+
 export function parseQuery(input: string): QueryToken[] {
-  return input
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((seg) => {
-      const eq = seg.indexOf("=");
-      if (eq === -1) return null;
-      return { key: seg.slice(0, eq), value: seg.slice(eq + 1) };
-    })
-    .filter((t): t is QueryToken => t !== null);
+  const tokens: QueryToken[] = [];
+  let m: RegExpExecArray | null;
+  TOKEN_RE.lastIndex = 0;
+  while ((m = TOKEN_RE.exec(input)) !== null) {
+    const value = m[2] !== undefined ? m[2] : m[3];
+    tokens.push({ key: m[1], value });
+  }
+  return tokens;
 }
 
 export interface QueryBarProps {
