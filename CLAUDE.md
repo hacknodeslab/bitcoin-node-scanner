@@ -25,9 +25,9 @@ python -m pytest tests/ --cov=src --cov-report=term-missing
 python -m src.web.main
 
 # Run the scanner
-python src/scanner.py
-python src/scanner.py --quick            # Cache + limited enrichment
-python src/scanner.py --check-credits    # Check Shodan API credits
+python -m src.scanner
+python -m src.scanner --quick            # Cache + limited enrichment
+python -m src.scanner --check-credits    # Check Shodan API credits
 
 # Database CLI
 python -m src.db.cli db-stats --days 30
