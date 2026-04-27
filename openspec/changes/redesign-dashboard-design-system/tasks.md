@@ -86,15 +86,15 @@ Inline row expansion (the v0 stand-in shipped in §8.4) is replaced by the drawe
 
 ## 11. Cutover and cleanup
 
-- [ ] 11.1 Remove `src/web/static/index.html` and any `StaticFiles` mount in `src/web/main.py` that referenced it
-- [ ] 11.2 Update `README.md`, `SETUP_INSTRUCTIONS.md`, `docs/design/README.md`, and `CLAUDE.md` to document the two-toolchain workflow (uv/pip + pnpm) and the new `frontend/` location
-- [ ] 11.3 Update the project overview in `CLAUDE.md`'s "Architecture" section to reflect the Next.js dashboard living at `frontend/`, with FastAPI no longer serving HTML
-- [ ] 11.4 Remove any references to `index.html` or `StaticFiles` in tests; add an integration test that `GET /` returns a 302 to `FRONTEND_ORIGIN`
-- [ ] 11.5 File the follow-up changes: `align-cli-api-palette-grammar` (parity work — see D10's parity-debt list: add `GET /nodes/by-ip/{ip}`, add CLI flags for non-stats palette commands, promote `db-stats` → `stats`, decide REST status of `db-trends`/`db-export`/`db-import`/`enrich-geo`/`--check-credits`) and `l402-payment-flow` (real L402 macaroon + Lightning invoice issuance replacing the placeholder 402 challenge)
+- [x] 11.1 `src/web/static/` and `src/web/static/index.html` deleted. `src/web/main.py` no longer imports `FileResponse`/`StaticFiles`/`Path`; `dashboard()` is a one-liner returning a 302 to `FRONTEND_ORIGIN[0]` (or the default `http://localhost:3000`). Comment in the route notes the 30-day removal target.
+- [x] 11.2 `README.md` "Web Interface" section rewritten: two-process layout (FastAPI backend + Next.js frontend), env vars for both sides (`NEXT_PUBLIC_*` listed), updated endpoint table, `ENABLE_API_DOCS` gate documented. `SETUP_INSTRUCTIONS.md` had no web/dashboard refs (predates the web layer entirely) and was left untouched. `docs/design/README.md` is design-system metadata about `dashboard-v0.html` and didn't need a touch.
+- [x] 11.3 `CLAUDE.md` Architecture diagram now shows `frontend/ (Next.js dashboard)` instead of `web/static/ (Dashboard)` and includes a paragraph on the two-toolchain workflow.
+- [x] 11.4 No leftover `index.html` / `StaticFiles` refs in tests. New `TestRootRedirect.test_root_redirects_to_frontend_origin` asserts `GET /` returns 302 with a `Location` starting with the default `FRONTEND_ORIGIN`. Backend suite: 45/45 (including the new test).
+- [x] 11.5 Filed both follow-up changes: `openspec/changes/align-cli-api-palette-grammar/` (proposal + tasks + specs/web-dashboard/spec.md) covers `GET /nodes/by-ip/{ip}`, the deferred palette entries, the argument-input mode, and the `db-stats` → `stats` rename. `openspec/changes/l402-payment-flow/` (proposal + tasks + specs/l402-protocol/spec.md) covers macaroon issuance, Lightning invoice generation, status polling, and the verifier. Both validate clean.
 
 ## 12. Verification
 
-- [ ] 12.1 Run `pnpm --filter frontend lint typecheck build` cleanly
-- [ ] 12.2 Run `pytest tests/` cleanly with the CORS, CSRF, redirect, and L402 stub changes
-- [ ] 12.3 Run the visual-regression suite for the three views and confirm token snapshots match
-- [ ] 12.4 Run `openspec validate redesign-dashboard-design-system` and confirm zero errors before `/opsx:apply`
+- [x] 12.1 `frontend`: `pnpm typecheck` ✓, `pnpm lint` ✓ (0 errors / 0 warnings), `pnpm build` ✓, `pnpm test --run` ✓ (113/113).
+- [x] 12.2 `pytest tests/test_web_*.py` ✓ (45/45 — CORS, CSRF, redirect-to-FRONTEND_ORIGIN, L402 stub, scan-job lifecycle, stats with strip tokens, nodes filters incl. exposed/tor).
+- [ ] 12.3 Visual regression suite — deferred to M5 alongside §4.8 (the regression tests are meaningful only against rendered views, and the same multi-screen scaffolding satisfies both this task and the "≤3 orange touchpoints per screen" guard).
+- [x] 12.4 `openspec validate redesign-dashboard-design-system` → "is valid".

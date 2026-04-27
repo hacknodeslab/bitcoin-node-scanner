@@ -55,10 +55,12 @@ Shodan API ──► scanner.py ──► db/scanner_integration.py ──► SQ
                                                                     │
                                                               db/repositories/
                                                                     │
-                                                         web/routers/ (FastAPI)
+                                                         web/routers/ (FastAPI · /api/v1)
                                                                     │
-                                                          web/static/ (Dashboard)
+                                                       frontend/ (Next.js dashboard)
 ```
+
+The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and Node (pnpm) for the dashboard at `frontend/`. They are deployed and developed as two processes — FastAPI on `:8000` exposes `/api/v1/*`, the Next.js app on `:3000` consumes it cross-origin. `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN`. FastAPI no longer serves any HTML.
 
 ### Key Modules (`src/`)
 

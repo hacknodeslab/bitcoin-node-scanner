@@ -74,37 +74,61 @@ This fills in missing geo fields (city, region, coordinates, ASN) for all nodes 
 
 ## Web Interface
 
-The scanner includes an optional FastAPI web server that provides a REST API and browser dashboard for exploring scan results without using the CLI.
+The web interface is a two-process setup:
 
-### Starting the web server
+1. **FastAPI backend** (`src/web/`) — serves the REST API at `/api/v1/*`. Does not serve HTML.
+2. **Next.js dashboard** (`frontend/`) — operator dashboard, calls the backend cross-origin.
 
+`GET /` on the backend 302-redirects to `FRONTEND_ORIGIN` (default `http://localhost:3000`).
+
+### Starting both
+
+Two terminals.
+
+**Backend** (Python / pip):
 ```bash
-# Set required environment variables
 export DATABASE_URL="sqlite:///./bitcoin_scanner.db"   # or PostgreSQL URL
-export WEB_API_KEY="your-strong-random-secret"         # protects all API endpoints
-export WEB_HOST="127.0.0.1"                            # default: 127.0.0.1
-export WEB_PORT="8000"                                 # default: 8000
+export WEB_API_KEY="your-strong-random-secret"
+export FRONTEND_ORIGIN="http://localhost:3000"          # CORS allow-list
 
-# Start the server
 python -m src.web.main
-# or, after installing the package:
+# or after installing the package:
 bitcoin-scanner-web
 ```
 
-Open `http://127.0.0.1:8000/` in a browser. You will be prompted for the API key.
+**Frontend** (Node / pnpm):
+```bash
+cd frontend
+pnpm install
+# Create frontend/.env.local with the values below, then:
+pnpm dev
+```
+
+`frontend/.env.local`:
+```
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+NEXT_PUBLIC_WEB_API_KEY=<same value as backend WEB_API_KEY>
+```
+
+Open `http://localhost:3000/` to use the dashboard.
 
 ### API reference
 
-Interactive docs are available at `http://127.0.0.1:8000/docs` (Swagger UI) and `/redoc`.
+`/docs` (Swagger UI), `/redoc`, and `/openapi.json` are gated behind `ENABLE_API_DOCS` (set to `1` / `true` / `yes` in local dev; disabled by default to keep the public surface minimal).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/nodes` | List scanned nodes (supports `risk_level`, `limit`, `offset` query params) |
-| GET | `/api/v1/stats` | Aggregate statistics (counts by risk level, top countries, last scan time) |
+| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `sort_by`, `sort_dir`, `limit`, `offset`) |
+| GET | `/api/v1/nodes/countries` | Distinct country names |
+| GET | `/api/v1/nodes/{id}/geo` | Geo + ASN detail for a single node |
+| GET | `/api/v1/stats` | Aggregate statistics (TOTAL / EXPOSED / STALE / TOR / OK + by_risk_level, by_country) |
+| GET | `/api/v1/vulnerabilities` | CVE catalogue |
 | POST | `/api/v1/scans` | Trigger a background scan; returns `job_id` |
-| GET | `/api/v1/scans/{job_id}` | Get scan job status (`pending`/`running`/`completed`/`failed`) |
+| GET | `/api/v1/scans/{job_id}` | Job status (`pending`/`running`/`completed`/`failed`) |
+| GET | `/api/v1/csrf-token` | Bootstrap the double-submit CSRF token |
+| GET | `/api/v1/l402/example` | L402 challenge stub (returns 402 + `WWW-Authenticate: L402 …`) |
 
-All endpoints require the `X-API-Key` header.
+All `/api/v1/*` endpoints (except `/csrf-token` and `/l402/example`) require the `X-API-Key` header. Mutating verbs additionally require `X-CSRF-Token`.
 
 ### Environment variables
 
@@ -114,6 +138,9 @@ All endpoints require the `X-API-Key` header.
 | `WEB_HOST` | No | `127.0.0.1` | Host the server binds to |
 | `WEB_PORT` | No | `8000` | Port the server listens on |
 | `DATABASE_URL` | Yes | — | SQLAlchemy database URL (SQLite or PostgreSQL) |
+| `FRONTEND_ORIGIN` | No | `http://localhost:3000` | CORS allow-list; comma-separated for multiple |
+| `ENABLE_API_DOCS` | No | off | Set to `1`/`true`/`yes` to expose `/docs`, `/redoc`, `/openapi.json` |
+| `STALE_THRESHOLD_DAYS` | No | `7` | Age in days before a node is counted as STALE |
 
 > **Security note**: Do not expose the web server on a public interface without a TLS-terminating reverse proxy (e.g., nginx). The API key provides authentication but not encryption.
 
