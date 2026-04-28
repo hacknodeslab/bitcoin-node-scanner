@@ -1,0 +1,33 @@
+[Unit]
+Description=Bitcoin Node Scanner — Next.js dashboard
+Documentation=https://github.com/ifuensan/bitcoin-node-scanner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+# Runtime root is OUTSIDE the git checkout so `git pull` on the backend
+# deploy never collides with the deployed Next.js artifact.
+WorkingDirectory=/home/ubuntu/bitcoin-scanner-frontend
+ExecStart=/usr/bin/node server.js
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+Restart=on-failure
+RestartSec=5
+MemoryMax=512M
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/bitcoin-scanner-frontend
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -48,9 +48,13 @@ interface RequestOptions {
 }
 
 function buildUrl(path: string, query?: RequestOptions["query"]): string {
-  const url = new URL(
-    path.startsWith("http") ? path : `${API_BASE_URL}${path}`,
-  );
+  const target = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  // API_BASE_URL may be absolute ("http://localhost:8000/api/v1") in dev or
+  // relative ("/api/v1") in same-origin prod deploys. The URL constructor
+  // requires a base when the first arg is relative.
+  const base =
+    typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const url = new URL(target, base);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       if (v === undefined || v === null) continue;

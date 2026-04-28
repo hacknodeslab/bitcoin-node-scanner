@@ -77,9 +77,12 @@ This fills in missing geo fields (city, region, coordinates, ASN) for all nodes 
 The web interface is a two-process setup:
 
 1. **FastAPI backend** (`src/web/`) — serves the REST API at `/api/v1/*`. Does not serve HTML.
-2. **Next.js dashboard** (`frontend/`) — operator dashboard, calls the backend cross-origin.
+2. **Next.js dashboard** (`frontend/`) — operator dashboard, calls the backend.
 
 `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN` (default `http://localhost:3000`).
+
+In **dev**, the two processes are on different ports (`:8000` + `:3000`) and the frontend calls the backend cross-origin.
+In **prod**, nginx serves both on port 80 from a single origin (`/api/` → backend, `/` → Next.js), so there is no cross-origin traffic in the browser. See [`docs/deploy-frontend.md`](docs/deploy-frontend.md) for the deploy pipeline, host bootstrap, and rollback playbook.
 
 ### Starting both
 
@@ -222,6 +225,7 @@ bitcoin-node-scanner/
 - [API Reference](docs/API.md)
 - [Methodology](docs/METHODOLOGY.md)
 - [Database Support](docs/DATABASE.md)
+- [Frontend Deployment](docs/deploy-frontend.md)
 
 ## Example Output
 

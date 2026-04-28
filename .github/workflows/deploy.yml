@@ -7,22 +7,109 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EC2_HOST: 98.94.124.224
+  EC2_USER: ubuntu
+  REPO_DIR: /home/ubuntu/bitcoin-node-scanner
+  # Runtime root for the Next.js artifact, OUTSIDE the git checkout so the
+  # backend deploy's `git pull` never collides with the deployed server.js.
+  FRONTEND_RUNTIME_DIR: /home/ubuntu/bitcoin-scanner-frontend
+  FRONTEND_STAGING_DIR: /home/ubuntu/bitcoin-scanner-frontend-staging
 
 jobs:
-  deploy:
+  # Backend deploys first. If the frontend deploy later fails, the backend is
+  # still on the new revision and the previous frontend keeps serving.
+  backend:
+    name: Backend (FastAPI)
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: 98.94.124.224
-          username: ubuntu
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd /home/ubuntu/bitcoin-node-scanner
+            cd ${{ env.REPO_DIR }}
             git pull origin main
             source venv/bin/activate
             pip install -r requirements.txt --quiet
             sudo systemctl daemon-reload
             sudo systemctl restart bitcoin-scanner
             sudo systemctl status bitcoin-scanner --no-pager
+
+  # Frontend builds the artifact in CI (build inside the deploy job — design D2,
+  # strategy (b)) and ships only the standalone server output. The host does not
+  # run `pnpm install` or `pnpm build`.
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    needs: backend
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (production, same-origin)
+        env:
+          # Same-origin: nginx serves /api on the public origin (see design D3).
+          NEXT_PUBLIC_API_BASE_URL: /api/v1
+          # WEB_API_KEY is shipped to the browser. The host backend's
+          # WEB_API_KEY env var must match this value.
+          NEXT_PUBLIC_WEB_API_KEY: ${{ secrets.WEB_API_KEY }}
+        run: pnpm build
+
+      - name: Assemble frontend-dist (standalone layout)
+        # next.js standalone server expects `static/` and `public/` to sit
+        # alongside `server.js`. We assemble that layout here so the host gets
+        # a single rsync-able directory.
+        run: |
+          rm -rf frontend-dist
+          mkdir -p frontend-dist
+          cp -a .next/standalone/. frontend-dist/
+          mkdir -p frontend-dist/.next
+          cp -a .next/static frontend-dist/.next/static
+          if [ -d public ]; then cp -a public frontend-dist/public; fi
+          ls -la frontend-dist/
+
+      - name: Upload artifact to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "frontend/frontend-dist/*"
+          target: "${{ env.FRONTEND_STAGING_DIR }}"
+          strip_components: 2
+          rm: true
+
+      - name: Activate new artifact and restart service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            # Atomic-ish swap: rsync staging → live, then restart.
+            rsync -a --delete ${{ env.FRONTEND_STAGING_DIR }}/ ${{ env.FRONTEND_RUNTIME_DIR }}/
+            rm -rf ${{ env.FRONTEND_STAGING_DIR }}
+            sudo systemctl restart bitcoin-scanner-frontend
+            # Fail the job if the service is not active after restart.
+            sudo systemctl is-active bitcoin-scanner-frontend
+            sudo systemctl status bitcoin-scanner-frontend --no-pager

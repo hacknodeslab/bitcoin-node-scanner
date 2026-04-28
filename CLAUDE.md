@@ -60,7 +60,10 @@ Shodan API ──► scanner.py ──► db/scanner_integration.py ──► SQ
                                                        frontend/ (Next.js dashboard)
 ```
 
-The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and Node (pnpm) for the dashboard at `frontend/`. They are deployed and developed as two processes — FastAPI on `:8000` exposes `/api/v1/*`, the Next.js app on `:3000` consumes it cross-origin. `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN`. FastAPI no longer serves any HTML.
+The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and Node (pnpm) for the dashboard at `frontend/`. They run as two processes — FastAPI on `:8000` exposes `/api/v1/*`, the Next.js app on `:3000` consumes it. `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN`. FastAPI no longer serves any HTML.
+
+- **Dev**: cross-origin (`localhost:3000` → `localhost:8000`). CORS allow-list driven by `FRONTEND_ORIGIN`.
+- **Prod**: single-origin via nginx on port 80 (`/api/` → backend, `/` → Next.js). No CORS preflight from browsers. `NEXT_PUBLIC_API_BASE_URL=/api/v1` (relative). Deployment via `.github/workflows/deploy.yml` to a single EC2 host running both as systemd units (`bitcoin-scanner.service` + `bitcoin-scanner-frontend.service`). See `docs/deploy-frontend.md`.
 
 ### Key Modules (`src/`)
 
