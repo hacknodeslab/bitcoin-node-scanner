@@ -69,3 +69,6 @@
   --color-l402-bg: #fff2d6;
 }
 /* === END GENERATED TOKENS === */
+
+:root { color-scheme: dark; }
+[data-theme="light"] { color-scheme: light; }
