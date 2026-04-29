@@ -1,7 +1,7 @@
 /**
  * Codegen: parses /DESIGN.md YAML front matter and emits two files
  *   - frontend/lib/design-tokens.ts (typed constants for tailwind.config.ts)
- *   - frontend/app/globals.css :root block (CSS custom properties)
+ *   - frontend/app/globals.css :root + [data-theme="light"] blocks (CSS custom properties)
  *
  * Usage:
  *   pnpm tokens:gen           write the files
@@ -27,8 +27,10 @@ const TOKENS_BANNER =
 const CSS_BEGIN = "/* === BEGIN GENERATED TOKENS === */";
 const CSS_END = "/* === END GENERATED TOKENS === */";
 
+type ColorMap = Record<string, string>;
+
 type DesignDoc = {
-  colors: Record<string, string>;
+  themes: { dark: ColorMap; light: ColorMap };
   typography: Record<
     string,
     {
@@ -81,7 +83,13 @@ function asTsLiteral(v: unknown): string {
 
 function buildTokensTs(doc: DesignDoc): string {
   // Tailwind theme.colors expects a flat record of name → CSS color.
-  const colors: Record<string, string> = { ...doc.colors };
+  // `colors` stays as the dark palette to preserve compile-time behaviour;
+  // the actual runtime swap happens via [data-theme="light"] in globals.css.
+  const themes: Record<"dark" | "light", ColorMap> = {
+    dark: { ...doc.themes.dark },
+    light: { ...doc.themes.light },
+  };
+  const colors: ColorMap = themes.dark;
 
   // fontFamily.mono — JetBrains Mono with monospace fallback chain.
   const fontFamily = {
@@ -108,7 +116,9 @@ function buildTokensTs(doc: DesignDoc): string {
   const spacing: Record<string, string> = { ...doc.spacing, "0": "0px" };
   const borderRadius: Record<string, string> = { ...doc.rounded };
 
-  // Component tokens (resolved). Useful for owned primitives that need raw values.
+  // Component tokens (resolved against dark palette). Useful for owned primitives
+  // that need raw values; theme-swap happens at the CSS-variable level for
+  // anything wired through Tailwind utilities.
   const components: Record<string, Record<string, unknown>> = {};
   for (const [cname, props] of Object.entries(doc.components)) {
     components[cname] = {};
@@ -119,6 +129,8 @@ function buildTokensTs(doc: DesignDoc): string {
 
   return [
     TOKENS_BANNER,
+    "",
+    "export const themes = " + asTsLiteral(themes) + " as const;",
     "",
     "export const colors = " + asTsLiteral(colors) + " as const;",
     "",
@@ -135,13 +147,14 @@ function buildTokensTs(doc: DesignDoc): string {
     "export type ColorToken = keyof typeof colors;",
     "export type SpacingToken = keyof typeof spacing;",
     "export type FontSizeToken = keyof typeof fontSize;",
+    "export type ThemeName = keyof typeof themes;",
     "",
   ].join("\n");
 }
 
 function buildCssBlock(doc: DesignDoc): string {
   const lines: string[] = [CSS_BEGIN, ":root {"];
-  for (const [name, hex] of Object.entries(doc.colors)) {
+  for (const [name, hex] of Object.entries(doc.themes.dark)) {
     lines.push(`  --color-${name}: ${hex};`);
   }
   for (const [name, val] of Object.entries(doc.spacing)) {
@@ -157,6 +170,11 @@ function buildCssBlock(doc: DesignDoc): string {
     if (t.lineHeight !== undefined)
       lines.push(`  --line-height-${name}: ${t.lineHeight};`);
     if (t.letterSpacing) lines.push(`  --letter-spacing-${name}: ${t.letterSpacing};`);
+  }
+  lines.push("}");
+  lines.push('[data-theme="light"] {');
+  for (const [name, hex] of Object.entries(doc.themes.light)) {
+    lines.push(`  --color-${name}: ${hex};`);
   }
   lines.push("}", CSS_END);
   return lines.join("\n");

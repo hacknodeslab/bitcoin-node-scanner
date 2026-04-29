@@ -99,6 +99,12 @@ Background scans run via `web/background.py` (async task executor) so they don't
 
 Fetches CVE data from the National Vulnerability Database. `client.py` handles HTTP, `service.py` adds caching and database persistence, `models.py` defines the CVE schema.
 
+### Frontend theming (`frontend/`)
+
+Tokens are sourced from `/DESIGN.md`'s YAML front matter. The `themes:` map defines two colour palettes — `dark` (default) and `light` — both with the same 18 token names. `pnpm tokens:gen` regenerates `frontend/lib/design-tokens.ts` (typed `themes` + `colors` exports) and the `:root` + `[data-theme="light"]` blocks inside `frontend/app/globals.css`. Tailwind utilities reference CSS custom properties, so the active theme swaps at runtime when `<html>` carries `data-theme="light"`.
+
+The active mode (`dark` / `light` / `system`) lives in `localStorage['bns:theme']`. An inline pre-hydration script in `app/layout.tsx` (`THEME_INIT_SCRIPT` from `lib/theme.ts`) reads it before React mounts to avoid a flash of wrong theme. `ThemeProvider` (`components/providers/ThemeProvider.tsx`) owns the runtime state and tracks `prefers-color-scheme` only while in `system` mode.
+
 ## Important Conventions
 
 - **Shodan credit efficiency**: The `OptimizedBitcoinScanner` and `CachedNodeManager` exist specifically to minimize API credit usage — avoid adding code paths that bypass this.

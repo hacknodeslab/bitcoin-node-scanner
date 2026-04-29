@@ -3,25 +3,45 @@ version: alpha
 name: bns / scanner
 description: Operator dashboard for bitcoin-node-scanner. OSINT terminal aesthetic — data-dense, monospace-first, Bitcoin orange reserved for brand and CTAs.
 
-colors:
-  primary: "#F7931A"
-  bg: "#0a0a0a"
-  surface: "#141414"
-  surface-2: "#1a1a1a"
-  border: "#2a2a2a"
-  border-dim: "#1e1e1e"
-  text: "#e0e0e0"
-  text-dim: "#aaaaaa"
-  muted: "#888888"
-  dim: "#555555"
-  ok: "#00ff9c"
-  warn: "#ffb000"
-  alert: "#ff4444"
-  on-primary: "#0a0a0a"
-  alert-bg: "#2a0000"
-  warn-bg: "#2a1f00"
-  ok-bg: "#002a1a"
-  l402-bg: "#1a1200"
+themes:
+  dark:
+    primary: "#F7931A"
+    bg: "#0a0a0a"
+    surface: "#141414"
+    surface-2: "#1a1a1a"
+    border: "#2a2a2a"
+    border-dim: "#1e1e1e"
+    text: "#e0e0e0"
+    text-dim: "#aaaaaa"
+    muted: "#888888"
+    dim: "#555555"
+    ok: "#00ff9c"
+    warn: "#ffb000"
+    alert: "#ff4444"
+    on-primary: "#0a0a0a"
+    alert-bg: "#2a0000"
+    warn-bg: "#2a1f00"
+    ok-bg: "#002a1a"
+    l402-bg: "#1a1200"
+  light:
+    primary: "#F7931A"
+    bg: "#f6f6f6"
+    surface: "#ffffff"
+    surface-2: "#ececec"
+    border: "#d4d4d4"
+    border-dim: "#e4e4e4"
+    text: "#1a1a1a"
+    text-dim: "#404040"
+    muted: "#5a5a5a"
+    dim: "#8a8a8a"
+    ok: "#008f5c"
+    warn: "#a36a00"
+    alert: "#cc0000"
+    on-primary: "#0a0a0a"
+    alert-bg: "#ffe5e5"
+    warn-bg: "#fff4d6"
+    ok-bg: "#daf5e8"
+    l402-bg: "#fff2d6"
 
 typography:
   display:
@@ -70,83 +90,83 @@ spacing:
 
 components:
   pill-alert:
-    backgroundColor: "{colors.alert-bg}"
-    textColor: "{colors.alert}"
+    backgroundColor: "{themes.dark.alert-bg}"
+    textColor: "{themes.dark.alert}"
     typography: "{typography.label}"
     rounded: "{rounded.none}"
     padding: 2px
 
   pill-warn:
-    backgroundColor: "{colors.warn-bg}"
-    textColor: "{colors.warn}"
+    backgroundColor: "{themes.dark.warn-bg}"
+    textColor: "{themes.dark.warn}"
     typography: "{typography.label}"
     rounded: "{rounded.none}"
     padding: 2px
 
   pill-ok:
-    backgroundColor: "{colors.ok-bg}"
-    textColor: "{colors.ok}"
+    backgroundColor: "{themes.dark.ok-bg}"
+    textColor: "{themes.dark.ok}"
     typography: "{typography.label}"
     rounded: "{rounded.none}"
     padding: 2px
 
   button-secondary:
-    backgroundColor: "{colors.surface-2}"
-    textColor: "{colors.text-dim}"
+    backgroundColor: "{themes.dark.surface-2}"
+    textColor: "{themes.dark.text-dim}"
     typography: "{typography.meta}"
     rounded: "{rounded.none}"
     padding: 4px
 
   button-secondary-hover:
-    backgroundColor: "{colors.surface-2}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.surface-2}"
+    textColor: "{themes.dark.text}"
 
   button-l402:
-    backgroundColor: "{colors.l402-bg}"
-    textColor: "{colors.primary}"
+    backgroundColor: "{themes.dark.l402-bg}"
+    textColor: "{themes.dark.primary}"
     typography: "{typography.meta}"
     rounded: "{rounded.none}"
     padding: 5px
 
   input-query:
-    backgroundColor: "{colors.bg}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.bg}"
+    textColor: "{themes.dark.text}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.none}"
     padding: 10px
 
   card:
-    backgroundColor: "{colors.surface}"
+    backgroundColor: "{themes.dark.surface}"
     rounded: "{rounded.none}"
     padding: 8px
 
   table-row:
-    backgroundColor: "{colors.bg}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.bg}"
+    textColor: "{themes.dark.text}"
     typography: "{typography.body-sm}"
     padding: 9px
 
   table-row-expanded:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.surface}"
+    textColor: "{themes.dark.text}"
 
   stat-tile:
-    backgroundColor: "{colors.bg}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.bg}"
+    textColor: "{themes.dark.text}"
     typography: "{typography.mono-num}"
     rounded: "{rounded.none}"
     padding: 10px
 
   command-palette-item:
-    backgroundColor: "{colors.bg}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.bg}"
+    textColor: "{themes.dark.text}"
     typography: "{typography.body-sm}"
     rounded: "{rounded.none}"
     padding: 7px
 
   command-palette-item-focused:
-    backgroundColor: "{colors.surface}"
-    textColor: "{colors.text}"
+    backgroundColor: "{themes.dark.surface}"
+    textColor: "{themes.dark.text}"
 ---
 
 ## Overview
@@ -162,19 +182,23 @@ Two non-negotiable rules govern this system:
 
 ## Colors
 
-The palette is built on a near-black canvas with cool grays and four accent colors that each carry a specific semantic meaning. Pure black (`#000000`) is avoided because it bands on OLED screens; `#0a0a0a` reads as black without artifacts.
+The system ships **two palettes** — a default dark and an opt-in light — both built around the same 18 token names. Operators choose their mode (dark / light / system) from a TopNav toggle; the choice persists in `localStorage['bns:theme']`. The dark palette is the canonical "OSINT terminal" surface; the light palette is its high-contrast daylight twin and meets WCAG AA (≥ 4.5:1) for body text.
 
-- **Primary `#F7931A`** — Bitcoin orange. Used for the brand mark, focused tab indicators, and the L402 pay-to-unlock CTA. Never used as filler. If a screen has Bitcoin orange in three places, two are wrong.
-- **Background `#0a0a0a`** — The canvas.
-- **Surface `#141414`** — Cards, inputs, expanded table rows. Always sits above the canvas with a 1px `border` divider.
-- **Border `#2a2a2a`** — All frame dividers and table outlines. `border-dim #1e1e1e` is used inside cards for internal separators when the contrast of `border` would compete with content.
-- **Text `#e0e0e0`** — Primary text. Pure white (`#ffffff`) is too harsh against the dark canvas; `#e0e0e0` keeps a soft luminance that's easier on long sessions.
-- **Text dim `#aaaaaa`, muted `#888888`, dim `#555555`** — A descending ladder for hierarchy *within* text. `text-dim` for secondary information, `muted` for metadata, `dim` for separators (`·`), placeholder hints, and quiet UI affordances (chevrons).
-- **Alert `#ff4444`** — Always means "actionable security finding". Exposed RPC, stale Core version, CVE present. Paired with `alert-bg #2a0000` for pill backgrounds.
-- **Warn `#ffb000`** — Tor / onion nodes (informational, not a risk) and CVEs of medium severity in co-located services. Paired with `warn-bg #2a1f00`.
-- **Ok `#00ff9c`** — "Live" indicators (active scan tick) and "no findings" status. Paired with `ok-bg #002a1a`. The bright green is intentional terminal-style — at small sizes against a dark canvas it reads cleanly without bleeding.
+Token names are theme-agnostic — every component references `bg`, `surface`, `text`, `alert`, etc. without knowing which palette is active. At runtime, `<html data-theme="light">` swaps the CSS custom properties; the absence of that attribute (or `data-theme="dark"`) renders the dark palette.
 
-The only color allowed to overlap meanings is `dim`, which carries multiple "quiet" roles. Every other color has a single semantic job.
+The palette is built on a near-black canvas in dark mode (pure black `#000000` bands on OLED; `#0a0a0a` reads as black without artifacts) and on a near-white canvas in light mode (`#f6f6f6` keeps body text from sitting on a glaring `#ffffff` page).
+
+- **Primary `#F7931A`** — Bitcoin orange. Used for the brand mark, focused tab indicators, and the L402 pay-to-unlock CTA. **Identical on both themes** — the brand mark must read as the brand mark in either light or dark. Never used as filler. If a screen has Bitcoin orange in three places, two are wrong.
+- **Background** — `#0a0a0a` (dark) / `#f6f6f6` (light). The canvas.
+- **Surface** — `#141414` (dark) / `#ffffff` (light). Cards, inputs, expanded table rows. Always sits above the canvas with a 1px `border` divider.
+- **Border** — `#2a2a2a` (dark) / `#d4d4d4` (light). All frame dividers and table outlines. `border-dim` (`#1e1e1e` / `#e4e4e4`) is used inside cards for internal separators when the contrast of `border` would compete with content.
+- **Text** — `#e0e0e0` (dark) / `#1a1a1a` (light). Primary text. In dark mode, pure white (`#ffffff`) is too harsh against the canvas; `#e0e0e0` keeps a soft luminance for long sessions. In light mode, near-black on near-white preserves comparable readability while staying off pure `#000`.
+- **Text dim, muted, dim** — A descending ladder for hierarchy *within* text. `text-dim` (`#aaaaaa` / `#404040`) for secondary information, `muted` (`#888888` / `#5a5a5a`) for metadata, `dim` (`#555555` / `#8a8a8a`) for separators (`·`), placeholder hints, and quiet UI affordances (chevrons).
+- **Alert** — `#ff4444` (dark) / `#cc0000` (light). Always means "actionable security finding". Exposed RPC, stale Core version, CVE present. Paired with `alert-bg` (`#2a0000` / `#ffe5e5`) for pill backgrounds.
+- **Warn** — `#ffb000` (dark) / `#a36a00` (light). Tor / onion nodes (informational, not a risk) and CVEs of medium severity in co-located services. Paired with `warn-bg` (`#2a1f00` / `#fff4d6`).
+- **Ok** — `#00ff9c` (dark) / `#008f5c` (light). "Live" indicators (active scan tick) and "no findings" status. Paired with `ok-bg` (`#002a1a` / `#daf5e8`). The dark green is bright terminal-style; the light green is darkened for adequate contrast against a white surface.
+
+The only color allowed to overlap meanings is `dim`, which carries multiple "quiet" roles. Every other color has a single semantic job, in either theme.
 
 ## Typography
 
@@ -208,7 +232,7 @@ Maximum content width on read-heavy views: 960px. The dashboard itself is full-w
 
 There is no elevation. No drop shadows, no glows, no glassmorphism, no blurs.
 
-Surfaces are distinguished by **flat color steps and 1px borders**, never by light. The hierarchy is `bg #0a0a0a → surface #141414 → surface-2 #1a1a1a`, each separated by a 1px `border` line. This is deliberate: shadows and glows are the visual language of consumer SaaS. The absence of them is part of why this product looks like a tool.
+Surfaces are distinguished by **flat color steps and 1px borders**, never by light. The hierarchy is `bg → surface → surface-2`, each separated by a 1px `border` line. In dark mode this reads `#0a0a0a → #141414 → #1a1a1a`; in light mode it inverts to `#f6f6f6 → #ffffff → #ececec`. This is deliberate: shadows and glows are the visual language of consumer SaaS. The absence of them is part of why this product looks like a tool.
 
 The only exception is the command palette, which sits over a translucent backdrop (`rgba(0,0,0,0.5)`) when open. This is functional dimming of the underlying view, not elevation.
 

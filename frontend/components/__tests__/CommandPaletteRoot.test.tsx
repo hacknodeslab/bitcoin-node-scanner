@@ -15,9 +15,11 @@ import {
 function renderRoot(overrides?: Partial<ExplorerCommands>) {
   const setQuery = vi.fn();
   const startScan = vi.fn().mockResolvedValue(undefined);
+  const setThemeMode = vi.fn();
   const value: ExplorerCommands = {
     setQuery,
     startScan,
+    setThemeMode,
     ...overrides,
   };
   const utils = render(
@@ -25,7 +27,7 @@ function renderRoot(overrides?: Partial<ExplorerCommands>) {
       <CommandPaletteRoot />
     </ExplorerCommandsContext.Provider>,
   );
-  return { ...utils, setQuery, startScan };
+  return { ...utils, setQuery, startScan, setThemeMode };
 }
 
 function openPalette() {
@@ -65,6 +67,21 @@ describe("CommandPaletteRoot", () => {
     openPalette();
     fireEvent.click(screen.getByText("scan: start"));
     expect(startScan).toHaveBeenCalledTimes(1);
+  });
+
+  it("theme commands route through setThemeMode", () => {
+    const { setThemeMode } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("theme: light"));
+    expect(setThemeMode).toHaveBeenCalledWith("light");
+
+    openPalette();
+    fireEvent.click(screen.getByText("theme: dark"));
+    expect(setThemeMode).toHaveBeenCalledWith("dark");
+
+    openPalette();
+    fireEvent.click(screen.getByText("theme: system"));
+    expect(setThemeMode).toHaveBeenCalledWith("system");
   });
 
   it("Esc closes the palette without firing any action", () => {
