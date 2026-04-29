@@ -56,5 +56,5 @@
 
 - [x] 9.1 `pnpm --filter frontend lint typecheck build` runs clean
 - [x] 9.2 `pnpm --filter frontend test` runs clean
-- [ ] 9.3 Manual smoke: hard-reload in dark mode, hard-reload in light mode, verify no flash on either; toggle through all three options in TopNav and via the palette; flip OS preference while in `system` mode and confirm the dashboard re-renders live _(deferred — requires running the dev server in a real browser)_
+- [x] 9.3 Manual smoke: hard-reload in dark mode, hard-reload in light mode, verify no flash on either; toggle through all three options in TopNav and via the palette; flip OS preference while in `system` mode and confirm the dashboard re-renders live. Smoke uncovered that `tailwind.config.ts` was consuming `colors` (dark hex) literally — utilities never reacted to `data-theme`. Fixed by mapping each colour token to `var(--color-<token>)` in `tailwind.config.ts`
 - [x] 9.4 `openspec validate add-light-theme-and-theme-selector --strict` passes with zero errors
