@@ -6,10 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
 import {
   THEME_MODES,
+  THEME_STORAGE_KEY,
   readStoredTheme,
   resolveTheme,
   systemPrefersDark,
@@ -31,50 +32,79 @@ function applyResolved(resolved: ResolvedTheme): void {
   document.documentElement.setAttribute("data-theme", resolved);
 }
 
+// Same-tab `setMode` calls write to localStorage and notify these listeners
+// so `useSyncExternalStore` re-reads. Cross-tab updates arrive via `storage`.
+const modeListeners = new Set<() => void>();
+
+function subscribeMode(callback: () => void): () => void {
+  modeListeners.add(callback);
+  if (typeof window === "undefined") {
+    return () => {
+      modeListeners.delete(callback);
+    };
+  }
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY) callback();
+  };
+  window.addEventListener("storage", onStorage);
+  return () => {
+    modeListeners.delete(callback);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function getModeSnapshot(): ThemeMode {
+  return readStoredTheme() ?? "system";
+}
+
+function getServerModeSnapshot(): ThemeMode {
+  return "system";
+}
+
+function subscribeSystemDark(callback: () => void): () => void {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  mq.addEventListener("change", callback);
+  return () => mq.removeEventListener("change", callback);
+}
+
+function getSystemDarkSnapshot(): boolean {
+  return systemPrefersDark();
+}
+
+function getServerSystemDarkSnapshot(): boolean {
+  return true;
+}
+
 /**
  * Owns the active theme mode. The pre-hydration script in `app/layout.tsx`
  * sets `<html data-theme>` before React mounts, so colours paint correctly
- * from the first frame. React state, however, must hydrate to the SSR-rendered
- * default ("system") to avoid a hydration mismatch — we sync to the actual
- * stored mode in a mount effect.
- *
- * The `matchMedia` listener is only mounted while `mode === "system"` so
- * explicit dark/light selections are never overridden by an OS flip.
+ * from the first frame. We use `useSyncExternalStore` so the SSR snapshot
+ * (`mode = "system"`, `systemDark = true`) matches the painted HTML and the
+ * client transitions to the real values after hydration without setState-
+ * in-effect cascading renders.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>("system");
-  const [resolved, setResolved] = useState<ResolvedTheme>("dark");
+  const mode = useSyncExternalStore(
+    subscribeMode,
+    getModeSnapshot,
+    getServerModeSnapshot,
+  );
+  const systemDark = useSyncExternalStore(
+    subscribeSystemDark,
+    getSystemDarkSnapshot,
+    getServerSystemDarkSnapshot,
+  );
+  const resolved = resolveTheme(mode, systemDark);
 
   const setMode = useCallback((next: ThemeMode) => {
     writeStoredTheme(next);
-    const resolvedNext = resolveTheme(next, systemPrefersDark());
-    applyResolved(resolvedNext);
-    setModeState(next);
-    setResolved(resolvedNext);
+    modeListeners.forEach((cb) => cb());
   }, []);
 
-  // Hydrate from localStorage post-mount to keep SSR and CSR in agreement.
   useEffect(() => {
-    const stored = readStoredTheme() ?? "system";
-    const resolvedNext = resolveTheme(stored, systemPrefersDark());
-    setModeState(stored);
-    setResolved(resolvedNext);
-    applyResolved(resolvedNext);
-  }, []);
-
-  // Track OS preference only while in "system" mode.
-  useEffect(() => {
-    if (mode !== "system") return;
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = (event: MediaQueryListEvent) => {
-      const next: ResolvedTheme = event.matches ? "dark" : "light";
-      applyResolved(next);
-      setResolved(next);
-    };
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, [mode]);
+    applyResolved(resolved);
+  }, [resolved]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({ mode, resolved, setMode }),
