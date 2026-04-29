@@ -84,6 +84,7 @@ describe("/DESIGN.md hard rules — class-level smoke", () => {
 
 describe("/DESIGN.md hard rules — light theme smoke", () => {
   it("a representative card renders no forbidden classes under data-theme=\"light\"", () => {
+    const prev = document.documentElement.getAttribute("data-theme");
     document.documentElement.setAttribute("data-theme", "light");
     try {
       const { container } = render(
@@ -94,7 +95,11 @@ describe("/DESIGN.md hard rules — light theme smoke", () => {
       );
       assertNoForbiddenClasses(container);
     } finally {
-      document.documentElement.removeAttribute("data-theme");
+      if (prev === null) {
+        document.documentElement.removeAttribute("data-theme");
+      } else {
+        document.documentElement.setAttribute("data-theme", prev);
+      }
     }
   });
 });
