@@ -59,6 +59,12 @@ export function CommandPaletteRoot() {
           return () => {};
         case "nav.paletteClose":
           return () => setOpen(false);
+        case "theme.dark":
+          return () => cmds.setThemeMode("dark");
+        case "theme.light":
+          return () => cmds.setThemeMode("light");
+        case "theme.system":
+          return () => cmds.setThemeMode("system");
         default:
           return () => {};
       }

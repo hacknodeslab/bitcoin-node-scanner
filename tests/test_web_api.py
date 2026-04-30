@@ -389,3 +389,11 @@ class TestCountriesEndpoint:
     def test_accessible_without_api_key(self, client):
         r = client.get("/api/v1/nodes/countries")
         assert r.status_code == 200
+
+
+class TestRootRedirect:
+    def test_root_redirects_to_frontend_origin(self, client):
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        # FRONTEND_ORIGIN defaults to http://localhost:3000 when unset.
+        assert r.headers["location"].startswith("http://localhost:3000")

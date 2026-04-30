@@ -90,4 +90,7 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   // NAV (frontend-only — exempt from REST mapping)
   { id: "nav.explorer", group: "NAV", label: "go: explorer", restEndpoint: null },
   { id: "nav.paletteClose", group: "NAV", label: "palette: close", restEndpoint: null, shortcut: "esc" },
+  { id: "theme.dark", group: "NAV", label: "theme: dark", restEndpoint: null },
+  { id: "theme.light", group: "NAV", label: "theme: light", restEndpoint: null },
+  { id: "theme.system", group: "NAV", label: "theme: system", restEndpoint: null },
 ];

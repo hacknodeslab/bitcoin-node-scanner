@@ -1,0 +1,8 @@
+# Allow `ubuntu` to manage the bitcoin-scanner-frontend systemd unit
+# without a password, so the GitHub Actions deploy can restart it over SSH.
+#
+# Install via scripts/bootstrap-frontend-host.sh (which validates with visudo).
+# DO NOT install by hand without `visudo -cf` — a syntax error here will
+# lock you out of sudo.
+
+ubuntu ALL=(root) NOPASSWD: /bin/systemctl restart bitcoin-scanner-frontend, /bin/systemctl restart bitcoin-scanner-frontend.service, /bin/systemctl is-active bitcoin-scanner-frontend, /bin/systemctl is-active bitcoin-scanner-frontend.service, /bin/systemctl status bitcoin-scanner-frontend, /bin/systemctl status bitcoin-scanner-frontend.service

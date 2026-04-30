@@ -82,6 +82,28 @@ describe("/DESIGN.md hard rules — class-level smoke", () => {
   });
 });
 
+describe("/DESIGN.md hard rules — light theme smoke", () => {
+  it("a representative card renders no forbidden classes under data-theme=\"light\"", () => {
+    const prev = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", "light");
+    try {
+      const { container } = render(
+        <Card>
+          <CardLabel>OPEN PORTS</CardLabel>
+          <CardRow>row</CardRow>
+        </Card>,
+      );
+      assertNoForbiddenClasses(container);
+    } finally {
+      if (prev === null) {
+        document.documentElement.removeAttribute("data-theme");
+      } else {
+        document.documentElement.setAttribute("data-theme", prev);
+      }
+    }
+  });
+});
+
 describe("Pill discriminated union", () => {
   it("EXPOSED maps to alert tone", () => {
     const { container } = render(<Pill kind="EXPOSED" />);

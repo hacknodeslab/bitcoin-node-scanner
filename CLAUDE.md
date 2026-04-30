@@ -55,10 +55,15 @@ Shodan API ──► scanner.py ──► db/scanner_integration.py ──► SQ
                                                                     │
                                                               db/repositories/
                                                                     │
-                                                         web/routers/ (FastAPI)
+                                                         web/routers/ (FastAPI · /api/v1)
                                                                     │
-                                                          web/static/ (Dashboard)
+                                                       frontend/ (Next.js dashboard)
 ```
+
+The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and Node (pnpm) for the dashboard at `frontend/`. They run as two processes — FastAPI on `:8000` exposes `/api/v1/*`, the Next.js app on `:3000` consumes it. `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN`. FastAPI no longer serves any HTML.
+
+- **Dev**: cross-origin (`localhost:3000` → `localhost:8000`). CORS allow-list driven by `FRONTEND_ORIGIN`.
+- **Prod**: single-origin via nginx on port 80 (`/api/` → backend, `/` → Next.js). No CORS preflight from browsers. `NEXT_PUBLIC_API_BASE_URL=/api/v1` (relative). Deployment via `.github/workflows/deploy.yml` to a single EC2 host running both as systemd units (`bitcoin-scanner.service` + `bitcoin-scanner-frontend.service`). See `docs/deploy-frontend.md`.
 
 ### Key Modules (`src/`)
 
@@ -93,6 +98,12 @@ Background scans run via `web/background.py` (async task executor) so they don't
 ### NVD Integration (`src/nvd/`)
 
 Fetches CVE data from the National Vulnerability Database. `client.py` handles HTTP, `service.py` adds caching and database persistence, `models.py` defines the CVE schema.
+
+### Frontend theming (`frontend/`)
+
+Tokens are sourced from `/DESIGN.md`'s YAML front matter. The `themes:` map defines two colour palettes — `dark` (default) and `light` — both with the same 18 token names. `pnpm tokens:gen` regenerates `frontend/lib/design-tokens.ts` (typed `themes` + `colors` exports) and the `:root` + `[data-theme="light"]` blocks inside `frontend/app/globals.css`. Tailwind utilities reference CSS custom properties, so the active theme swaps at runtime when `<html>` carries `data-theme="light"`.
+
+The active mode (`dark` / `light` / `system`) lives in `localStorage['bns:theme']`. An inline pre-hydration script in `app/layout.tsx` (`THEME_INIT_SCRIPT` from `lib/theme.ts`) reads it before React mounts to avoid a flash of wrong theme. `ThemeProvider` (`components/providers/ThemeProvider.tsx`) owns the runtime state and tracks `prefers-color-scheme` only while in `system` mode.
 
 ## Important Conventions
 

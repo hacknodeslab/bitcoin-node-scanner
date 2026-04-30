@@ -214,6 +214,7 @@ const ALLOWED_PRIMARY_GLOB = [
   /\/components\/ui\/CommandPalette\.tsx$/,
   /\/components\/ui\/Drawer\.tsx$/,
   /\/components\/ui\/QueryBar\.tsx$/,
+  /\/components\/explorer\/ThemeToggle\.tsx$/,
 ];
 
 const primaryAllowlist = {

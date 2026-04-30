@@ -1,15 +1,15 @@
 ## MODIFIED Requirements
 
-### Requirement: Dashboard served as a Next.js application
-The system SHALL serve the dashboard as a Next.js (App Router) application living in the `frontend/` directory of this monorepo. The dashboard SHALL no longer be served as a static HTML file by FastAPI. The Next.js application SHALL consume the FastAPI `/api/v1/*` endpoints over HTTP, with CORS configured to allow the dashboard origin.
+### Requirement: Dashboard served at root URL
+The system SHALL serve the dashboard as a Next.js (App Router) application living in the `frontend/` directory of this monorepo, reachable at `FRONTEND_ORIGIN` (default `http://localhost:3000`). The dashboard SHALL no longer be served as a static HTML file by FastAPI; instead, `GET /` on the FastAPI app responds with a 302 redirect to `FRONTEND_ORIGIN` for a 30-day deprecation window, after which the route is removed. The Next.js application SHALL consume the FastAPI `/api/v1/*` endpoints over HTTP, with CORS configured to allow the dashboard origin.
 
 #### Scenario: Frontend runs independently in dev
 - **WHEN** a developer runs `pnpm --filter frontend dev` and the FastAPI server is running on port 8000
 - **THEN** the dashboard SHALL be reachable at `http://localhost:3000` and SHALL successfully fetch data from `http://localhost:8000/api/v1/*` without CORS errors
 
-#### Scenario: FastAPI no longer mounts the dashboard HTML
-- **WHEN** the FastAPI app starts after this change is deployed
-- **THEN** the route `GET /` SHALL respond with a 302 redirect to `FRONTEND_ORIGIN` for a deprecation window of 30 days, after which `GET /` SHALL respond with `404 Not Found`
+#### Scenario: FastAPI redirects root requests
+- **WHEN** the FastAPI app receives `GET /`
+- **THEN** the server SHALL respond with `302 Found` and a `Location` header pointing at `FRONTEND_ORIGIN`
 
 #### Scenario: Static HTML file is removed
 - **WHEN** the change is merged
@@ -52,7 +52,7 @@ The dashboard SHALL provide an affordance to trigger a new scan via `POST /api/v
 - **WHEN** a scan job is in `pending` or `running` state
 - **THEN** the trigger SHALL be disabled, render with `dim` text, and display the current scan status
 
-### Requirement: Sortable column headers
+### Requirement: Sortable table headers
 Each non-status column header in the node table SHALL be activatable. Activation SHALL toggle ascending/descending sort by that column. The active sort column SHALL render its name suffixed with a `caret` glyph indicating direction; inactive columns SHALL render a `·` glyph in `dim` as a quiet hint. Custom Unicode arrows (▲, ▼, ⇅) SHALL NOT be used; iconography SHALL come from the allow-list defined in the design system spec.
 
 #### Scenario: Activation sorts by column
@@ -63,7 +63,7 @@ Each non-status column header in the node table SHALL be activatable. Activation
 - **WHEN** the user activates an already-active sort header
 - **THEN** the sort direction SHALL invert and the table SHALL reload
 
-### Requirement: Country filter
+### Requirement: Country filter dropdown
 A country filter SHALL be present in the explorer and SHALL be populated from `GET /api/v1/nodes/countries`. The filter SHALL be expressed through the query bar grammar (e.g. `country:DE`), not a separate dropdown component, while still presenting a typeahead of distinct country values to the user.
 
 #### Scenario: Country token narrows results

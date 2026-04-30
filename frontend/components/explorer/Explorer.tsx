@@ -12,6 +12,7 @@ import {
 } from "./explorer-context";
 import { parseQueryToFilters } from "@/lib/query-grammar";
 import { useNodes, useScanJob } from "@/lib/hooks";
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 /**
  * Client-side root for the explorer. Owns:
@@ -41,9 +42,11 @@ export function Explorer() {
     await scanJob.start();
   }, [scanJob]);
 
+  const { setMode } = useTheme();
+
   const commands: ExplorerCommands = useMemo(
-    () => ({ setQuery: setAppliedQuery, startScan }),
-    [startScan],
+    () => ({ setQuery: setAppliedQuery, startScan, setThemeMode: setMode }),
+    [startScan, setMode],
   );
 
   // Stable sliver feed — top 20 by last_seen, independent of the table's
