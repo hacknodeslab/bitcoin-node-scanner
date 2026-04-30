@@ -51,6 +51,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["X-API-Key", "X-CSRF-Token", "Content-Type", "Accept"],
+    expose_headers=["X-Total-Count"],
 )
 
 # API routers

@@ -156,6 +156,40 @@ class TestNodesEndpoint:
         r = client.get("/api/v1/nodes?tor=false", headers=HEADERS)
         assert r.status_code == 400
 
+    def test_x_total_count_unfiltered(self, client, db_session):
+        for i in range(3):
+            db_session.add(_make_node(f"10.0.0.{i}"))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?limit=2", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.headers["X-Total-Count"] == "3"
+        assert len(r.json()) == 2
+
+    def test_x_total_count_filtered(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", risk_level="CRITICAL"))
+        db_session.add(_make_node("2.2.2.2", risk_level="CRITICAL"))
+        db_session.add(_make_node("3.3.3.3", risk_level="LOW"))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?risk_level=CRITICAL&limit=1", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.headers["X-Total-Count"] == "2"
+        assert len(r.json()) == 1
+
+    def test_x_total_count_zero(self, client):
+        r = client.get("/api/v1/nodes?country=Narnia", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.headers["X-Total-Count"] == "0"
+        assert r.json() == []
+
+    def test_x_total_count_is_string_integer(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1"))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes", headers=HEADERS)
+        assert r.headers["X-Total-Count"].isdigit()
+
 
 class TestStatsEndpoint:
     def test_returns_zero_counts_for_empty_db(self, client):
@@ -397,3 +431,4 @@ class TestRootRedirect:
         assert r.status_code == 302
         # FRONTEND_ORIGIN defaults to http://localhost:3000 when unset.
         assert r.headers["location"].startswith("http://localhost:3000")
+

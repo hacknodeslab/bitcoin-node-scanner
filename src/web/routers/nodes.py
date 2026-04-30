@@ -6,7 +6,7 @@ GET /api/v1/nodes/{id}/geo   — full geo detail for a single node.
 import json
 from typing import Annotated, Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session
@@ -152,6 +152,7 @@ def list_countries(db: Annotated[Session, Depends(get_db)]):
 
 @router.get("/nodes", response_model=List[NodeOut])
 def list_nodes(
+    response: Response,
     db: Annotated[Session, Depends(get_db)],
     risk_level: Annotated[Optional[str], Query(description="Filter by risk level: CRITICAL, HIGH, MEDIUM, LOW")] = None,
     country: Annotated[Optional[str], Query(description="Filter by server location country name (case-insensitive)")] = None,
@@ -166,18 +167,7 @@ def list_nodes(
     sort_col = _SORT_COLUMNS.get(sort_by or "", Node.last_seen)
     order_fn = asc if (sort_dir or "desc").lower() == "asc" else desc
 
-    stmt = select(Node)
-
-    if risk_level:
-        stmt = stmt.where(Node.risk_level == risk_level.upper())
-    if country:
-        stmt = stmt.where(func.lower(Node.country_name) == country.lower())
-    if exposed is not None:
-        stmt = stmt.where(Node.has_exposed_rpc == exposed)
-    if tor is True:
-        # Same predicate as NodeRepository.count_tor — keep them in sync.
-        stmt = stmt.where(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
-    elif tor is False:
+    if tor is False:
         # NULL-aware negation is fiddly across dialects; defer until a
         # dedicated `is_tor` column exists. The query bar in §8.2 doesn't
         # emit this combination, so dropping it here is safe for v0.
@@ -186,7 +176,27 @@ def list_nodes(
             detail="tor=false is not supported in v0; omit the filter or use tor=true.",
         )
 
-    stmt = stmt.order_by(order_fn(sort_col)).offset(offset).limit(limit)
+    conds = []
+    if risk_level:
+        conds.append(Node.risk_level == risk_level.upper())
+    if country:
+        conds.append(func.lower(Node.country_name) == country.lower())
+    if exposed is not None:
+        conds.append(Node.has_exposed_rpc == exposed)
+    if tor is True:
+        # Same predicate as NodeRepository.count_tor — keep them in sync.
+        conds.append(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
+
+    total = db.scalar(select(func.count()).select_from(Node).where(*conds)) or 0
+    response.headers["X-Total-Count"] = str(total)
+
+    stmt = (
+        select(Node)
+        .where(*conds)
+        .order_by(order_fn(sort_col))
+        .offset(offset)
+        .limit(limit)
+    )
     nodes = list(db.scalars(stmt).all())
 
     return [_make_node_out(n) for n in nodes]

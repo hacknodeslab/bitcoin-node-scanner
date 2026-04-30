@@ -11,9 +11,10 @@ import {
   ApiError,
   fetchProtected,
   request,
+  requestWithHeaders,
   setCsrfToken,
 } from "../api/client";
-import { fetchCsrfToken } from "../api/endpoints";
+import { fetchCsrfToken, listNodesWithTotal } from "../api/endpoints";
 
 function makeResponse(
   status: number,
@@ -121,5 +122,49 @@ describe("fetchProtected — L402 discrimination", () => {
   it("non-2xx (non-402) throws ApiError", async () => {
     fetchMock.mockResolvedValue(makeResponse(503, { error: "down" }));
     await expect(fetchProtected("/l402/example")).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("requestWithHeaders + listNodesWithTotal", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns parsed body and the raw Headers object", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, [{ id: 1 }], { "X-Total-Count": "42" }));
+    const r = await requestWithHeaders<unknown[]>("GET", "/nodes");
+    expect(r.data).toEqual([{ id: 1 }]);
+    expect(r.headers.get("X-Total-Count")).toBe("42");
+  });
+
+  it("listNodesWithTotal parses X-Total-Count as integer", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, [], { "X-Total-Count": "137" }));
+    const r = await listNodesWithTotal({ limit: 25 });
+    expect(r.nodes).toEqual([]);
+    expect(r.total).toBe(137);
+  });
+
+  it("listNodesWithTotal returns null total when header is missing", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, []));
+    const r = await listNodesWithTotal();
+    expect(r.total).toBeNull();
+  });
+
+  it("listNodesWithTotal returns null total when header is not a number", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, [], { "X-Total-Count": "nope" }));
+    const r = await listNodesWithTotal();
+    expect(r.total).toBeNull();
+  });
+
+  it("requestWithHeaders throws ApiError on non-2xx", async () => {
+    fetchMock.mockResolvedValue(makeResponse(500, { detail: "boom" }));
+    await expect(requestWithHeaders("GET", "/nodes")).rejects.toBeInstanceOf(ApiError);
   });
 });

@@ -108,6 +108,25 @@ export async function request<T>(
 }
 
 /**
+ * Like `request<T>`, but also returns the response headers so callers can
+ * read pagination metadata (`X-Total-Count`) or other response metadata
+ * without a second round-trip.
+ */
+export async function requestWithHeaders<T>(
+  method: string,
+  path: string,
+  opts: RequestOptions = {},
+): Promise<{ data: T; headers: Headers }> {
+  const r = await rawRequest(method, path, opts);
+  if (!r.ok) {
+    const body = await r.json().catch(() => null as unknown);
+    throw new ApiError(r.status, r.statusText, body);
+  }
+  if (r.status === 204) return { data: undefined as T, headers: r.headers };
+  return { data: (await r.json()) as T, headers: r.headers };
+}
+
+/**
  * L402-aware fetch. Returns a discriminated result so callers can branch on
  * `ok` vs `l402-challenge` without try/catch. Other non-2xx still throw.
  */

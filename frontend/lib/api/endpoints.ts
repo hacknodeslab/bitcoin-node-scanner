@@ -2,7 +2,7 @@
  * Typed wrappers for `/api/v1/*` endpoints. The wrappers are thin — they
  * forward to `request<T>` with a fixed path and pass query params through.
  */
-import { request, setCsrfToken, fetchProtected } from "./client";
+import { request, requestWithHeaders, setCsrfToken, fetchProtected } from "./client";
 import type {
   CsrfTokenOut,
   NodeGeoOut,
@@ -26,6 +26,22 @@ export function getStats(): Promise<StatsOut> {
 
 export function listNodes(params: NodeListParams = {}): Promise<NodeOut[]> {
   return request<NodeOut[]>("GET", "/nodes", { query: { ...params } });
+}
+
+/**
+ * Same as `listNodes` but returns the parsed `X-Total-Count` header so the
+ * caller can render pagination metadata. Total is `null` when the header
+ * is absent or unparseable, so callers can degrade gracefully.
+ */
+export async function listNodesWithTotal(
+  params: NodeListParams = {},
+): Promise<{ nodes: NodeOut[]; total: number | null }> {
+  const { data, headers } = await requestWithHeaders<NodeOut[]>("GET", "/nodes", {
+    query: { ...params },
+  });
+  const raw = headers.get("X-Total-Count");
+  const parsed = raw === null ? NaN : Number.parseInt(raw, 10);
+  return { nodes: data, total: Number.isFinite(parsed) ? parsed : null };
 }
 
 export function listCountries(): Promise<string[]> {

@@ -70,6 +70,9 @@ geoip_dbs.zip
 bitcoin_scanner.db
 electrum_monitor.db*
 
+# Local dev runner state (Makefile up/down)
+.dev/
+
 # Claude and Agents
 .claude/
 bitcoin_scanner.db

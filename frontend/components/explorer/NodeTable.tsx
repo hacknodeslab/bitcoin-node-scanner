@@ -9,6 +9,10 @@ import { cn } from "@/lib/utils";
 import type { NodeOut, RiskLevel } from "@/lib/api/types";
 import type { ExplorerFilters } from "@/lib/query-grammar";
 
+const PAGE_SIZES = [25, 50, 100] as const;
+type PageSize = (typeof PAGE_SIZES)[number];
+const DEFAULT_PAGE_SIZE: PageSize = 25;
+
 /**
  * STALE threshold mirrored from the backend default. The /api/v1/stats
  * endpoint exposes the real value (`stale_threshold_days`); this constant
@@ -166,20 +170,118 @@ export interface NodeTableProps {
   onSelectNode?: (ip: string) => void;
 }
 
+interface PaginationProps {
+  page: number;
+  pageSize: PageSize;
+  total: number | null;
+  itemsOnPage: number;
+  onPrev: () => void;
+  onNext: () => void;
+  onPageSizeChange: (size: PageSize) => void;
+}
+
+function Pagination({
+  page,
+  pageSize,
+  total,
+  itemsOnPage,
+  onPrev,
+  onNext,
+  onPageSizeChange,
+}: PaginationProps) {
+  const offset = (page - 1) * pageSize;
+  const totalPages = total !== null ? Math.max(1, Math.ceil(total / pageSize)) : null;
+  const prevDisabled = page <= 1;
+  const nextDisabled =
+    total !== null
+      ? offset + itemsOnPage >= total
+      : itemsOnPage < pageSize;
+
+  return (
+    <div
+      data-testid="pagination"
+      className="flex items-center gap-[14px] px-[14px] py-[8px] border-t border-border text-meta text-muted"
+    >
+      <button
+        type="button"
+        onClick={onPrev}
+        disabled={prevDisabled}
+        data-testid="pagination-prev"
+        className="text-text-dim hover:text-text disabled:text-dim disabled:cursor-not-allowed cursor-pointer"
+      >
+        ‹ prev
+      </button>
+      <span data-testid="pagination-status">
+        {totalPages !== null
+          ? `Page ${page} of ${totalPages} · ${total} results`
+          : `Page ${page}`}
+      </span>
+      <button
+        type="button"
+        onClick={onNext}
+        disabled={nextDisabled}
+        data-testid="pagination-next"
+        className="text-text-dim hover:text-text disabled:text-dim disabled:cursor-not-allowed cursor-pointer"
+      >
+        next ›
+      </button>
+      <span className="ml-auto flex items-center gap-[6px]">
+        <span className="text-dim">rows</span>
+        <select
+          data-testid="pagination-page-size"
+          value={pageSize}
+          onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
+          className="bg-surface-2 text-text-dim border border-border px-[6px] py-[2px] text-meta cursor-pointer"
+        >
+          {PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </span>
+    </div>
+  );
+}
+
 export function NodeTable(props: NodeTableProps = {}) {
   const [sortBy, setSortBy] = useState<string>(props.initialSortBy ?? "last_seen");
   const [sortDir, setSortDir] = useState<SortDir>(props.initialSortDir ?? "desc");
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE);
 
   const filters = props.filters;
+  const offset = (page - 1) * pageSize;
   const params = useMemo(
-    () => ({ ...filters, sort_by: sortBy, sort_dir: sortDir, limit: 100 }),
-    [filters, sortBy, sortDir],
+    () => ({
+      ...filters,
+      sort_by: sortBy,
+      sort_dir: sortDir,
+      limit: pageSize,
+      offset,
+    }),
+    [filters, sortBy, sortDir, pageSize, offset],
   );
   const hook = useNodes(params);
   const hasInjected = props.nodes !== undefined;
   const nodes = hasInjected ? props.nodes : hook.nodes;
+  const total = hasInjected ? null : hook.total;
   const isLoading = hasInjected ? false : (props.loading ?? hook.isLoading);
   const error = hasInjected ? null : (props.error ?? hook.error);
+
+  // Reset to page 1 whenever the inputs that change the result set change.
+  // React-recommended "store previous prop in state" pattern instead of an
+  // effect — see https://react.dev/learn/you-might-not-need-an-effect.
+  const [resetSig, setResetSig] = useState({ filters, sortBy, sortDir, pageSize });
+  if (
+    resetSig.filters !== filters ||
+    resetSig.sortBy !== sortBy ||
+    resetSig.sortDir !== sortDir ||
+    resetSig.pageSize !== pageSize
+  ) {
+    setResetSig({ filters, sortBy, sortDir, pageSize });
+    setPage(1);
+  }
 
   function handleSort(key: string) {
     if (sortBy === key) {
@@ -191,7 +293,7 @@ export function NodeTable(props: NodeTableProps = {}) {
   }
 
   return (
-    <div data-testid="node-table">
+    <div data-testid="node-table" className="flex flex-col min-h-0">
       <div
         className={cn(
           "grid gap-[14px] px-[14px] py-[9px] border-b border-border",
@@ -209,30 +311,44 @@ export function NodeTable(props: NodeTableProps = {}) {
         ))}
       </div>
 
-      {error ? (
-        <TableRow>
-          <span role="alert" className="text-body-sm text-alert">
-            · nodes failed to load
-          </span>
-        </TableRow>
-      ) : isLoading || !nodes ? (
-        <TableRow>
-          <span className="text-body-sm text-muted">· loading nodes…</span>
-        </TableRow>
-      ) : nodes.length === 0 ? (
-        <TableRow>
-          <span className="text-body-sm text-muted">· no nodes match the current filters</span>
-        </TableRow>
-      ) : (
-        nodes.map((n) => (
-          <NodeRow
-            key={n.id}
-            node={n}
-            selected={props.selectedIp === n.ip}
-            onSelect={() => props.onSelectNode?.(n.ip)}
-          />
-        ))
-      )}
+      <div className="flex-1 min-h-0 overflow-y-auto" data-testid="node-table-body">
+        {error ? (
+          <TableRow>
+            <span role="alert" className="text-body-sm text-alert">
+              · nodes failed to load
+            </span>
+          </TableRow>
+        ) : isLoading || !nodes ? (
+          <TableRow>
+            <span className="text-body-sm text-muted">· loading nodes…</span>
+          </TableRow>
+        ) : nodes.length === 0 ? (
+          <TableRow>
+            <span className="text-body-sm text-muted">· no nodes match the current filters</span>
+          </TableRow>
+        ) : (
+          nodes.map((n) => (
+            <NodeRow
+              key={n.id}
+              node={n}
+              selected={props.selectedIp === n.ip}
+              onSelect={() => props.onSelectNode?.(n.ip)}
+            />
+          ))
+        )}
+      </div>
+
+      {!hasInjected ? (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          itemsOnPage={nodes?.length ?? 0}
+          onPrev={() => setPage((p) => Math.max(1, p - 1))}
+          onNext={() => setPage((p) => p + 1)}
+          onPageSizeChange={setPageSize}
+        />
+      ) : null}
     </div>
   );
 }

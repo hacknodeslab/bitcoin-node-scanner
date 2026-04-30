@@ -14,8 +14,11 @@ import { Explorer } from "@/components/explorer/Explorer";
  * ExplorerFooter (`useScanJob`) + CommandPaletteRoot (⌘K listener).
  */
 export default function ExplorerPage() {
+  // h-[100dvh] (not min-h-screen) so the explorer fits the viewport: the
+  // table region scrolls internally and the footer stays pinned. `min-h-0`
+  // on flex children that should shrink is applied inside Explorer.
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-[100dvh] flex flex-col">
       <TopNav />
       <StatsStrip />
       <Explorer />
