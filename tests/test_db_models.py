@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.models import Base, Node, Scan, Vulnerability, NodeVulnerability, ScanNode
+from src.db.models import Base, Node, Scan, CVEEntry, NodeVulnerability, ScanNode
 
 
 @pytest.fixture
@@ -125,40 +125,28 @@ class TestScanModel:
         assert scan in node.scans
 
 
-class TestVulnerabilityModel:
-    """Tests for Vulnerability model."""
+class TestCVEEntryModel:
+    """Tests for CVEEntry model."""
 
-    def test_create_vulnerability(self, session):
-        """Test creating a vulnerability."""
-        vuln = Vulnerability(
+    def test_create_cve_entry(self, session):
+        cve = CVEEntry(
             cve_id="CVE-2018-17144",
-            affected_versions='["0.15.0", "0.16.0"]',
             severity="CRITICAL",
+            cvss_score=9.8,
             description="Inflation bug",
+            affected_versions='[]',
         )
-        session.add(vuln)
+        session.add(cve)
         session.commit()
 
-        assert vuln.id is not None
-        assert vuln.cve_id == "CVE-2018-17144"
+        assert cve.cve_id == "CVE-2018-17144"
+        assert cve.fetched_at is not None
 
-    def test_vulnerability_unique_cve(self, session):
-        """Test that CVE ID is unique."""
-        vuln1 = Vulnerability(
-            cve_id="CVE-2020-14198",
-            affected_versions='["0.20.0"]',
-            severity="HIGH",
-        )
-        session.add(vuln1)
+    def test_cve_id_is_primary_key_unique(self, session):
+        session.add(CVEEntry(cve_id="CVE-2020-14198", severity="HIGH", affected_versions="[]"))
         session.commit()
 
-        vuln2 = Vulnerability(
-            cve_id="CVE-2020-14198",
-            affected_versions='["0.20.0"]',
-            severity="HIGH",
-        )
-        session.add(vuln2)
-
+        session.add(CVEEntry(cve_id="CVE-2020-14198", severity="HIGH", affected_versions="[]"))
         with pytest.raises(Exception):  # IntegrityError
             session.commit()
 
@@ -166,20 +154,15 @@ class TestVulnerabilityModel:
 class TestNodeVulnerabilityModel:
     """Tests for NodeVulnerability association."""
 
-    def test_link_vulnerability_to_node(self, session):
-        """Test linking vulnerability to node."""
+    def test_link_cve_to_node(self, session):
         node = Node(ip="192.168.1.7", port=8333)
-        vuln = Vulnerability(
-            cve_id="CVE-2021-12345",
-            affected_versions='["0.19.0"]',
-            severity="HIGH",
-        )
-        session.add_all([node, vuln])
+        cve = CVEEntry(cve_id="CVE-2021-12345", severity="HIGH", affected_versions="[]")
+        session.add_all([node, cve])
         session.commit()
 
         node_vuln = NodeVulnerability(
             node_id=node.id,
-            vulnerability_id=vuln.id,
+            cve_id=cve.cve_id,
             detected_version="0.19.0",
         )
         session.add(node_vuln)
@@ -190,52 +173,33 @@ class TestNodeVulnerabilityModel:
         assert node_vuln.resolved_at is None
 
     def test_resolve_vulnerability(self, session):
-        """Test resolving a vulnerability."""
         node = Node(ip="192.168.1.8", port=8333)
-        vuln = Vulnerability(
-            cve_id="CVE-2021-54321",
-            affected_versions='["0.18.0"]',
-            severity="MEDIUM",
-        )
-        session.add_all([node, vuln])
+        cve = CVEEntry(cve_id="CVE-2021-54321", severity="MEDIUM", affected_versions="[]")
+        session.add_all([node, cve])
         session.commit()
 
-        node_vuln = NodeVulnerability(
-            node_id=node.id,
-            vulnerability_id=vuln.id,
-        )
+        node_vuln = NodeVulnerability(node_id=node.id, cve_id=cve.cve_id)
         session.add(node_vuln)
         session.commit()
 
-        # Resolve the vulnerability
         node_vuln.resolved_at = datetime.utcnow()
         session.commit()
 
         assert node_vuln.resolved_at is not None
 
     def test_cascade_delete_node(self, session):
-        """Test that deleting node cascades to node_vulnerabilities."""
         node = Node(ip="192.168.1.9", port=8333)
-        vuln = Vulnerability(
-            cve_id="CVE-2022-11111",
-            affected_versions='["0.17.0"]',
-            severity="LOW",
-        )
-        session.add_all([node, vuln])
+        cve = CVEEntry(cve_id="CVE-2022-11111", severity="LOW", affected_versions="[]")
+        session.add_all([node, cve])
         session.commit()
 
-        node_vuln = NodeVulnerability(
-            node_id=node.id,
-            vulnerability_id=vuln.id,
-        )
+        node_vuln = NodeVulnerability(node_id=node.id, cve_id=cve.cve_id)
         session.add(node_vuln)
         session.commit()
 
         node_vuln_id = node_vuln.id
 
-        # Delete the node
         session.delete(node)
         session.commit()
 
-        # Check that node_vulnerability was deleted
         assert session.get(NodeVulnerability, node_vuln_id) is None

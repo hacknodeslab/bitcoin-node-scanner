@@ -34,6 +34,8 @@ python -m src.db.cli db-stats --days 30
 python -m src.db.cli db-trends --days 30 --granularity week
 python -m src.db.cli db-export --output export.json
 python -m src.db.cli enrich-geo          # Retroactively enrich geo data
+python -m src.db.cli db-link-cves        # (Re)build node→CVE links from cve_entries
+python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
 ```
 
 ## Required Environment Variables
@@ -44,7 +46,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
 
 ## Architecture
 

@@ -12,7 +12,7 @@ from collections import defaultdict
 from sqlalchemy import func, and_, or_, extract
 from sqlalchemy.orm import Session
 
-from .models import Node, Scan, Vulnerability, NodeVulnerability
+from .models import Node, Scan, CVEEntry, NodeVulnerability
 from .connection import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -184,12 +184,12 @@ class HistoricalAnalyzer:
                 return []
 
             result = session.query(
-                Vulnerability,
+                CVEEntry,
                 func.count(NodeVulnerability.node_id).label("node_count")
-            ).join(NodeVulnerability).filter(
+            ).join(NodeVulnerability, NodeVulnerability.cve_id == CVEEntry.cve_id).filter(
                 NodeVulnerability.resolved_at.is_(None)
             ).group_by(
-                Vulnerability.id
+                CVEEntry.cve_id
             ).order_by(
                 func.count(NodeVulnerability.node_id).desc()
             ).limit(limit).all()
@@ -493,8 +493,8 @@ class HistoricalAnalyzer:
                 # Get vulnerabilities
                 for nv in node.vulnerabilities:
                     history["vulnerabilities"].append({
-                        "cve_id": nv.vulnerability.cve_id,
-                        "severity": nv.vulnerability.severity,
+                        "cve_id": nv.cve_entry.cve_id if nv.cve_entry else nv.cve_id,
+                        "severity": nv.cve_entry.severity if nv.cve_entry else None,
                         "detected_at": nv.detected_at.isoformat() if nv.detected_at else None,
                         "resolved_at": nv.resolved_at.isoformat() if nv.resolved_at else None,
                     })

@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, main
+from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, main
 
 
 def _make_args(**kwargs):
@@ -21,6 +21,7 @@ def _make_args(**kwargs):
         "file": None,
         "ip": None,
         "command": None,
+        "scan_id": None,
     }
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -331,3 +332,65 @@ class TestMain:
                         MockAnalyzer.return_value.get_node_lifecycle.return_value = lifecycle
                         result = main()
         assert result == 0
+
+
+class TestCmdLinkCves:
+    """Tests for the db-link-cves backfill command."""
+
+    def test_returns_1_when_db_not_configured(self, capsys):
+        with patch("src.db.cli.is_database_configured", return_value=False):
+            result = cmd_link_cves(_make_args())
+        assert result == 1
+        assert "DATABASE_URL not configured" in capsys.readouterr().out
+
+    def test_links_nodes_against_seeded_catalog(self, tmp_path, capsys):
+        """End-to-end: in-memory DB seeded with nodes + CVEs → CLI creates links."""
+        from contextlib import contextmanager
+        import json as _json
+
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import sessionmaker
+
+        from src.db.models import Base, Node, CVEEntry, NodeVulnerability
+
+        engine = create_engine("sqlite:///:memory:", echo=False)
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            s.add(CVEEntry(
+                cve_id="CVE-RANGE",
+                severity="HIGH",
+                affected_versions=_json.dumps([
+                    {"cpe": "...", "start_inc": "0.20.0", "end_exc": "0.22.0"}
+                ]),
+            ))
+            s.add(Node(ip="10.0.0.1", port=8333, version="Satoshi:0.21.0"))
+            s.add(Node(ip="10.0.0.2", port=8333, version="Satoshi:25.0.0"))
+            s.add(Node(ip="10.0.0.3", port=8333, version="Satoshi:0.20.5"))
+            s.commit()
+
+        @contextmanager
+        def fake_session():
+            s = Session()
+            try:
+                yield s
+            finally:
+                s.close()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            result = cmd_link_cves(_make_args())
+
+        assert result == 0
+        with Session() as s:
+            active = s.scalars(
+                select(NodeVulnerability).where(NodeVulnerability.resolved_at.is_(None))
+            ).all()
+            ips = {s.get(Node, nv.node_id).ip for nv in active}
+            assert ips == {"10.0.0.1", "10.0.0.3"}
+
+        out = capsys.readouterr().out
+        assert "Links created:    2" in out
+        assert "Nodes processed:  3" in out

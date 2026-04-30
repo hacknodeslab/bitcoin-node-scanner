@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.models import Base, Node, Scan, Vulnerability, NodeVulnerability
+from src.db.models import Base, Node, Scan, CVEEntry, NodeVulnerability
 from src.db.analysis import HistoricalAnalyzer
 
 
@@ -63,20 +63,21 @@ def populated_db(session):
     ]
     session.add_all(scans)
 
-    # Create vulnerability
-    vuln = Vulnerability(
+    # Create CVE entry
+    cve = CVEEntry(
         cve_id="CVE-2018-17144",
-        affected_versions='["0.20.0", "0.21.0"]',
         severity="CRITICAL",
+        cvss_score=9.8,
+        affected_versions='[{"cpe": "cpe:2.3:a:bitcoin:bitcoin:0.20.0:*:*:*:*:*:*:*", "version": "0.20.0"}]',
     )
-    session.add(vuln)
+    session.add(cve)
     session.commit()
 
-    # Link some nodes to vulnerability
+    # Link some nodes to CVE
     for i in range(5):
         nv = NodeVulnerability(
             node_id=nodes[i].id,
-            vulnerability_id=vuln.id,
+            cve_id=cve.cve_id,
             detected_at=now - timedelta(days=5),
         )
         session.add(nv)

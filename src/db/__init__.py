@@ -4,7 +4,7 @@ Provides SQLAlchemy models, repositories, and database connection management.
 """
 
 from .connection import get_engine, get_db_session, is_database_configured
-from .models import Base, Node, Scan, Vulnerability, ScanNode, NodeVulnerability, ScanJob
+from .models import Base, Node, Scan, CVEEntry, ScanNode, NodeVulnerability, ScanJob
 
 __all__ = [
     'get_engine',
@@ -13,7 +13,7 @@ __all__ = [
     'Base',
     'Node',
     'Scan',
-    'Vulnerability',
+    'CVEEntry',
     'ScanNode',
     'NodeVulnerability',
     'ScanJob',

@@ -52,7 +52,7 @@ def _mock_client_entries() -> list:
             severity="CRITICAL",
             cvss_score=9.8,
             description="New critical vuln",
-            affected_versions=["cpe:2.3:a:bitcoin:bitcoin:0.22.0:*"],
+            affected_versions=[{"cpe": "cpe:2.3:a:bitcoin:bitcoin:0.22.0:*", "version": "0.22.0"}],
         )
     ]
 
@@ -111,7 +111,7 @@ class TestNVDServiceCache:
             severity="CRITICAL",  # changed
             cvss_score=9.1,       # changed
             description="Updated description",
-            affected_versions=[],
+            affected_versions=[{"cpe": "cpe:2.3:a:bitcoin:bitcoin:0.21.0:*", "version": "0.21.0"}],
         )
         with patch("src.nvd.service.NVDClient") as MockClient:
             MockClient.return_value.fetch_bitcoin_cves.return_value = [updated_entry]

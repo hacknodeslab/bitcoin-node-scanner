@@ -123,14 +123,31 @@ class NVDClient:
                     severity = base_severity.upper()
                 break
 
-        # Affected versions from CPE matches
-        affected_versions: List[str] = []
+        # Affected versions from CPE matches — restrict to Bitcoin Core
+        affected_versions: List[Dict[str, str]] = []
+        seen: set = set()
         for config in cve.get("configurations", []):
             for node in config.get("nodes", []):
                 for cpe_match in node.get("cpeMatch", []):
-                    cpe = cpe_match.get("criteria", "")
-                    if "bitcoin" in cpe.lower():
-                        affected_versions.append(cpe)
+                    entry = self._parse_cpe_match(cpe_match)
+                    if entry is None:
+                        continue
+                    key = (
+                        entry.get("cpe"),
+                        entry.get("version", ""),
+                        entry.get("start_inc", ""),
+                        entry.get("start_exc", ""),
+                        entry.get("end_inc", ""),
+                        entry.get("end_exc", ""),
+                    )
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    affected_versions.append(entry)
+
+        if not affected_versions:
+            # Not a Bitcoin Core CVE; skip entirely
+            return None
 
         return CVEEntry(
             cve_id=cve_id,
@@ -139,8 +156,47 @@ class NVDClient:
             severity=severity,
             cvss_score=cvss_score,
             description=description,
-            affected_versions=list(dict.fromkeys(affected_versions)),  # deduplicate, preserve order
+            affected_versions=affected_versions,
         )
+
+    @staticmethod
+    def _parse_cpe_match(cpe_match: Dict) -> Optional[Dict[str, str]]:
+        """Convert a raw `cpeMatch` to our structured dict, or None if not Bitcoin Core."""
+        cpe = cpe_match.get("criteria", "")
+        if not cpe:
+            return None
+
+        # CPE 2.3 format: cpe:2.3:<part>:<vendor>:<product>:<version>:...
+        parts = cpe.split(":")
+        if len(parts) < 6:
+            return None
+        vendor = parts[3].lower()
+        product = parts[4].lower()
+        # Accept the modern Bitcoin Core CPE forms used in NVD:
+        #   - bitcoin:bitcoin_core (most common since 2020)
+        #   - bitcoin:bitcoin (older entries)
+        #   - bitcoincore:bitcoin_core (rare alt vendor)
+        if (vendor, product) not in {
+            ("bitcoin", "bitcoin"),
+            ("bitcoin", "bitcoin_core"),
+            ("bitcoincore", "bitcoin_core"),
+        }:
+            return None
+
+        entry: Dict[str, str] = {"cpe": cpe}
+        version = parts[5]
+        if version and version not in ("*", "-"):
+            entry["version"] = version
+        for src_key, dst_key in (
+            ("versionStartIncluding", "start_inc"),
+            ("versionStartExcluding", "start_exc"),
+            ("versionEndIncluding", "end_inc"),
+            ("versionEndExcluding", "end_exc"),
+        ):
+            value = cpe_match.get(src_key)
+            if value:
+                entry[dst_key] = value
+        return entry
 
     @staticmethod
     def _parse_dt(value: Optional[str]) -> Optional[datetime]:

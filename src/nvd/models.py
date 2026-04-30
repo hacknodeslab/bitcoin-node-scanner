@@ -1,7 +1,7 @@
 """Data models and exceptions for the NVD API client."""
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 
 class NVDAPIError(Exception):
@@ -14,11 +14,15 @@ class NVDAPIError(Exception):
 
 @dataclass
 class CVEEntry:
-    """Internal representation of a CVE entry fetched from the NVD API."""
+    """Internal representation of a CVE entry fetched from the NVD API.
+
+    `affected_versions` items are dicts with keys: `cpe` (always present),
+    and any subset of `version`, `start_inc`, `start_exc`, `end_inc`, `end_exc`.
+    """
     cve_id: str
     published: Optional[datetime]
     last_modified: Optional[datetime]
     severity: str  # CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
     cvss_score: Optional[float]
     description: str
-    affected_versions: List[str] = field(default_factory=list)
+    affected_versions: List[Dict[str, str]] = field(default_factory=list)

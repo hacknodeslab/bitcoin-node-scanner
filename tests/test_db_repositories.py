@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.models import Base, Node, Scan, Vulnerability
+from src.db.models import Base, Node, Scan, CVEEntry
 from src.db.repositories import NodeRepository, ScanRepository, VulnerabilityRepository
 
 
@@ -273,117 +273,98 @@ class TestScanRepository:
         assert stats["total_credits"] == 12
 
 
+def _make_cve(session, cve_id: str, severity: str = "HIGH", cvss: float = 7.5) -> CVEEntry:
+    cve = CVEEntry(cve_id=cve_id, severity=severity, cvss_score=cvss, affected_versions="[]")
+    session.add(cve)
+    session.commit()
+    return cve
+
+
 class TestVulnerabilityRepository:
-    """Tests for VulnerabilityRepository."""
+    """Tests for VulnerabilityRepository (CVEEntry-backed)."""
 
-    def test_create_vulnerability(self, session):
-        """Test creating a vulnerability."""
+    def test_find_by_cve_id(self, session):
         repo = VulnerabilityRepository(session)
+        _make_cve(session, "CVE-2023-12345", severity="CRITICAL")
 
-        vuln = repo.create(
-            cve_id="CVE-2023-12345",
-            affected_versions=["0.19.0", "0.19.1"],
-            severity="HIGH",
-            description="Test vulnerability",
-        )
-        session.commit()
-
-        assert vuln.id is not None
-        assert vuln.cve_id == "CVE-2023-12345"
-
-    def test_get_or_create(self, session):
-        """Test get_or_create for vulnerabilities."""
-        repo = VulnerabilityRepository(session)
-
-        # Create new
-        vuln1 = repo.get_or_create(
-            cve_id="CVE-2023-11111",
-            affected_versions=["0.18.0"],
-            severity="MEDIUM",
-        )
-        session.commit()
-
-        # Get existing
-        vuln2 = repo.get_or_create(
-            cve_id="CVE-2023-11111",
-            affected_versions=["0.18.0"],
-            severity="MEDIUM",
-        )
-        session.commit()
-
-        assert vuln1.id == vuln2.id
+        found = repo.find_by_cve_id("CVE-2023-12345")
+        assert found is not None
+        assert found.severity == "CRITICAL"
+        assert repo.find_by_cve_id("CVE-NOPE") is None
 
     def test_link_to_node(self, session):
-        """Test linking vulnerability to node."""
         vuln_repo = VulnerabilityRepository(session)
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.0.3.1", "port": 8333, "version": "0.19.0"})
-        vuln = vuln_repo.create(
-            cve_id="CVE-2023-22222",
-            affected_versions=["0.19.0"],
-            severity="HIGH",
-        )
+        cve = _make_cve(session, "CVE-2023-22222")
+
+        link = vuln_repo.link_to_node(node, cve)
         session.commit()
 
-        node_vuln = vuln_repo.link_to_node(node, vuln)
-        session.commit()
-
-        assert node_vuln.node_id == node.id
-        assert node_vuln.vulnerability_id == vuln.id
-        assert node_vuln.detected_at is not None
+        assert link.node_id == node.id
+        assert link.cve_id == cve.cve_id
+        assert link.detected_at is not None
 
     def test_resolve_for_node(self, session):
-        """Test resolving vulnerability for a node."""
         vuln_repo = VulnerabilityRepository(session)
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.0.3.2", "port": 8333})
-        vuln = vuln_repo.create(
-            cve_id="CVE-2023-33333",
-            affected_versions=["0.18.0"],
-            severity="CRITICAL",
-        )
+        cve = _make_cve(session, "CVE-2023-33333", severity="CRITICAL")
+
+        vuln_repo.link_to_node(node, cve)
         session.commit()
 
-        vuln_repo.link_to_node(node, vuln)
-        session.commit()
-
-        result = vuln_repo.resolve_for_node(node, vuln)
+        result = vuln_repo.resolve_for_node(node, cve)
         session.commit()
 
         assert result is True
         active = vuln_repo.get_active_for_node(node)
         assert len(active) == 0
 
-    def test_get_top_vulnerabilities(self, session):
-        """Test getting top vulnerabilities by affected nodes."""
+    def test_sync_node_links_adds_and_resolves(self, session):
         vuln_repo = VulnerabilityRepository(session)
         node_repo = NodeRepository(session)
 
-        # Create vulnerabilities
-        vuln1 = vuln_repo.create(
-            cve_id="CVE-2023-TOP1",
-            affected_versions=["0.19.0"],
-            severity="HIGH",
-        )
-        vuln2 = vuln_repo.create(
-            cve_id="CVE-2023-TOP2",
-            affected_versions=["0.18.0"],
-            severity="CRITICAL",
-        )
-        session.commit()
+        node = node_repo.upsert({"ip": "10.0.3.3", "port": 8333, "version": "0.20.0"})
+        cve_a = _make_cve(session, "CVE-A")
+        cve_b = _make_cve(session, "CVE-B")
+        cve_c = _make_cve(session, "CVE-C")
 
-        # Link nodes to vulnerabilities
+        # Initial: no links → expected {A, B}
+        added, resolved = vuln_repo.sync_node_links(node, {"CVE-A", "CVE-B"})
+        session.commit()
+        assert (added, resolved) == (2, 0)
+
+        # Same expected set → no-op
+        added, resolved = vuln_repo.sync_node_links(node, {"CVE-A", "CVE-B"})
+        session.commit()
+        assert (added, resolved) == (0, 0)
+
+        # Now expected {B, C} → A resolved, C added
+        added, resolved = vuln_repo.sync_node_links(node, {"CVE-B", "CVE-C"})
+        session.commit()
+        assert (added, resolved) == (1, 1)
+        active_ids = {c.cve_id for c in vuln_repo.get_active_for_node(node)}
+        assert active_ids == {"CVE-B", "CVE-C"}
+
+    def test_get_top_vulnerabilities(self, session):
+        vuln_repo = VulnerabilityRepository(session)
+        node_repo = NodeRepository(session)
+
+        cve1 = _make_cve(session, "CVE-2023-TOP1")
+        cve2 = _make_cve(session, "CVE-2023-TOP2", severity="CRITICAL", cvss=9.8)
+
         for i in range(5):
             node = node_repo.upsert({"ip": f"10.0.4.{i}", "port": 8333})
             session.commit()
-            vuln_repo.link_to_node(node, vuln1)
+            vuln_repo.link_to_node(node, cve1)
 
         for i in range(10):
             node = node_repo.upsert({"ip": f"10.0.5.{i}", "port": 8333})
             session.commit()
-            vuln_repo.link_to_node(node, vuln2)
+            vuln_repo.link_to_node(node, cve2)
 
         session.commit()
 
