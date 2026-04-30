@@ -251,3 +251,57 @@ class TestNVDClientMapping:
             entries = NVDClient().fetch_bitcoin_cves()
 
         assert entries == []
+
+    def test_pure_catch_all_cpe_omitted(self):
+        """A CPE with version=* and no range bounds means 'affects every
+        version' — NVD emits this for ancient CVEs whose data was never
+        updated. Drop the entry rather than flood the catalog."""
+        item = _cve_item(
+            "CVE-2012-OLD",
+            cpe_matches=[
+                {"criteria": "cpe:2.3:a:bitcoin:bitcoin_core:*:*:*:*:*:*:*:*"},
+            ],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        assert entries == []
+
+    def test_dash_version_is_treated_as_catch_all(self):
+        """CPE 2.3 uses `-` to mean 'not applicable'. With no range bounds
+        we treat it the same as `*`: drop the entry."""
+        item = _cve_item(
+            "CVE-2017-DASH",
+            cpe_matches=[
+                {"criteria": "cpe:2.3:a:bitcoin:bitcoin:-:*:*:*:*:*:*:*"},
+            ],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        assert entries == []
+
+    def test_catch_all_with_range_is_kept(self):
+        """A CPE version=* combined with a range IS valid — that's exactly
+        how NVD expresses 'affects everything below 25.0'."""
+        item = _cve_item(
+            "CVE-2024-RANGE",
+            cpe_matches=[{
+                "criteria": "cpe:2.3:a:bitcoin:bitcoin_core:*:*:*:*:*:*:*:*",
+                "versionEndExcluding": "25.0",
+            }],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        assert len(entries) == 1
+        assert entries[0].affected_versions[0].get("end_exc") == "25.0"

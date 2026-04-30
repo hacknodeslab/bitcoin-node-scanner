@@ -72,14 +72,16 @@ class CVEMatcher:
     - `_exact`: maps an exact version tuple → set of cve_ids that explicitly list it.
     - `_ranges`: list of (cve_id, start_inc, start_exc, end_inc, end_exc) for entries
       with a version range. `None` on a bound means "open".
-    - `_unbounded`: cve_ids whose only entry is `version=*` with no range; these are
-      treated as catch-alls (apply to every parseable version).
+    Pure catch-all entries (CPE `version=*` with no range) are intentionally
+    NOT supported: NVD emits those for ancient CVEs whose data was never
+    updated, and treating them as "affects every version" produces a sea of
+    false positives against modern nodes. The NVD client filters them at
+    refresh time; this builder also rejects them defensively.
     """
 
     def __init__(self, entries: Iterable[CVEEntryModel]):
         self._exact: dict[VersionTuple, Set[str]] = {}
         self._ranges: list[tuple[str, Optional[VersionTuple], Optional[VersionTuple], Optional[VersionTuple], Optional[VersionTuple]]] = []
-        self._unbounded: Set[str] = set()
         self._build(entries)
 
     def _build(self, entries: Iterable[CVEEntryModel]) -> None:
@@ -92,9 +94,6 @@ class CVEMatcher:
             except (TypeError, ValueError):
                 logger.warning("CVEMatcher: could not parse affected_versions for %s", cve.cve_id)
                 continue
-
-            specific_added = False  # any exact version or range registered
-            unbounded_seen = False
 
             for item in items:
                 # Backwards-compat: catalogs cached before the structured rewrite
@@ -124,25 +123,23 @@ class CVEMatcher:
 
                 if version is not None and not has_range:
                     self._exact.setdefault(version, set()).add(cve.cve_id)
-                    specific_added = True
                 elif has_range:
                     self._ranges.append((cve.cve_id, start_inc, start_exc, end_inc, end_exc))
-                    specific_added = True
                 elif raw_version is not None or has_raw_bound:
-                    # Specific entry that we couldn't parse (e.g. NVD short form
-                    # we don't recognise). Skip the entry — never escalate to
-                    # catch-all, since that would inflate matches massively.
+                    # Entry had specific bounds that we couldn't parse (NVD
+                    # short form we don't recognise, etc.). Skip the entry.
                     logger.warning(
                         "CVEMatcher: unparseable bounds for %s (version=%r, bounds=%r) — entry skipped",
                         cve.cve_id, raw_version, raw_bounds,
                     )
                     continue
                 else:
-                    # No version, no range — catch-all for the product
-                    unbounded_seen = True
-
-            if unbounded_seen and not specific_added:
-                self._unbounded.add(cve.cve_id)
+                    # No version, no range — pure catch-all. Drop it: see the
+                    # class docstring for rationale.
+                    logger.debug(
+                        "CVEMatcher: dropping catch-all entry for %s", cve.cve_id
+                    )
+                    continue
 
     def matches_for(self, version: Optional[str]) -> Set[str]:
         """Return the set of cve_ids that affect this Bitcoin Core version."""
@@ -150,7 +147,7 @@ class CVEMatcher:
         if parsed is None:
             return set()
 
-        result: Set[str] = set(self._unbounded)
+        result: Set[str] = set()
         result.update(self._exact.get(parsed, set()))
         for cve_id, s_inc, s_exc, e_inc, e_exc in self._ranges:
             if s_inc is not None and parsed < s_inc:
@@ -166,7 +163,7 @@ class CVEMatcher:
 
     @property
     def cve_count(self) -> int:
-        ids: Set[str] = set(self._unbounded)
+        ids: Set[str] = set()
         for s in self._exact.values():
             ids.update(s)
         for cve_id, *_ in self._ranges:

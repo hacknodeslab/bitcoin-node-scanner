@@ -52,16 +52,21 @@ class TestCVEMatcher:
         assert m.matches_for("0.20.1") == {"CVE-SE"}
         assert m.matches_for("0.21.0") == {"CVE-SE"}  # included
 
-    def test_unbounded_catch_all_only_when_no_specific_entry(self):
+    def test_pure_catch_all_entries_are_dropped(self):
+        """NVD emits version=* with no range for ancient CVEs whose data was
+        never updated. Treating them as 'affects every version' produces a
+        flood of false positives, so we drop them."""
         m = CVEMatcher([
             _entry("CVE-CATCHALL", [{"cpe": "..."}]),  # no version, no range
             _entry("CVE-SPECIFIC", [
                 {"cpe": "...", "version": "0.21.0"},
-                {"cpe": "..."},  # this catch-all should be ignored because of the specific entry
+                {"cpe": "..."},  # catch-all is ignored regardless
             ]),
         ])
-        assert m.matches_for("0.21.0") == {"CVE-CATCHALL", "CVE-SPECIFIC"}
-        assert m.matches_for("0.21.1") == {"CVE-CATCHALL"}
+        assert m.matches_for("0.21.0") == {"CVE-SPECIFIC"}
+        assert m.matches_for("0.21.1") == set()
+        # CVE-CATCHALL never matches anything
+        assert "CVE-CATCHALL" not in m.matches_for("0.21.0")
 
     def test_unparseable_version_returns_empty(self):
         m = CVEMatcher([
