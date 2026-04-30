@@ -141,7 +141,7 @@ def mock_db_not_configured():
 @pytest.fixture
 def populated_db_session(db_session):
     """Database session with pre-populated test data."""
-    from src.db.models import Node, Scan, Vulnerability, NodeVulnerability
+    from src.db.models import Node, Scan, CVEEntry, NodeVulnerability
 
     now = datetime.utcnow()
 
@@ -171,19 +171,20 @@ def populated_db_session(db_session):
         )
         db_session.add(scan)
 
-    # Create vulnerability
-    vuln = Vulnerability(
+    # Create CVE entry
+    cve = CVEEntry(
         cve_id="CVE-2018-17144",
-        affected_versions='["0.20.0", "0.21.0"]',
         severity="CRITICAL",
+        cvss_score=9.8,
+        affected_versions='[{"cpe": "cpe:2.3:a:bitcoin:bitcoin:0.20.0:*:*:*:*:*:*:*", "version": "0.20.0"}]',
     )
-    db_session.add(vuln)
+    db_session.add(cve)
     db_session.commit()
 
-    # Link vulnerability to first node
+    # Link CVE to first node
     nv = NodeVulnerability(
         node_id=nodes[0].id,
-        vulnerability_id=vuln.id,
+        cve_id=cve.cve_id,
     )
     db_session.add(nv)
     db_session.commit()

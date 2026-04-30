@@ -7,8 +7,21 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.db.models import Base, Node, Scan, Vulnerability, NodeVulnerability
+from src.db.models import Base, Node, Scan, CVEEntry, NodeVulnerability
 from src.db.repositories import NodeRepository, ScanRepository, VulnerabilityRepository
+
+
+def _mk_cve(session, cve_id: str, severity: str = "HIGH", **kwargs) -> CVEEntry:
+    cve = CVEEntry(
+        cve_id=cve_id,
+        severity=severity,
+        cvss_score=kwargs.get("cvss_score"),
+        description=kwargs.get("description"),
+        affected_versions=kwargs.get("affected_versions", "[]"),
+    )
+    session.add(cve)
+    session.commit()
+    return cve
 
 
 @pytest.fixture
@@ -301,49 +314,35 @@ class TestScanRepositoryExtended:
 
 
 class TestVulnerabilityRepositoryExtended:
-    """Tests for VulnerabilityRepository methods not fully covered."""
+    """Tests for VulnerabilityRepository (CVEEntry-backed) — extended coverage."""
 
     def test_find_by_severity(self, session):
         repo = VulnerabilityRepository(session)
-        vuln_crit = repo.create("CVE-CRIT", ["0.19.0"], "CRITICAL")
-        vuln_high = repo.create("CVE-HIGH", ["0.18.0"], "HIGH")
-        session.commit()
+        _mk_cve(session, "CVE-CRIT", severity="CRITICAL")
+        _mk_cve(session, "CVE-HIGH", severity="HIGH")
 
         crits = repo.find_by_severity("CRITICAL")
         assert len(crits) == 1
         assert crits[0].cve_id == "CVE-CRIT"
 
-    def test_find_affecting_version(self, session):
-        repo = VulnerabilityRepository(session)
-        repo.create("CVE-MATCH", ["0.19.0", "0.20.0"], "HIGH")
-        repo.create("CVE-NO", ["0.18.0"], "LOW")
-        session.commit()
-
-        matches = repo.find_affecting_version("0.19.0")
-        assert len(matches) == 1
-        assert matches[0].cve_id == "CVE-MATCH"
-
     def test_get_all(self, session):
         repo = VulnerabilityRepository(session)
-        repo.create("CVE-A", ["0.19.0"], "HIGH")
-        repo.create("CVE-B", ["0.18.0"], "LOW")
-        session.commit()
+        _mk_cve(session, "CVE-A")
+        _mk_cve(session, "CVE-B", severity="LOW")
 
-        all_vulns = repo.get_all()
-        assert len(all_vulns) == 2
+        all_cves = repo.get_all()
+        assert len(all_cves) == 2
 
     def test_link_to_node_idempotent(self, session):
-        """Linking the same vulnerability twice should not create duplicate."""
         vuln_repo = VulnerabilityRepository(session)
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.20.0.1", "port": 8333})
-        vuln = vuln_repo.create("CVE-DUP", ["0.19.0"], "HIGH")
-        session.commit()
+        cve = _mk_cve(session, "CVE-DUP")
 
-        nv1 = vuln_repo.link_to_node(node, vuln)
+        nv1 = vuln_repo.link_to_node(node, cve)
         session.commit()
-        nv2 = vuln_repo.link_to_node(node, vuln)
+        nv2 = vuln_repo.link_to_node(node, cve)
         session.commit()
 
         assert nv1.id == nv2.id
@@ -353,10 +352,9 @@ class TestVulnerabilityRepositoryExtended:
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.21.0.1", "port": 8333, "version": "0.19.0"})
-        vuln = vuln_repo.create("CVE-VER", ["0.19.0"], "MEDIUM")
-        session.commit()
+        cve = _mk_cve(session, "CVE-VER", severity="MEDIUM")
 
-        nv = vuln_repo.link_to_node(node, vuln, detected_version="0.19.0")
+        nv = vuln_repo.link_to_node(node, cve, detected_version="0.19.0")
         session.commit()
         assert nv.detected_version == "0.19.0"
 
@@ -365,10 +363,9 @@ class TestVulnerabilityRepositoryExtended:
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.22.0.1", "port": 8333})
-        vuln = vuln_repo.create("CVE-NONE", ["0.19.0"], "LOW")
-        session.commit()
+        cve = _mk_cve(session, "CVE-NONE", severity="LOW")
 
-        result = vuln_repo.resolve_for_node(node, vuln)
+        result = vuln_repo.resolve_for_node(node, cve)
         assert result is False
 
     def test_resolve_all_for_node(self, session):
@@ -376,12 +373,11 @@ class TestVulnerabilityRepositoryExtended:
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.23.0.1", "port": 8333})
-        vuln1 = vuln_repo.create("CVE-R1", ["0.19.0"], "HIGH")
-        vuln2 = vuln_repo.create("CVE-R2", ["0.18.0"], "CRITICAL")
-        session.commit()
+        cve1 = _mk_cve(session, "CVE-R1")
+        cve2 = _mk_cve(session, "CVE-R2", severity="CRITICAL")
 
-        vuln_repo.link_to_node(node, vuln1)
-        vuln_repo.link_to_node(node, vuln2)
+        vuln_repo.link_to_node(node, cve1)
+        vuln_repo.link_to_node(node, cve2)
         session.commit()
 
         count = vuln_repo.resolve_all_for_node(node)
@@ -390,20 +386,19 @@ class TestVulnerabilityRepositoryExtended:
         assert count == 2
         assert len(vuln_repo.get_active_for_node(node)) == 0
 
-    def test_get_nodes_by_vulnerability(self, session):
+    def test_get_nodes_by_cve(self, session):
         vuln_repo = VulnerabilityRepository(session)
         node_repo = NodeRepository(session)
 
         node1 = node_repo.upsert({"ip": "10.24.0.1", "port": 8333})
         node2 = node_repo.upsert({"ip": "10.24.0.2", "port": 8333})
-        vuln = vuln_repo.create("CVE-NODES", ["0.19.0"], "HIGH")
+        cve = _mk_cve(session, "CVE-NODES")
+
+        vuln_repo.link_to_node(node1, cve)
+        vuln_repo.link_to_node(node2, cve)
         session.commit()
 
-        vuln_repo.link_to_node(node1, vuln)
-        vuln_repo.link_to_node(node2, vuln)
-        session.commit()
-
-        affected = vuln_repo.get_nodes_by_vulnerability(vuln)
+        affected = vuln_repo.get_nodes_by_cve(cve)
         assert len(affected) == 2
 
     def test_count_affected_nodes(self, session):
@@ -411,27 +406,24 @@ class TestVulnerabilityRepositoryExtended:
         node_repo = NodeRepository(session)
 
         node = node_repo.upsert({"ip": "10.25.0.1", "port": 8333})
-        vuln = vuln_repo.create("CVE-COUNT", ["0.19.0"], "HIGH")
+        cve = _mk_cve(session, "CVE-COUNT")
+
+        vuln_repo.link_to_node(node, cve)
         session.commit()
 
-        vuln_repo.link_to_node(node, vuln)
-        session.commit()
-
-        assert vuln_repo.count_affected_nodes(vuln) == 1
+        assert vuln_repo.count_affected_nodes(cve) == 1
 
     def test_count_all(self, session):
         repo = VulnerabilityRepository(session)
-        repo.create("CVE-C1", ["0.19.0"], "HIGH")
-        repo.create("CVE-C2", ["0.18.0"], "LOW")
-        session.commit()
+        _mk_cve(session, "CVE-C1")
+        _mk_cve(session, "CVE-C2", severity="LOW")
         assert repo.count_all() == 2
 
     def test_count_by_severity(self, session):
         repo = VulnerabilityRepository(session)
-        repo.create("CVE-S1", ["0.19.0"], "HIGH")
-        repo.create("CVE-S2", ["0.18.0"], "HIGH")
-        repo.create("CVE-S3", ["0.17.0"], "CRITICAL")
-        session.commit()
+        _mk_cve(session, "CVE-S1", severity="HIGH")
+        _mk_cve(session, "CVE-S2", severity="HIGH")
+        _mk_cve(session, "CVE-S3", severity="CRITICAL")
 
         counts = repo.count_by_severity()
         assert counts["HIGH"] == 2
@@ -439,23 +431,24 @@ class TestVulnerabilityRepositoryExtended:
 
     def test_delete(self, session):
         repo = VulnerabilityRepository(session)
-        vuln = repo.create("CVE-DEL", ["0.19.0"], "LOW")
-        session.commit()
+        cve = _mk_cve(session, "CVE-DEL", severity="LOW")
         assert repo.count_all() == 1
 
-        repo.delete(vuln)
+        repo.delete(cve)
         session.commit()
         assert repo.count_all() == 0
 
-    def test_get_or_create_with_kwargs(self, session):
-        repo = VulnerabilityRepository(session)
-        vuln = repo.get_or_create(
-            cve_id="CVE-KWARGS",
-            affected_versions=["0.19.0"],
-            severity="HIGH",
-            description="Test description",
-            cvss_score=7.5,
-        )
+    def test_sync_node_links_no_op_when_unchanged(self, session):
+        vuln_repo = VulnerabilityRepository(session)
+        node_repo = NodeRepository(session)
+
+        node = node_repo.upsert({"ip": "10.30.0.1", "port": 8333})
+        _mk_cve(session, "CVE-X1")
+        _mk_cve(session, "CVE-X2")
+
+        vuln_repo.sync_node_links(node, {"CVE-X1", "CVE-X2"})
         session.commit()
-        assert vuln.description == "Test description"
-        assert vuln.cvss_score == 7.5
+
+        added, resolved = vuln_repo.sync_node_links(node, {"CVE-X1", "CVE-X2"})
+        session.commit()
+        assert (added, resolved) == (0, 0)

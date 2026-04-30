@@ -71,8 +71,26 @@ class NVDService:
         client = NVDClient()
         entries: List[CVEEntry] = client.fetch_bitcoin_cves()
 
+        # Snapshot existing affected_versions hashes so we can detect changes.
+        previous = {
+            row[0]: row[1]
+            for row in self._session.execute(
+                select(CVEEntryModel.cve_id, CVEEntryModel.affected_versions)
+            ).all()
+        }
+
         now = datetime.utcnow()
+        stored = 0
+        changed_cves = 0
         for entry in entries:
+            if not entry.affected_versions:
+                # Defensive: client should already have skipped non-Bitcoin-Core CVEs
+                continue
+            new_affected_json = json.dumps(entry.affected_versions)
+            prev_affected = previous.get(entry.cve_id)
+            if prev_affected is None or prev_affected != new_affected_json:
+                changed_cves += 1
+
             stmt = sqlite_insert(CVEEntryModel).values(
                 cve_id=entry.cve_id,
                 published=entry.published,
@@ -80,7 +98,7 @@ class NVDService:
                 severity=entry.severity,
                 cvss_score=entry.cvss_score,
                 description=entry.description,
-                affected_versions=json.dumps(entry.affected_versions),
+                affected_versions=new_affected_json,
                 fetched_at=now,
             )
             stmt = stmt.on_conflict_do_update(
@@ -96,9 +114,35 @@ class NVDService:
                 },
             )
             self._session.execute(stmt)
+            stored += 1
 
         self._session.commit()
-        logger.info("NVD cache refreshed: %d entries stored", len(entries))
+        logger.info("NVD cache refreshed: %d entries stored, %d new/changed", stored, changed_cves)
+
+        if changed_cves and os.getenv("NVD_AUTO_RELINK", "true").lower() in {"1", "true", "yes"}:
+            self._relink_all_nodes()
+
+    def _relink_all_nodes(self) -> None:
+        """Rebuild node_vulnerabilities for every node using the refreshed catalog."""
+        from ..db.models import Node
+        from ..db.repositories import VulnerabilityRepository
+        from .matcher import CVEMatcher
+
+        entries = list(self._session.scalars(select(CVEEntryModel)).all())
+        matcher = CVEMatcher(entries)
+        vuln_repo = VulnerabilityRepository(self._session)
+
+        added = resolved = 0
+        nodes = list(self._session.scalars(select(Node)).all())
+        for node in nodes:
+            a, r = vuln_repo.sync_node_links(node, matcher.matches_for(node.version))
+            added += a
+            resolved += r
+        self._session.commit()
+        logger.info(
+            "Auto-relink complete: %d nodes processed, %d links added, %d resolved",
+            len(nodes), added, resolved,
+        )
 
     def _fetch_sorted(self) -> List[CVEEntryModel]:
         """Return all cached CVE entries sorted by cvss_score DESC, NULLs last."""

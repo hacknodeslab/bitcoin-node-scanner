@@ -12,8 +12,8 @@ from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...db.connection import get_session_factory
-from ...db.models import Node
-from ...db.repositories import NodeRepository
+from ...db.models import CVEEntry, Node, NodeVulnerability
+from ...db.repositories import NodeRepository, VulnerabilityRepository
 from ..auth import require_api_key
 
 router = APIRouter()
@@ -28,6 +28,22 @@ _SORT_COLUMNS = {
     "geo_country_name": Node.geo_country_name,
     "last_seen": Node.last_seen,
 }
+
+
+class CVESummary(BaseModel):
+    cve_id: str
+    severity: str
+    cvss_score: Optional[float] = None
+
+
+class CVELink(BaseModel):
+    cve_id: str
+    severity: str
+    cvss_score: Optional[float] = None
+    description: Optional[str] = None
+    detected_at: Optional[str] = None
+    detected_version: Optional[str] = None
+    resolved_at: Optional[str] = None
 
 
 class NodeOut(BaseModel):
@@ -63,6 +79,13 @@ class NodeOut(BaseModel):
     vulns: Optional[List[str]]
     tags: Optional[List[str]]
     cpe: Optional[List[str]]
+    # CVE linking
+    cve_count: int = 0
+    top_cve: Optional[CVESummary] = None
+
+
+class NodeDetailOut(NodeOut):
+    cves: List[CVELink] = []
 
 
 class NodeGeoOut(BaseModel):
@@ -102,8 +125,8 @@ def _parse_json_col(value: Optional[str]) -> Optional[List]:
         return None
 
 
-def _make_node_out(n: Node) -> NodeOut:
-    return NodeOut(
+def _node_out_kwargs(n: Node) -> dict:
+    return dict(
         id=n.id,
         ip=n.ip,
         port=n.port,
@@ -134,6 +157,53 @@ def _make_node_out(n: Node) -> NodeOut:
         tags=_parse_json_col(getattr(n, "tags_json", None)),
         cpe=_parse_json_col(getattr(n, "cpe_json", None)),
     )
+
+
+def _make_node_out(
+    n: Node,
+    cve_count: int = 0,
+    top_cve: Optional[CVESummary] = None,
+) -> NodeOut:
+    return NodeOut(**_node_out_kwargs(n), cve_count=cve_count, top_cve=top_cve)
+
+
+def _cve_summary_for_nodes(db: Session, node_ids: List[int]) -> dict[int, tuple[int, Optional[CVESummary]]]:
+    """Return {node_id: (count, top_cve)} for the given node ids in 2 queries."""
+    if not node_ids:
+        return {}
+
+    count_rows = db.execute(
+        select(NodeVulnerability.node_id, func.count())
+        .where(
+            NodeVulnerability.node_id.in_(node_ids),
+            NodeVulnerability.resolved_at.is_(None),
+        )
+        .group_by(NodeVulnerability.node_id)
+    ).all()
+    counts = {nid: c for nid, c in count_rows}
+
+    rows = db.execute(
+        select(
+            NodeVulnerability.node_id,
+            CVEEntry.cve_id,
+            CVEEntry.severity,
+            CVEEntry.cvss_score,
+        )
+        .join(CVEEntry, CVEEntry.cve_id == NodeVulnerability.cve_id)
+        .where(
+            NodeVulnerability.node_id.in_(node_ids),
+            NodeVulnerability.resolved_at.is_(None),
+        )
+    ).all()
+    top_per_node: dict[int, CVESummary] = {}
+    for nid, cve_id, severity, cvss in rows:
+        existing = top_per_node.get(nid)
+        new_score = cvss if cvss is not None else -1
+        old_score = existing.cvss_score if (existing and existing.cvss_score is not None) else -1
+        if existing is None or new_score > old_score:
+            top_per_node[nid] = CVESummary(cve_id=cve_id, severity=severity, cvss_score=cvss)
+
+    return {nid: (counts.get(nid, 0), top_per_node.get(nid)) for nid in node_ids}
 
 
 @router.get("/nodes/countries", response_model=List[str])
@@ -198,8 +268,64 @@ def list_nodes(
         .limit(limit)
     )
     nodes = list(db.scalars(stmt).all())
+    summary = _cve_summary_for_nodes(db, [n.id for n in nodes])
 
-    return [_make_node_out(n) for n in nodes]
+    out: List[NodeOut] = []
+    for n in nodes:
+        count, top = summary.get(n.id, (0, None))
+        out.append(_make_node_out(n, cve_count=count, top_cve=top))
+    return out
+
+
+@router.get("/nodes/{node_id}", response_model=NodeDetailOut)
+def get_node_detail(
+    node_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    include_resolved: Annotated[bool, Query(description="Include resolved CVE links")] = False,
+):
+    repo = NodeRepository(db)
+    node = repo.get_by_id(node_id)
+    if node is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Node not found.")
+
+    vuln_repo = VulnerabilityRepository(db)
+    links = vuln_repo.get_links_for_node(node, include_resolved=include_resolved)
+
+    cve_ids = [link.cve_id for link in links]
+    catalog = {
+        cve.cve_id: cve
+        for cve in db.scalars(select(CVEEntry).where(CVEEntry.cve_id.in_(cve_ids))).all()
+    } if cve_ids else {}
+
+    cve_links: List[CVELink] = []
+    for link in links:
+        entry = catalog.get(link.cve_id)
+        cve_links.append(CVELink(
+            cve_id=link.cve_id,
+            severity=entry.severity if entry else "UNKNOWN",
+            cvss_score=entry.cvss_score if entry else None,
+            description=entry.description if entry else None,
+            detected_at=link.detected_at.isoformat() if link.detected_at else None,
+            detected_version=link.detected_version,
+            resolved_at=link.resolved_at.isoformat() if link.resolved_at else None,
+        ))
+
+    cve_links.sort(
+        key=lambda c: (c.resolved_at is not None, -(c.cvss_score or -1)),
+    )
+
+    active_links = [c for c in cve_links if c.resolved_at is None]
+    top: Optional[CVESummary] = None
+    if active_links:
+        first = active_links[0]
+        top = CVESummary(cve_id=first.cve_id, severity=first.severity, cvss_score=first.cvss_score)
+
+    return NodeDetailOut(
+        **_node_out_kwargs(node),
+        cve_count=len(active_links),
+        top_cve=top,
+        cves=cve_links,
+    )
 
 
 @router.get(

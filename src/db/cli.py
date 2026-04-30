@@ -352,6 +352,61 @@ def cmd_enrich_geo(args):
     return 0
 
 
+def cmd_link_cves(args):
+    """Backfill or refresh CVE links for all nodes (or those of a single scan)."""
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+
+    init_db()
+
+    from src.db.models import CVEEntry, Node, ScanNode
+    from sqlalchemy import select
+    from src.nvd.matcher import CVEMatcher
+
+    with get_db_session() as session:
+        if session is None:
+            print("Error: Could not connect to database")
+            return 1
+
+        entries = list(session.scalars(select(CVEEntry)).all())
+        matcher = CVEMatcher(entries)
+        print(f"Loaded {len(entries)} CVE entries from catalog ({matcher.cve_count} matchable).")
+
+        # Resolve node selection
+        if args.scan_id:
+            stmt = select(Node).join(ScanNode, ScanNode.c.node_id == Node.id).where(
+                ScanNode.c.scan_id == args.scan_id
+            )
+        else:
+            stmt = select(Node)
+        nodes = list(session.scalars(stmt).all())
+
+        vuln_repo = VulnerabilityRepository(session)
+        total_added = 0
+        total_resolved = 0
+        skipped = 0
+        for node in nodes:
+            expected = matcher.matches_for(node.version)
+            if not expected and not node.version:
+                skipped += 1
+                continue
+            added, resolved = vuln_repo.sync_node_links(node, expected)
+            total_added += added
+            total_resolved += resolved
+
+        session.commit()
+
+    print("=" * 50)
+    print("CVE LINK BACKFILL COMPLETE")
+    print("=" * 50)
+    print(f"  Nodes processed:  {len(nodes)}")
+    print(f"  Skipped (no version): {skipped}")
+    print(f"  Links created:    {total_added}")
+    print(f"  Links resolved:   {total_resolved}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bitcoin Node Scanner Database CLI"
@@ -386,6 +441,18 @@ def main():
         help="Retroactively enrich all nodes with MaxMind GeoIP data (requires GEOIP_DB_DIR)",
     )
 
+    # db-link-cves command
+    link_parser = subparsers.add_parser(
+        "db-link-cves",
+        help="Backfill node→CVE links from cve_entries (rebuilds node_vulnerabilities)",
+    )
+    link_parser.add_argument(
+        "--scan-id",
+        type=int,
+        default=None,
+        help="Limit backfill to nodes of a specific scan id",
+    )
+
     args = parser.parse_args()
 
     if args.command == "db-stats":
@@ -400,6 +467,8 @@ def main():
         return cmd_node(args)
     elif args.command == "enrich-geo":
         return cmd_enrich_geo(args)
+    elif args.command == "db-link-cves":
+        return cmd_link_cves(args)
     else:
         parser.print_help()
         return 1

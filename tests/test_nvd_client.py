@@ -1,7 +1,6 @@
 """
 Unit tests for NVDClient — mocked HTTP responses.
 """
-from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,7 +22,15 @@ def _nvd_response(total: int, items: list) -> dict:
     }
 
 
-def _cve_item(cve_id: str, score: float = 7.5, severity: str = "HIGH") -> dict:
+def _cve_item(
+    cve_id: str,
+    score: float = 7.5,
+    severity: str = "HIGH",
+    cpe_matches: list | None = None,
+) -> dict:
+    matches = cpe_matches if cpe_matches is not None else [
+        {"criteria": "cpe:2.3:a:bitcoin:bitcoin:0.21.0:*:*:*:*:*:*:*"}
+    ]
     return {
         "cve": {
             "id": cve_id,
@@ -38,11 +45,7 @@ def _cve_item(cve_id: str, score: float = 7.5, severity: str = "HIGH") -> dict:
                     }
                 }]
             },
-            "configurations": [{
-                "nodes": [{
-                    "cpeMatch": [{"criteria": f"cpe:2.3:a:bitcoin:bitcoin:0.21.0:*:*:*:*:*:*:*"}]
-                }]
-            }]
+            "configurations": [{"nodes": [{"cpeMatch": matches}]}],
         }
     }
 
@@ -87,7 +90,7 @@ class TestNVDClientFetch:
         responses[1].json.return_value = page2
 
         with patch("src.nvd.client.requests.get", side_effect=responses), \
-             patch("src.nvd.client.time.sleep"):  # suppress delay
+             patch("src.nvd.client.time.sleep"):
             client = NVDClient()
             entries = client.fetch_bitcoin_cves()
 
@@ -151,7 +154,6 @@ class TestNVDClientFetch:
 class TestNVDClientMapping:
     def test_cvss_v3_priority(self):
         item = _cve_item("CVE-2023-0001", score=9.8, severity="CRITICAL")
-        # Also add v2 — v3 should win
         item["cve"]["metrics"]["cvssMetricV2"] = [{"cvssData": {"baseScore": 5.0, "baseSeverity": "MEDIUM"}}]
 
         mock_resp = MagicMock(status_code=200)
@@ -163,14 +165,16 @@ class TestNVDClientMapping:
         assert entries[0].severity == "CRITICAL"
         assert entries[0].cvss_score == 9.8
 
-    def test_missing_cvss_defaults_to_unknown(self):
+    def test_missing_cvss_with_bitcoin_cpe_defaults_to_unknown(self):
         item = {"cve": {
             "id": "CVE-2023-9999",
             "published": "2023-01-01T00:00:00.000",
             "lastModified": "2023-01-01T00:00:00.000",
             "descriptions": [{"lang": "en", "value": "No score available"}],
             "metrics": {},
-            "configurations": [],
+            "configurations": [{"nodes": [{"cpeMatch": [
+                {"criteria": "cpe:2.3:a:bitcoin:bitcoin:0.20.0:*:*:*:*:*:*:*"}
+            ]}]}],
         }}
         mock_resp = MagicMock(status_code=200)
         mock_resp.json.return_value = _nvd_response(1, [item])
@@ -181,7 +185,7 @@ class TestNVDClientMapping:
         assert entries[0].severity == "UNKNOWN"
         assert entries[0].cvss_score is None
 
-    def test_affected_versions_extracted(self):
+    def test_exact_version_extracted(self):
         item = _cve_item("CVE-2023-0001")
         mock_resp = MagicMock(status_code=200)
         mock_resp.json.return_value = _nvd_response(1, [item])
@@ -189,5 +193,61 @@ class TestNVDClientMapping:
         with patch("src.nvd.client.requests.get", return_value=mock_resp):
             entries = NVDClient().fetch_bitcoin_cves()
 
-        assert len(entries[0].affected_versions) > 0
-        assert "bitcoin" in entries[0].affected_versions[0].lower()
+        affected = entries[0].affected_versions
+        assert len(affected) == 1
+        assert affected[0]["version"] == "0.21.0"
+        assert affected[0]["cpe"].startswith("cpe:2.3:a:bitcoin:bitcoin:0.21.0:")
+
+    def test_version_range_extracted(self):
+        item = _cve_item(
+            "CVE-2023-RANGE",
+            cpe_matches=[{
+                "criteria": "cpe:2.3:a:bitcoin:bitcoin:*:*:*:*:*:*:*:*",
+                "versionStartIncluding": "0.20.0",
+                "versionEndExcluding": "0.21.2",
+            }],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        affected = entries[0].affected_versions
+        assert len(affected) == 1
+        assert affected[0].get("start_inc") == "0.20.0"
+        assert affected[0].get("end_exc") == "0.21.2"
+        assert "version" not in affected[0]
+
+    def test_non_bitcoin_cpe_filtered(self):
+        item = _cve_item(
+            "CVE-2023-MIXED",
+            cpe_matches=[
+                {"criteria": "cpe:2.3:a:copay:copay_bitcoin_wallet:*:*:*:*:*:*:*:*"},
+                {"criteria": "cpe:2.3:a:bitcoin:bitcoin:0.21.0:*:*:*:*:*:*:*"},
+            ],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        affected = entries[0].affected_versions
+        assert len(affected) == 1
+        assert affected[0]["cpe"].startswith("cpe:2.3:a:bitcoin:bitcoin:")
+
+    def test_cve_with_only_non_bitcoin_cpe_omitted(self):
+        item = _cve_item(
+            "CVE-2023-ALIEN",
+            cpe_matches=[
+                {"criteria": "cpe:2.3:a:copay:copay_bitcoin_wallet:*:*:*:*:*:*:*:*"},
+            ],
+        )
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = _nvd_response(1, [item])
+
+        with patch("src.nvd.client.requests.get", return_value=mock_resp):
+            entries = NVDClient().fetch_bitcoin_cves()
+
+        assert entries == []

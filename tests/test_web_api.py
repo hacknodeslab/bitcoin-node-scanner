@@ -19,7 +19,7 @@ from sqlalchemy.pool import StaticPool
 os.environ["WEB_API_KEY"] = "integration-test-key"
 os.environ["DATABASE_URL"] = "sqlite://"  # in-memory
 
-from src.db.models import Base, Node, ScanJob
+from src.db.models import Base, CVEEntry, Node, NodeVulnerability, ScanJob
 from src.web.routers.nodes import get_db
 
 # Re-assert after imports: src/__init__.py triggers scanner.py which calls
@@ -432,3 +432,128 @@ class TestRootRedirect:
         # FRONTEND_ORIGIN defaults to http://localhost:3000 when unset.
         assert r.headers["location"].startswith("http://localhost:3000")
 
+
+class TestNodeDetailEndpoint:
+    def _seed(self, db_session):
+        node_a = _make_node("10.0.0.1", risk_level="HIGH")
+        node_b = _make_node("10.0.0.2", risk_level="LOW")
+        db_session.add_all([node_a, node_b])
+        db_session.add(CVEEntry(
+            cve_id="CVE-2023-AAAA",
+            severity="CRITICAL",
+            cvss_score=9.8,
+            description="Critical bug",
+            affected_versions="[]",
+        ))
+        db_session.add(CVEEntry(
+            cve_id="CVE-2023-BBBB",
+            severity="MEDIUM",
+            cvss_score=5.5,
+            affected_versions="[]",
+        ))
+        db_session.commit()
+        return node_a, node_b
+
+    def test_returns_node_with_cves(self, client, db_session):
+        node_a, _ = self._seed(db_session)
+        db_session.add(NodeVulnerability(node_id=node_a.id, cve_id="CVE-2023-AAAA"))
+        db_session.add(NodeVulnerability(node_id=node_a.id, cve_id="CVE-2023-BBBB"))
+        db_session.commit()
+
+        r = client.get(f"/api/v1/nodes/{node_a.id}", headers=HEADERS)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["id"] == node_a.id
+        assert body["cve_count"] == 2
+        assert body["top_cve"]["cve_id"] == "CVE-2023-AAAA"
+        cves = body["cves"]
+        assert [c["cve_id"] for c in cves] == ["CVE-2023-AAAA", "CVE-2023-BBBB"]
+
+    def test_returns_node_without_cves(self, client, db_session):
+        _, node_b = self._seed(db_session)
+
+        r = client.get(f"/api/v1/nodes/{node_b.id}", headers=HEADERS)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["cve_count"] == 0
+        assert body["top_cve"] is None
+        assert body["cves"] == []
+
+    def test_404_when_unknown_node(self, client, db_session):
+        r = client.get("/api/v1/nodes/9999", headers=HEADERS)
+        assert r.status_code == 404
+
+    def test_include_resolved(self, client, db_session):
+        node_a, _ = self._seed(db_session)
+        active = NodeVulnerability(node_id=node_a.id, cve_id="CVE-2023-AAAA")
+        resolved = NodeVulnerability(
+            node_id=node_a.id,
+            cve_id="CVE-2023-BBBB",
+            resolved_at=datetime.utcnow(),
+        )
+        db_session.add_all([active, resolved])
+        db_session.commit()
+
+        r = client.get(f"/api/v1/nodes/{node_a.id}", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["cve_count"] == 1
+        assert len(r.json()["cves"]) == 1
+
+        r = client.get(
+            f"/api/v1/nodes/{node_a.id}?include_resolved=true",
+            headers=HEADERS,
+        )
+        body = r.json()
+        assert body["cve_count"] == 1
+        cves = body["cves"]
+        assert len(cves) == 2
+        assert cves[0]["resolved_at"] is None
+        assert cves[1]["resolved_at"] is not None
+
+
+class TestNodesListCVESummary:
+    def test_list_includes_cve_count_and_top_cve(self, client, db_session):
+        node_a = _make_node("10.0.0.1", risk_level="HIGH")
+        node_b = _make_node("10.0.0.2", risk_level="LOW")
+        db_session.add_all([node_a, node_b])
+        db_session.add(CVEEntry(
+            cve_id="CVE-X1", severity="HIGH", cvss_score=7.0, affected_versions="[]",
+        ))
+        db_session.add(CVEEntry(
+            cve_id="CVE-X2", severity="CRITICAL", cvss_score=9.5, affected_versions="[]",
+        ))
+        db_session.commit()
+        db_session.add(NodeVulnerability(node_id=node_a.id, cve_id="CVE-X1"))
+        db_session.add(NodeVulnerability(node_id=node_a.id, cve_id="CVE-X2"))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes", headers=HEADERS)
+        assert r.status_code == 200
+        items = {n["ip"]: n for n in r.json()}
+        assert items["10.0.0.1"]["cve_count"] == 2
+        assert items["10.0.0.1"]["top_cve"]["cve_id"] == "CVE-X2"
+        assert items["10.0.0.2"]["cve_count"] == 0
+        assert items["10.0.0.2"]["top_cve"] is None
+
+
+class TestVulnerabilitiesAffectedNodes:
+    def test_returns_affected_nodes(self, client, db_session):
+        node = _make_node("10.0.0.5", risk_level="HIGH")
+        db_session.add(node)
+        db_session.add(CVEEntry(
+            cve_id="CVE-FOO", severity="HIGH", affected_versions="[]",
+        ))
+        db_session.commit()
+        db_session.add(NodeVulnerability(node_id=node.id, cve_id="CVE-FOO"))
+        db_session.commit()
+
+        r = client.get("/api/v1/vulnerabilities/CVE-FOO/nodes", headers=HEADERS)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["cve_id"] == "CVE-FOO"
+        assert body["total"] == 1
+        assert body["nodes"][0]["ip"] == "10.0.0.5"
+
+    def test_404_for_unknown_cve(self, client, db_session):
+        r = client.get("/api/v1/vulnerabilities/CVE-NOPE/nodes", headers=HEADERS)
+        assert r.status_code == 404

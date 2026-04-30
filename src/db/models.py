@@ -142,76 +142,6 @@ class Scan(Base):
         return f"<Scan(id={self.id}, timestamp={self.timestamp}, total_nodes={self.total_nodes})>"
 
 
-class Vulnerability(Base):
-    """Model representing a known vulnerability (CVE)."""
-    __tablename__ = 'vulnerabilities'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cve_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
-
-    # Affected versions (stored as JSON list)
-    affected_versions: Mapped[str] = mapped_column(Text, nullable=False)
-
-    # Severity
-    severity: Mapped[str] = mapped_column(String(20), nullable=False)  # CRITICAL, HIGH, MEDIUM, LOW
-    cvss_score: Mapped[Optional[float]] = mapped_column(Float)
-
-    # Description
-    description: Mapped[Optional[str]] = mapped_column(Text)
-
-    # References
-    reference_url: Mapped[Optional[str]] = mapped_column(String(500))
-
-    # Timestamps
-    published_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    affected_nodes: Mapped[List["NodeVulnerability"]] = relationship(
-        "NodeVulnerability",
-        back_populates="vulnerability",
-        cascade="all, delete-orphan"
-    )
-
-    __table_args__ = (
-        Index('idx_vulnerabilities_cve_id', 'cve_id'),
-        Index('idx_vulnerabilities_severity', 'severity'),
-    )
-
-    def __repr__(self) -> str:
-        return f"<Vulnerability(cve_id={self.cve_id}, severity={self.severity})>"
-
-
-class NodeVulnerability(Base):
-    """Association model between Node and Vulnerability with detection metadata."""
-    __tablename__ = 'node_vulnerabilities'
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    node_id: Mapped[int] = mapped_column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
-    vulnerability_id: Mapped[int] = mapped_column(Integer, ForeignKey('vulnerabilities.id', ondelete='CASCADE'), nullable=False)
-
-    # Detection timestamps
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
-
-    # Version when detected
-    detected_version: Mapped[Optional[str]] = mapped_column(String(100))
-
-    # Relationships
-    node: Mapped["Node"] = relationship("Node", back_populates="vulnerabilities")
-    vulnerability: Mapped["Vulnerability"] = relationship("Vulnerability", back_populates="affected_nodes")
-
-    __table_args__ = (
-        Index('idx_node_vuln_node_id', 'node_id'),
-        Index('idx_node_vuln_vulnerability_id', 'vulnerability_id'),
-        Index('idx_node_vuln_detected_at', 'detected_at'),
-        Index('idx_node_vuln_resolved', 'resolved_at'),
-    )
-
-    def __repr__(self) -> str:
-        return f"<NodeVulnerability(node_id={self.node_id}, vulnerability_id={self.vulnerability_id})>"
-
-
 class CVEEntry(Base):
     """Model representing a cached CVE entry fetched from the NVD API."""
     __tablename__ = 'cve_entries'
@@ -222,8 +152,14 @@ class CVEEntry(Base):
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default='UNKNOWN')
     cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    affected_versions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list
+    affected_versions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list of {cpe, version, start_inc, start_exc, end_inc, end_exc}
     fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+
+    affected_nodes: Mapped[List["NodeVulnerability"]] = relationship(
+        "NodeVulnerability",
+        back_populates="cve_entry",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index('idx_cve_entries_severity', 'severity'),
@@ -232,6 +168,32 @@ class CVEEntry(Base):
 
     def __repr__(self) -> str:
         return f"<CVEEntry(cve_id={self.cve_id}, severity={self.severity}, cvss_score={self.cvss_score})>"
+
+
+class NodeVulnerability(Base):
+    """Association model between Node and CVEEntry with detection metadata."""
+    __tablename__ = 'node_vulnerabilities'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    node_id: Mapped[int] = mapped_column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+    cve_id: Mapped[str] = mapped_column(String(20), ForeignKey('cve_entries.cve_id', ondelete='CASCADE'), nullable=False)
+
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    detected_version: Mapped[Optional[str]] = mapped_column(String(100))
+
+    node: Mapped["Node"] = relationship("Node", back_populates="vulnerabilities")
+    cve_entry: Mapped["CVEEntry"] = relationship("CVEEntry", back_populates="affected_nodes")
+
+    __table_args__ = (
+        Index('idx_node_vuln_node_id', 'node_id'),
+        Index('idx_node_vuln_cve_id', 'cve_id'),
+        Index('idx_node_vuln_detected_at', 'detected_at'),
+        Index('idx_node_vuln_resolved', 'resolved_at'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<NodeVulnerability(node_id={self.node_id}, cve_id={self.cve_id})>"
 
 
 class ScanJob(Base):

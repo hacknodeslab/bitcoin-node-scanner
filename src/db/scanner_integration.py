@@ -12,9 +12,11 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+from sqlalchemy import select
+
 from .connection import get_db_session, is_database_configured, init_db
 from .repositories import NodeRepository, ScanRepository, VulnerabilityRepository
-from .models import Node, Scan
+from .models import CVEEntry, Node, Scan
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +39,22 @@ class DatabaseScannerMixin:
         self._current_scan: Optional[Scan] = None
         self._current_scan_id: Optional[int] = None
         self._scan_start_time: Optional[float] = None
+        self._cve_matcher = None  # lazy CVEMatcher per scan session
 
         if self._db_enabled:
             init_db()
             self.log("Database persistence enabled")
         else:
             self.log("Database not configured, using file-only mode")
+
+    def _get_cve_matcher(self, session):
+        """Build (and cache for the scan) a CVEMatcher from cve_entries."""
+        if self._cve_matcher is not None:
+            return self._cve_matcher
+        from ..nvd.matcher import CVEMatcher
+        entries = list(session.scalars(select(CVEEntry)).all())
+        self._cve_matcher = CVEMatcher(entries)
+        return self._cve_matcher
 
     def _save_node_to_db(self, node_data: Dict[str, Any]) -> Optional[Node]:
         """
@@ -83,6 +95,13 @@ class DatabaseScannerMixin:
                 scan = scan_repo.get_by_id(self._current_scan_id)
                 if scan:
                     scan_repo.add_node(scan, node)
+
+            # Sync CVE links based on the current node version
+            if node:
+                matcher = self._get_cve_matcher(session)
+                expected = matcher.matches_for(node.version)
+                vuln_repo = VulnerabilityRepository(session)
+                vuln_repo.sync_node_links(node, expected)
 
             return node
 
@@ -204,6 +223,7 @@ class DatabaseScannerMixin:
         self._current_scan = None
         self._current_scan_id = None
         self._scan_start_time = None
+        self._cve_matcher = None
 
     def _save_nodes_bulk(self, nodes_data: List[Dict[str, Any]]) -> int:
         """
@@ -238,6 +258,26 @@ class DatabaseScannerMixin:
 
             count = node_repo.bulk_upsert(db_nodes)
             self.log(f"Saved {count} nodes to database")
+
+            # Sync CVE links for each persisted node
+            matcher = self._get_cve_matcher(session)
+            vuln_repo = VulnerabilityRepository(session)
+            scan_repo = ScanRepository(session) if self._current_scan_id else None
+            scan = scan_repo.get_by_id(self._current_scan_id) if scan_repo else None
+
+            for db_data in db_nodes:
+                ip = db_data.get("ip")
+                port = db_data.get("port", 8333)
+                if not ip:
+                    continue
+                node = node_repo.find_by_ip_port(ip, port)
+                if not node:
+                    continue
+                if scan:
+                    scan_repo.add_node(scan, node)
+                expected = matcher.matches_for(node.version)
+                vuln_repo.sync_node_links(node, expected)
+
             return count
 
 
