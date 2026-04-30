@@ -54,19 +54,51 @@ El sistema SHALL crear un registro de sesión de escaneo que agrupa todos los no
 
 ### Requirement: Vulnerability tracking
 
-El sistema SHALL registrar vulnerabilidades detectadas en cada nodo con referencia a CVEs conocidos.
+El sistema SHALL registrar vulnerabilidades detectadas en cada nodo enlazándolas a entradas del catálogo NVD (`cve_entries`). El enlace se materializa en la tabla `node_vulnerabilities` mediante la columna `cve_id` (FK a `cve_entries.cve_id`). El enlace SHALL crearse de forma automática durante la persistencia del nodo cuando su `version` esté cubierta por el rango `affected_versions` de alguna entrada CVE filtrada por productos Bitcoin Core (`bitcoin:bitcoin`, `bitcoin:bitcoin_core`, `bitcoincore:bitcoin_core`). Si la versión deja de estar cubierta entre escaneos, el enlace correspondiente SHALL marcarse como resuelto (`resolved_at = now`).
 
-#### Scenario: Registrar vulnerabilidad detectada
-- **WHEN** se detecta que un nodo ejecuta versión vulnerable
-- **THEN** se crea relación node_vulnerability con CVE_id, severity, detected_at
+#### Scenario: Registrar vulnerabilidad detectada durante upsert de nodo
+- **WHEN** se persiste un nodo con `version = "0.21.0"` y existe un CVE en `cve_entries` cuyo rango cubre `0.21.0`
+- **THEN** se crea (o se mantiene activa) una fila en `node_vulnerabilities` con `node_id`, `cve_id`, `detected_at = now`, `detected_version = "0.21.0"`, `resolved_at = NULL`
 
-#### Scenario: Actualizar estado de vulnerabilidad
-- **WHEN** un nodo previamente vulnerable se actualiza a versión segura
-- **THEN** se marca la vulnerabilidad como resolved_at=now
+#### Scenario: Resolver vulnerabilidad cuando el nodo se actualiza
+- **WHEN** un nodo previamente enlazado a una CVE se reescanea con una `version` que ya no entra en el rango de afectación
+- **THEN** la fila correspondiente en `node_vulnerabilities` recibe `resolved_at = now` y no se duplica
 
-#### Scenario: Consultar nodos vulnerables activos
-- **WHEN** se solicitan nodos con vulnerabilidades no resueltas
-- **THEN** se retornan nodos donde resolved_at IS NULL
+#### Scenario: Consultar vulnerabilidades activas de un nodo
+- **WHEN** se solicitan las vulnerabilidades activas de un nodo
+- **THEN** se devuelven las CVEs cuyas filas en `node_vulnerabilities` tienen `resolved_at IS NULL`, ordenadas por `cve_entries.cvss_score DESC` (NULLs al final)
+
+#### Scenario: Versión no parseable no genera enlaces
+- **WHEN** se persiste un nodo con `version = "Satoshi:dev-build"` (sin triple semver extraíble)
+- **THEN** no se crean filas en `node_vulnerabilities` y no se levanta error
+
+### Requirement: NVD CVE catalog with structured affected versions
+
+El catálogo `cve_entries` SHALL almacenar, para cada CVE, la lista de versiones afectadas como JSON estructurado. Cada elemento tendrá `cpe` (string CPE 2.3 original), y opcionalmente `version` (versión exacta extraída del CPE), `start_inc`, `start_exc`, `end_inc`, `end_exc` (límites del rango). Solo SHALL conservarse entradas cuyo CPE product sea Bitcoin Core (`bitcoin:bitcoin`, `bitcoin:bitcoin_core`, `bitcoincore:bitcoin_core`). Las entradas pure catch-all (CPE con `version=*` o `-` y sin bounds de rango) SHALL descartarse para evitar falsos positivos masivos.
+
+#### Scenario: Refresh almacena rango estructurado
+- **WHEN** `NVDService._refresh()` recibe un CVE con `cpeMatch.versionStartIncluding = "0.20.0"` y `versionEndExcluding = "0.21.2"`
+- **THEN** la entrada en `cve_entries.affected_versions` incluye un objeto con `start_inc = "0.20.0"` y `end_exc = "0.21.2"`
+
+#### Scenario: Refresh descarta CPEs ajenos a Bitcoin Core
+- **WHEN** un CVE devuelve `cpe:2.3:a:copay:copay_bitcoin_wallet:*` como única entrada
+- **THEN** la CVE se omite del catálogo (no se inserta fila en `cve_entries`)
+
+#### Scenario: Refresh descarta entradas pure catch-all
+- **WHEN** un CVE devuelve `cpe:2.3:a:bitcoin:bitcoin_core:*:*:*:*:*:*:*:*` sin `versionStart*` ni `versionEnd*`
+- **THEN** esa entrada se descarta y, si la CVE no tiene otras entradas válidas, se omite del catálogo
+
+### Requirement: Backfill command for CVE linking
+
+El sistema SHALL exponer el subcomando CLI `python -m src.db.cli db-link-cves` que recorre todos los nodos persistidos y aplica el matcher CVE para crear/resolver enlaces en `node_vulnerabilities`.
+
+#### Scenario: Backfill puebla nodos existentes
+- **WHEN** la BD contiene nodos sin enlaces y `cve_entries` poblado, y se ejecuta `db-link-cves`
+- **THEN** se crean filas en `node_vulnerabilities` para todos los pares (nodo, CVE) cuya versión esté cubierta, y el comando reporta el conteo de enlaces creados y resueltos
+
+#### Scenario: Backfill limitado a un scan
+- **WHEN** se invoca `db-link-cves --scan-id 5`
+- **THEN** solo se procesan los nodos asociados al scan 5 (vía `scan_nodes`)
 
 ### Requirement: Bulk operations
 
