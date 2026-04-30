@@ -60,7 +60,7 @@ export function Explorer() {
         onApply={setAppliedQuery}
         warnings={warnings}
       />
-      <main className="flex-1">
+      <main className="flex-1 min-h-0 flex flex-col">
         <NodeTable
           filters={filters}
           selectedIp={selectedIp}

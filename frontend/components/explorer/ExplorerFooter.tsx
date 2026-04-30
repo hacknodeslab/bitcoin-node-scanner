@@ -91,44 +91,87 @@ export function ExplorerFooter(props: ExplorerFooterProps = {}) {
 
   return (
     <footer
-      className="flex items-center gap-[14px] px-[14px] py-[8px] border-t border-border text-meta text-muted"
+      className="border-t border-border text-meta text-muted"
       data-testid="explorer-footer"
     >
-      <span className="flex items-center gap-[4px]">
-        <span className="text-dim">/</span>
-        <span>focus query</span>
-      </span>
-      <Glyph name="sep" className="text-dim" />
-      <span className="flex items-center gap-[4px]">
-        <Glyph name="cmd" />
-        <span>K</span>
-        <span>palette</span>
-      </span>
+      {/* Top row: kbd hints + scan status/trigger. */}
+      <div className="flex items-center gap-[14px] px-[14px] py-[8px]" data-testid="footer-actions">
+        <span className="flex items-center gap-[4px]">
+          <span className="text-dim">/</span>
+          <span>focus query</span>
+        </span>
+        <Glyph name="sep" className="text-dim" />
+        <span className="flex items-center gap-[4px]">
+          <Glyph name="cmd" />
+          <span>K</span>
+          <span>palette</span>
+        </span>
 
-      {status ? (
-        <span
-          data-testid="scan-status"
-          className={`flex items-center gap-[6px] ${statusToneClass(status)}`}
+        {status ? (
+          <span
+            data-testid="scan-status"
+            className={`flex items-center gap-[6px] ${statusToneClass(status)}`}
+          >
+            <Glyph name="dot" />
+            <span>{statusLabel(status)}</span>
+          </span>
+        ) : null}
+        {startError ? (
+          <span className="text-alert" data-testid="scan-start-error">
+            · {startError}
+          </span>
+        ) : null}
+
+        <span className="ml-auto" />
+        <Button
+          type="button"
+          onClick={handleClick}
+          disabled={isBusy}
+          data-testid="scan-trigger"
         >
-          <Glyph name="dot" />
-          <span>{statusLabel(status)}</span>
-        </span>
-      ) : null}
-      {startError ? (
-        <span className="text-alert" data-testid="scan-start-error">
-          · {startError}
-        </span>
-      ) : null}
+          {isBusy ? "scanning…" : "run scan"}
+        </Button>
+      </div>
 
-      <span className="ml-auto" />
-      <Button
-        type="button"
-        onClick={handleClick}
-        disabled={isBusy}
-        data-testid="scan-trigger"
+      {/* Bottom row: data sources + research-only disclaimer. Stacks below sm. */}
+      <div
+        className="flex flex-col sm:flex-row sm:items-center gap-[6px] sm:gap-[14px] px-[14px] py-[6px] border-t border-border text-dim"
+        data-testid="footer-meta"
       >
-        {isBusy ? "scanning…" : "run scan"}
-      </Button>
+        <span data-testid="footer-sources" className="flex items-center gap-[10px]">
+          <span className="text-dim">sources</span>
+          <a
+            href="https://www.shodan.io"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="hover:text-text"
+          >
+            Shodan
+          </a>
+          <a
+            href="https://nvd.nist.gov"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="hover:text-text"
+          >
+            NVD
+          </a>
+          <a
+            href="https://www.maxmind.com"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="hover:text-text"
+          >
+            MaxMind GeoIP
+          </a>
+        </span>
+        <span
+          data-testid="footer-disclaimer"
+          className="sm:ml-auto sm:text-right"
+        >
+          For security research and educational purposes only. Information is provided as-is; do not use for unauthorized access.
+        </span>
+      </div>
     </footer>
   );
 }

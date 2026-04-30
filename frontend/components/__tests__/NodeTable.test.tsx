@@ -2,11 +2,20 @@
  * NodeTable wires sortable headers, inline row expansion, and the FLAGS
  * pill set. Tests inject `nodes` directly so SWR doesn't run.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { SWRConfig } from "swr";
+import type { ReactNode } from "react";
 
 import { NodeTable } from "../explorer/NodeTable";
 import type { NodeOut } from "@/lib/api/types";
+
+// Wrap renders in a fresh SWR cache so tests don't share fetched data via the
+// module-global cache. Without this, useSWR sees cached data from a prior
+// test and skips the fetcher entirely → fetchMock never fires.
+function FreshSWR({ children }: { children: ReactNode }) {
+  return <SWRConfig value={{ provider: () => new Map(), dedupingInterval: 0 }}>{children}</SWRConfig>;
+}
 
 const BASE: Omit<NodeOut, "ip" | "port" | "id"> = {
   version: "0.21.0",
@@ -144,5 +153,92 @@ describe("NodeTable", () => {
   it("renders alert when error is set", () => {
     render(<NodeTable error={new Error("boom")} />);
     expect(screen.getByRole("alert").textContent).toContain("nodes failed to load");
+  });
+
+  it("does not render pagination when nodes are injected (test mode)", () => {
+    render(<NodeTable nodes={[NODE_LOW]} />);
+    expect(screen.queryByTestId("pagination")).toBeNull();
+  });
+});
+
+describe("NodeTable pagination (live SWR)", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  function makeListResponse(items: Partial<NodeOut>[], total: number): Response {
+    const filled = items.map((p, i) => ({ ...BASE, id: 100 + i, ip: `9.0.0.${i}`, port: 8333, ...p }));
+    return new Response(JSON.stringify(filled), {
+      status: 200,
+      headers: { "content-type": "application/json", "X-Total-Count": String(total) },
+    });
+  }
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function waitForLastFetchUrl(predicate: (url: URL) => boolean): Promise<URL> {
+    let last: URL | null = null;
+    await vi.waitFor(() => {
+      const calls = fetchMock.mock.calls;
+      if (calls.length === 0) throw new Error("no fetch calls yet");
+      const u = new URL(calls[calls.length - 1][0] as string);
+      if (!predicate(u)) throw new Error(`url did not satisfy predicate: ${u.toString()}`);
+      last = u;
+    });
+    return last!;
+  }
+
+  it("first load fetches limit=25 offset=0 and shows 'Page 1 of N'", async () => {
+    fetchMock.mockResolvedValue(makeListResponse([{}, {}, {}], 80));
+    render(<FreshSWR><NodeTable /></FreshSWR>);
+    const url = await waitForLastFetchUrl((u) => u.searchParams.get("limit") === "25");
+    expect(url.searchParams.get("limit")).toBe("25");
+    expect(url.searchParams.get("offset")).toBe("0");
+    const status = await screen.findByTestId("pagination-status");
+    await vi.waitFor(() => {
+      expect(status.textContent).toContain("Page 1 of 4");
+      expect(status.textContent).toContain("80 results");
+    });
+  });
+
+  it("clicking next advances offset to pageSize", async () => {
+    fetchMock.mockResolvedValue(makeListResponse(new Array(25).fill({}), 80));
+    render(<FreshSWR><NodeTable /></FreshSWR>);
+    // Wait for the initial fetch to settle so the next-button is enabled.
+    await waitForLastFetchUrl((u) => u.searchParams.get("offset") === "0");
+    const next = (await screen.findByTestId("pagination-next")) as HTMLButtonElement;
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    fireEvent.click(next);
+    await waitForLastFetchUrl((u) => u.searchParams.get("offset") === "25");
+  });
+
+  it("prev is disabled on page 1", async () => {
+    fetchMock.mockResolvedValue(makeListResponse([{}, {}], 30));
+    render(<FreshSWR><NodeTable /></FreshSWR>);
+    const prev = (await screen.findByTestId("pagination-prev")) as HTMLButtonElement;
+    expect(prev.disabled).toBe(true);
+  });
+
+  it("next is disabled on the last page", async () => {
+    // total=20, pageSize=25 → only one page
+    fetchMock.mockResolvedValue(makeListResponse(new Array(20).fill({}), 20));
+    render(<FreshSWR><NodeTable /></FreshSWR>);
+    await waitForLastFetchUrl((u) => u.searchParams.get("offset") === "0");
+    const next = (await screen.findByTestId("pagination-next")) as HTMLButtonElement;
+    await vi.waitFor(() => expect(next.disabled).toBe(true));
+  });
+
+  it("changing page size refetches with offset 0", async () => {
+    fetchMock.mockResolvedValue(makeListResponse(new Array(25).fill({}), 200));
+    render(<FreshSWR><NodeTable /></FreshSWR>);
+    await waitForLastFetchUrl((u) => u.searchParams.get("limit") === "25");
+    fireEvent.change(screen.getByTestId("pagination-page-size"), { target: { value: "100" } });
+    const url = await waitForLastFetchUrl((u) => u.searchParams.get("limit") === "100");
+    expect(url.searchParams.get("offset")).toBe("0");
   });
 });

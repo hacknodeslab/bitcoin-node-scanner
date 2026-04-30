@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { listNodes } from "../api/endpoints";
+import { listNodesWithTotal } from "../api/endpoints";
 import type { NodeListParams, NodeOut } from "../api/types";
 
 function buildKey(params: NodeListParams): string {
@@ -12,11 +12,22 @@ function buildKey(params: NodeListParams): string {
   return `/api/v1/nodes${qs ? "?" + qs : ""}`;
 }
 
+interface UseNodesData {
+  nodes: NodeOut[];
+  total: number | null;
+}
+
 export function useNodes(params: NodeListParams = {}) {
-  const { data, error, isLoading, mutate } = useSWR<NodeOut[]>(
+  const { data, error, isLoading, mutate } = useSWR<UseNodesData>(
     buildKey(params),
-    () => listNodes(params),
+    () => listNodesWithTotal(params),
   );
 
-  return { nodes: data, error, isLoading, refresh: mutate };
+  return {
+    nodes: data?.nodes,
+    total: data?.total ?? null,
+    error,
+    isLoading,
+    refresh: mutate,
+  };
 }
