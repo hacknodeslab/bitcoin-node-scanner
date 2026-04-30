@@ -38,7 +38,7 @@ install_node() {
         return
     fi
     echo "→ Installing Node 20 from NodeSource..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    curl --proto "=https" --tlsv1.2 -sSf -L https://deb.nodesource.com/setup_20.x | sudo -E bash -
     sudo apt-get install -y nodejs
 }
 
