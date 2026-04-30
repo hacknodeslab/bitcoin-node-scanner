@@ -1,6 +1,7 @@
 """In-memory matcher between Bitcoin Core versions and NVD CVE entries."""
 import json
 import logging
+import re
 from typing import Iterable, List, Optional, Set, Tuple
 
 from ..db.models import CVEEntry as CVEEntryModel
@@ -10,16 +11,31 @@ logger = logging.getLogger(__name__)
 
 VersionTuple = Tuple[int, int, int]
 
+# NVD frequently expresses Bitcoin Core versions in short form ("25.0", "30")
+# meaning "25.0.0" / "30.0.0". The strict 3-component regex in
+# `parse_version_number` would reject those, so we fall back to a permissive
+# matcher that pads missing components with zero.
+_TWO_COMPONENT_RE = re.compile(r"^\s*(\d{1,10})\.(\d{1,10})\s*$")
+_ONE_COMPONENT_RE = re.compile(r"^\s*(\d{1,10})\s*$")
+
 
 def _parse_version(value: Optional[str]) -> Optional[VersionTuple]:
     if not value or value in ("*", "-"):
         return None
+
+    # Strict three-component first (handles "0.21.0", "Satoshi:0.18.0" etc.)
     parsed = parse_version_number(value)
-    if parsed is None:
-        return None
-    if len(parsed) != 3:
-        return None
-    return parsed  # type: ignore[return-value]
+    if parsed is not None and len(parsed) == 3:
+        return parsed  # type: ignore[return-value]
+
+    # NVD short forms: "25.0" → (25, 0, 0); "30" → (30, 0, 0)
+    m2 = _TWO_COMPONENT_RE.match(value)
+    if m2:
+        return (int(m2.group(1)), int(m2.group(2)), 0)
+    m1 = _ONE_COMPONENT_RE.match(value)
+    if m1:
+        return (int(m1.group(1)), 0, 0)
+    return None
 
 
 _BITCOIN_CORE_PRODUCTS = {
@@ -91,11 +107,18 @@ class CVEMatcher:
                     continue
 
                 raw_version = item.get("version")
+                raw_bounds = (
+                    item.get("start_inc"),
+                    item.get("start_exc"),
+                    item.get("end_inc"),
+                    item.get("end_exc"),
+                )
+                has_raw_bound = any(b is not None for b in raw_bounds)
                 version = _parse_version(raw_version)
-                start_inc = _parse_version(item.get("start_inc"))
-                start_exc = _parse_version(item.get("start_exc"))
-                end_inc = _parse_version(item.get("end_inc"))
-                end_exc = _parse_version(item.get("end_exc"))
+                start_inc = _parse_version(raw_bounds[0])
+                start_exc = _parse_version(raw_bounds[1])
+                end_inc = _parse_version(raw_bounds[2])
+                end_exc = _parse_version(raw_bounds[3])
 
                 has_range = any(b is not None for b in (start_inc, start_exc, end_inc, end_exc))
 
@@ -105,9 +128,14 @@ class CVEMatcher:
                 elif has_range:
                     self._ranges.append((cve.cve_id, start_inc, start_exc, end_inc, end_exc))
                     specific_added = True
-                elif raw_version is not None:
-                    # Version present but unparseable (e.g. CPE version "22.0"
-                    # without patch). Skip — neither catch-all nor matchable.
+                elif raw_version is not None or has_raw_bound:
+                    # Specific entry that we couldn't parse (e.g. NVD short form
+                    # we don't recognise). Skip the entry — never escalate to
+                    # catch-all, since that would inflate matches massively.
+                    logger.warning(
+                        "CVEMatcher: unparseable bounds for %s (version=%r, bounds=%r) — entry skipped",
+                        cve.cve_id, raw_version, raw_bounds,
+                    )
                     continue
                 else:
                     # No version, no range — catch-all for the product

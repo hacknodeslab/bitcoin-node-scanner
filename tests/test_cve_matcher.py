@@ -105,3 +105,46 @@ class TestCVEMatcher:
         m = CVEMatcher([])
         assert m.matches_for("0.21.0") == set()
         assert m.cve_count == 0
+
+    def test_two_component_end_exc_does_not_catch_all(self):
+        """NVD often expresses bounds as '25.0' meaning '25.0.0'; the matcher
+        must recognise that, not silently fall back to catch-all."""
+        m = CVEMatcher([
+            _entry("CVE-2024-52921", [{
+                "cpe": "cpe:2.3:a:bitcoin:bitcoin_core:*",
+                "end_exc": "25.0",
+            }]),
+        ])
+        # Below the bound: matches
+        assert m.matches_for("Satoshi:0.21.0") == {"CVE-2024-52921"}
+        assert m.matches_for("Satoshi:24.99.0") == {"CVE-2024-52921"}
+        # At and above the bound: must NOT match
+        assert m.matches_for("Satoshi:25.0.0") == set()
+        assert m.matches_for("Satoshi:29.3.0") == set()
+        assert m.matches_for("Satoshi:30.0.0") == set()
+
+    def test_two_component_end_inc_match(self):
+        m = CVEMatcher([
+            _entry("CVE-X", [{"cpe": "...", "end_inc": "27.2"}]),
+        ])
+        assert m.matches_for("27.2.0") == {"CVE-X"}
+        assert m.matches_for("27.3.0") == set()
+
+    def test_one_component_bound(self):
+        m = CVEMatcher([
+            _entry("CVE-Y", [{"cpe": "...", "start_inc": "25", "end_exc": "30"}]),
+        ])
+        assert m.matches_for("25.0.0") == {"CVE-Y"}
+        assert m.matches_for("29.99.99") == {"CVE-Y"}
+        assert m.matches_for("30.0.0") == set()
+        assert m.matches_for("24.99.99") == set()
+
+    def test_unparseable_bounds_do_not_become_catch_all(self):
+        """If we can't parse the bound at all, drop the entry — never elevate
+        to catch-all (would match every node spuriously)."""
+        m = CVEMatcher([
+            _entry("CVE-WEIRD", [{"cpe": "...", "end_exc": "v25-rc1"}]),
+        ])
+        # Should not match anything (unparseable bound, no fallback to catch-all)
+        assert m.matches_for("0.21.0") == set()
+        assert m.matches_for("29.0.0") == set()
