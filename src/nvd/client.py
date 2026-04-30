@@ -196,6 +196,17 @@ class NVDClient:
             value = cpe_match.get(src_key)
             if value:
                 entry[dst_key] = value
+
+        # Reject pure catch-all entries: a CPE with version=* (or `-`) and no
+        # range bounds means "affects every version", which NVD often emits
+        # for ancient CVEs whose data was never updated. Treating those as
+        # catch-alls would mark every modern node as vulnerable to bugs from
+        # 2012. Drop them and accept some lost coverage rather than flooding
+        # the dashboard with false positives.
+        if "version" not in entry and not any(
+            k in entry for k in ("start_inc", "start_exc", "end_inc", "end_exc")
+        ):
+            return None
         return entry
 
     @staticmethod
