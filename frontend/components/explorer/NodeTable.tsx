@@ -137,11 +137,7 @@ function NodeRow({
     <TableRow
       onClick={onSelect}
       selected={selected}
-      className={cn(
-        "cursor-pointer",
-        `grid ${GRID_TEMPLATE} gap-[14px]`,
-        node.is_example && "bg-example-bg border-l-2 border-example",
-      )}
+      className={cn("cursor-pointer", `grid ${GRID_TEMPLATE} gap-[14px]`)}
       data-example={node.is_example ? "true" : undefined}
       data-testid={`node-row-${node.ip}`}
     >

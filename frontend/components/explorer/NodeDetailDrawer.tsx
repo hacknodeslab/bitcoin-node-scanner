@@ -117,10 +117,7 @@ export function NodeDetailDrawer({
 
       {/* Header */}
       <div
-        className={cn(
-          "px-[16px] py-[12px] border-b border-border",
-          node?.is_example && "bg-example-bg border-l-2 border-l-example",
-        )}
+        className="px-[16px] py-[12px] border-b border-border"
         data-testid="drawer-header"
         data-example={node?.is_example ? "true" : undefined}
       >

@@ -188,7 +188,7 @@ describe("NodeDetailDrawer", () => {
     expect(onActivateIp).toHaveBeenCalledWith(EXPOSED_NODE.ip);
   });
 
-  it("renders EXAMPLE badge and tinted header when node.is_example is true", () => {
+  it("renders EXAMPLE badge in the header when node.is_example is true", () => {
     const exampleNode: NodeOut = { ...NODE, is_example: true };
     render(
       <NodeDetailDrawer
@@ -199,7 +199,6 @@ describe("NodeDetailDrawer", () => {
     );
     const header = screen.getByTestId("drawer-header");
     expect(header.dataset.example).toBe("true");
-    expect(header.className).toMatch(/bg-example-bg/);
     expect(screen.getByText("EXAMPLE")).toBeTruthy();
   });
 

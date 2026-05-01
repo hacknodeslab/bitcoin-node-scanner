@@ -44,3 +44,26 @@ The system SHALL provide a repository method `backfill_example_flag()` and a CLI
 #### Scenario: Stale flag is cleared
 - **WHEN** a node with IP `192.0.2.1` has `is_example = True` (set in error) and `192.0.2.1` is not in the canonical list, and `db-mark-examples` is invoked
 - **THEN** that node SHALL have `is_example = False` after the command completes
+
+### Requirement: Seed canonical example nodes
+The system SHALL maintain a registry `EXAMPLE_NODES` in `src/example_ips.py` containing one synthetic node record per IP in the canonical list, where each record covers a different operator-relevant state (one normal LOW, one CRITICAL with `has_exposed_rpc=True`, one TOR with `.onion` hostname and `tor` tag, one HIGH with `is_vulnerable=True`). The system SHALL provide a CLI subcommand `python -m src.db.cli db-seed-examples` that upserts every record from `EXAMPLE_NODES` with `is_example = True`. The command SHALL be idempotent.
+
+#### Scenario: Seeding empty database creates four flagged nodes
+- **WHEN** the database has no example nodes and `db-seed-examples` is invoked
+- **THEN** four `Node` rows SHALL exist after the command, one per canonical IP, all with `is_example = True`
+
+#### Scenario: Each seeded node carries its declared state
+- **WHEN** `db-seed-examples` is invoked against an empty database
+- **THEN** the row for `5.6.7.8` SHALL have `port = 8332` and `has_exposed_rpc = True`; the row for `9.10.11.12` SHALL have an `.onion` hostname and `tags_json` containing `"tor"`; the row for `1.3.3.7` SHALL have `is_vulnerable = True`; and the row for `1.2.3.4` SHALL have `risk_level = "LOW"` and `has_exposed_rpc = False`
+
+#### Scenario: Seeding is idempotent
+- **WHEN** `db-seed-examples` is invoked twice in a row
+- **THEN** the database SHALL still contain exactly four example node rows after the second invocation
+
+#### Scenario: --purge-extras drops legacy example-flagged rows
+- **WHEN** the database contains rows flagged `is_example=True` whose `(ip, port)` is NOT one of the canonical seed pairs (e.g., a legacy `5.6.7.8:8333` row), and `db-seed-examples --purge-extras` is invoked
+- **THEN** those non-canonical example-flagged rows SHALL be deleted, the four canonical seed rows SHALL exist with `is_example=True`, and rows whose `is_example=False` SHALL be untouched
+
+#### Scenario: --purge-extras is opt-in
+- **WHEN** `db-seed-examples` is invoked without `--purge-extras` and the database contains a legacy example-flagged row at a non-canonical port
+- **THEN** that legacy row SHALL remain in the database

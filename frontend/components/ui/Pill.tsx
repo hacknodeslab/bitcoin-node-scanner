@@ -10,7 +10,7 @@ export type PillKind =
   | { kind: "OK" }
   | { kind: "EXAMPLE" };
 
-type Tone = "alert" | "warn" | "ok" | "example";
+type Tone = "alert" | "warn" | "ok" | "accent";
 
 function toneFor(p: PillKind): Tone {
   switch (p.kind) {
@@ -24,7 +24,7 @@ function toneFor(p: PillKind): Tone {
     case "OK":
       return "ok";
     case "EXAMPLE":
-      return "example";
+      return "accent";
   }
 }
 
@@ -32,7 +32,7 @@ const TONE_CLASSES: Record<Tone, string> = {
   alert: "text-alert bg-alert-bg",
   warn: "text-warn bg-warn-bg",
   ok: "text-ok bg-ok-bg",
-  example: "text-example bg-example-bg",
+  accent: "text-accent bg-accent-bg",
 };
 
 export function Pill(props: PillKind & { className?: string }) {

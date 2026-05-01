@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, cmd_mark_examples, main
+from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, cmd_mark_examples, cmd_seed_examples, main
 
 
 def _make_args(**kwargs):
@@ -472,3 +472,144 @@ class TestCmdMarkExamples:
         out = capsys.readouterr().out
         assert "Flagged (set True):   0" in out
         assert "Cleared (set False):  0" in out
+
+
+class TestCmdSeedExamples:
+    """Tests for the db-seed-examples upsert command."""
+
+    def _empty_db(self):
+        from contextlib import contextmanager
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.db.models import Base
+
+        engine = create_engine("sqlite:///:memory:", echo=False)
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+
+        @contextmanager
+        def fake_session():
+            s = Session()
+            try:
+                yield s
+                s.commit()
+            finally:
+                s.close()
+
+        return Session, fake_session
+
+    def test_returns_1_when_db_not_configured(self, capsys):
+        with patch("src.db.cli.is_database_configured", return_value=False):
+            result = cmd_seed_examples(_make_args())
+        assert result == 1
+        assert "DATABASE_URL not configured" in capsys.readouterr().out
+
+    def test_creates_four_example_nodes_all_flagged(self, capsys):
+        from src.db.models import Node
+        from src.example_ips import EXAMPLE_NODES
+
+        Session, fake_session = self._empty_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            result = cmd_seed_examples(_make_args())
+
+        assert result == 0
+        with Session() as s:
+            nodes = s.query(Node).all()
+            assert len(nodes) == len(EXAMPLE_NODES)
+            assert all(n.is_example is True for n in nodes)
+            ips = {n.ip for n in nodes}
+            assert ips == {"1.2.3.4", "5.6.7.8", "9.10.11.12", "1.3.3.7"}
+
+    def test_seeded_states_match_each_example(self):
+        from src.db.models import Node
+
+        Session, fake_session = self._empty_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            cmd_seed_examples(_make_args())
+
+        with Session() as s:
+            by_ip = {n.ip: n for n in s.query(Node).all()}
+            assert by_ip["5.6.7.8"].port == 8332
+            assert by_ip["5.6.7.8"].has_exposed_rpc is True
+            assert by_ip["5.6.7.8"].risk_level == "CRITICAL"
+            assert by_ip["9.10.11.12"].hostname.endswith(".onion")
+            assert "tor" in (by_ip["9.10.11.12"].tags_json or "")
+            assert by_ip["1.3.3.7"].is_vulnerable is True
+            assert by_ip["1.3.3.7"].risk_level == "HIGH"
+            assert by_ip["1.2.3.4"].risk_level == "LOW"
+            assert by_ip["1.2.3.4"].has_exposed_rpc is False
+
+    def test_idempotent_on_second_run(self):
+        from src.db.models import Node
+
+        Session, fake_session = self._empty_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            assert cmd_seed_examples(_make_args()) == 0
+            assert cmd_seed_examples(_make_args()) == 0
+
+        with Session() as s:
+            assert s.query(Node).count() == 4
+
+    def test_purge_extras_removes_non_canonical_example_rows(self, capsys):
+        """--purge-extras drops example-flagged rows at non-canonical (ip, port)."""
+        from src.db.models import Node
+
+        Session, fake_session = self._empty_db()
+
+        # Pre-seed legacy rows with example IPs at non-canonical ports + a
+        # non-example row that must be left alone.
+        with Session() as s:
+            s.add(Node(ip="5.6.7.8", port=8333, is_example=True, risk_level="CRITICAL"))
+            s.add(Node(ip="9.10.11.12", port=8332, is_example=True, risk_level="HIGH"))
+            s.add(Node(ip="8.8.8.8", port=8333, is_example=False, risk_level="LOW"))
+            s.commit()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            result = cmd_seed_examples(_make_args(purge_extras=True))
+
+        assert result == 0
+        with Session() as s:
+            ips_ports = {(n.ip, n.port, n.is_example) for n in s.query(Node).all()}
+            # Canonical seed survives
+            assert ("1.2.3.4", 8333, True) in ips_ports
+            assert ("5.6.7.8", 8332, True) in ips_ports
+            assert ("9.10.11.12", 8333, True) in ips_ports
+            assert ("1.3.3.7", 8333, True) in ips_ports
+            # Legacy example-flagged extras were purged
+            assert ("5.6.7.8", 8333, True) not in ips_ports
+            assert ("9.10.11.12", 8332, True) not in ips_ports
+            # Non-example node untouched
+            assert ("8.8.8.8", 8333, False) in ips_ports
+
+        out = capsys.readouterr().out
+        assert "Purged extras: 2" in out
+
+    def test_default_run_does_not_purge(self):
+        """Without --purge-extras, legacy rows are left in place."""
+        from src.db.models import Node
+
+        Session, fake_session = self._empty_db()
+        with Session() as s:
+            s.add(Node(ip="5.6.7.8", port=8333, is_example=True, risk_level="CRITICAL"))
+            s.commit()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            assert cmd_seed_examples(_make_args()) == 0
+
+        with Session() as s:
+            assert s.query(Node).filter_by(ip="5.6.7.8", port=8333).count() == 1

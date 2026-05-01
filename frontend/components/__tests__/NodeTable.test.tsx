@@ -117,22 +117,26 @@ describe("NodeTable", () => {
     expect(pill?.className).toMatch(/text-alert/);
   });
 
-  it("EXAMPLE node renders the EXAMPLE pill and the row carries the example accent", () => {
+  it("EXAMPLE node renders the EXAMPLE pill and is marked with data-example", () => {
     const exampleNode: NodeOut = { ...BASE, id: 9, ip: "1.2.3.4", port: 8333, is_example: true };
     render(<NodeTable nodes={[exampleNode]} />);
     const row = screen.getByTestId("node-row-1.2.3.4");
     expect(row.dataset.example).toBe("true");
-    expect(row.className).toMatch(/bg-example-bg/);
-    expect(row.className).toMatch(/border-example/);
     expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeTruthy();
   });
 
-  it("non-EXAMPLE row has no EXAMPLE pill and no example accent class", () => {
+  it("non-EXAMPLE row has no EXAMPLE pill and no data-example marker", () => {
     render(<NodeTable nodes={[NODE_LOW]} />);
     const row = screen.getByTestId("node-row-1.1.1.1");
     expect(row.dataset.example).toBeUndefined();
-    expect(row.className).not.toMatch(/bg-example-bg/);
     expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeNull();
+  });
+
+  it("selected row carries the accent tint", () => {
+    render(<NodeTable nodes={[NODE_LOW]} selectedIp="1.1.1.1" />);
+    const row = screen.getByTestId("node-row-1.1.1.1");
+    expect(row.dataset.selected).toBe("true");
+    expect(row.className).toMatch(/bg-accent-bg/);
   });
 
   it("clicking a row calls onSelectNode with that IP", () => {

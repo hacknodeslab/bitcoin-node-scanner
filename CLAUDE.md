@@ -37,6 +37,8 @@ python -m src.db.cli enrich-geo          # Retroactively enrich geo data
 python -m src.db.cli db-link-cves        # (Re)build node→CVE links from cve_entries
 python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
 python -m src.db.cli db-mark-examples    # Reconcile is_example flag against canonical IP list
+python -m src.db.cli db-seed-examples    # Upsert canonical example nodes (idempotent demo data)
+python -m src.db.cli db-seed-examples --purge-extras  # also drop legacy is_example rows at non-canonical ports
 ```
 
 ## Required Environment Variables

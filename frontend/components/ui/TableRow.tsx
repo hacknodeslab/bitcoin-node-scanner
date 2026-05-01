@@ -10,7 +10,7 @@ export interface TableRowProps extends HTMLAttributes<HTMLDivElement> {
  * Dense table row. 9px vertical / 14px horizontal padding (/DESIGN.md).
  * Hover does NOT change background — operators are scanning, not browsing.
  * Selection state uses a 2px `primary` left border (the only spot in this
- * file where Bitcoin orange is allowed).
+ * file where Bitcoin orange is allowed) plus an `accent-bg` row tint.
  */
 export const TableRow = forwardRef<HTMLDivElement, TableRowProps>(function TableRow(
   { className, selected, ...rest },
@@ -22,7 +22,7 @@ export const TableRow = forwardRef<HTMLDivElement, TableRowProps>(function Table
       data-selected={selected ? "true" : undefined}
       className={cn(
         "py-[9px] px-[14px] border-b border-border-dim last:border-b-0",
-        selected ? "border-l-2 border-l-primary pl-[12px]" : null,
+        selected ? "border-l-2 border-l-primary pl-[12px] bg-accent-bg" : null,
         className,
       )}
       {...rest}

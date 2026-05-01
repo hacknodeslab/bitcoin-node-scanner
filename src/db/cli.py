@@ -431,6 +431,46 @@ def cmd_mark_examples(args):
     return 0
 
 
+def cmd_seed_examples(args):
+    """Upsert the canonical example nodes (idempotent).
+
+    With --purge-extras, also delete any other rows whose `is_example=True`
+    but whose (ip, port) is not part of the canonical seed set — useful when
+    legacy scans left example-IP rows at non-canonical ports.
+    """
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+
+    init_db()
+
+    from src.example_ips import EXAMPLE_NODES
+
+    canonical_keys = [(n["ip"], n["port"]) for n in EXAMPLE_NODES]
+    purged = 0
+
+    with get_db_session() as session:
+        if session is None:
+            print("Error: Could not connect to database")
+            return 1
+
+        node_repo = NodeRepository(session)
+        for node_data in EXAMPLE_NODES:
+            node_repo.upsert({**node_data, "is_example": True})
+
+        if getattr(args, "purge_extras", False):
+            purged = node_repo.purge_example_extras(canonical_keys)
+
+    print("=" * 50)
+    print("EXAMPLE NODES SEEDED")
+    print("=" * 50)
+    for n in EXAMPLE_NODES:
+        print(f"  {n['ip']}:{n['port']:<5}  {n['risk_level']:<8}  {n['country_name']}")
+    if getattr(args, "purge_extras", False):
+        print(f"  Purged extras: {purged}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bitcoin Node Scanner Database CLI"
@@ -483,6 +523,18 @@ def main():
         help="Reconcile is_example flag on existing nodes against the canonical example IP list",
     )
 
+    # db-seed-examples command
+    seed_parser = subparsers.add_parser(
+        "db-seed-examples",
+        help="Upsert the canonical example nodes (idempotent) so the dashboard has demo rows",
+    )
+    seed_parser.add_argument(
+        "--purge-extras",
+        action="store_true",
+        default=False,
+        help="Also delete is_example=True rows whose (ip, port) is not in the canonical seed set",
+    )
+
     args = parser.parse_args()
 
     if args.command == "db-stats":
@@ -501,6 +553,8 @@ def main():
         return cmd_link_cves(args)
     elif args.command == "db-mark-examples":
         return cmd_mark_examples(args)
+    elif args.command == "db-seed-examples":
+        return cmd_seed_examples(args)
     else:
         parser.print_help()
         return 1
