@@ -421,10 +421,10 @@ class TestCmdMarkExamples:
         Session = sessionmaker(bind=engine)
 
         with Session() as s:
-            s.add(Node(ip="1.2.3.4", port=8333, is_example=False))   # should flip True
-            s.add(Node(ip="5.6.7.8", port=8333, is_example=True))    # already correct
-            s.add(Node(ip="8.8.8.8", port=8333, is_example=False))   # untouched
-            s.add(Node(ip="192.0.2.1", port=8333, is_example=True))  # stale → flip False
+            s.add(Node(ip="192.0.2.7", port=8333, is_example=False))      # should flip True
+            s.add(Node(ip="198.51.100.13", port=8333, is_example=True))   # already correct
+            s.add(Node(ip="8.8.8.8", port=8333, is_example=False))        # untouched
+            s.add(Node(ip="172.16.0.1", port=8333, is_example=True))      # stale → flip False
             s.commit()
 
         @contextmanager
@@ -450,10 +450,10 @@ class TestCmdMarkExamples:
 
         assert result == 0
         with Session() as s:
-            assert s.query(Node).filter_by(ip="1.2.3.4").one().is_example is True
-            assert s.query(Node).filter_by(ip="5.6.7.8").one().is_example is True
+            assert s.query(Node).filter_by(ip="192.0.2.7").one().is_example is True
+            assert s.query(Node).filter_by(ip="198.51.100.13").one().is_example is True
             assert s.query(Node).filter_by(ip="8.8.8.8").one().is_example is False
-            assert s.query(Node).filter_by(ip="192.0.2.1").one().is_example is False
+            assert s.query(Node).filter_by(ip="172.16.0.1").one().is_example is False
 
         out = capsys.readouterr().out
         assert "Flagged (set True):   1" in out
@@ -523,7 +523,7 @@ class TestCmdSeedExamples:
             assert len(nodes) == len(EXAMPLE_NODES)
             assert all(n.is_example is True for n in nodes)
             ips = {n.ip for n in nodes}
-            assert ips == {"1.2.3.4", "5.6.7.8", "9.10.11.12", "1.3.3.7"}
+            assert ips == {"192.0.2.7", "198.51.100.13", "203.0.113.42", "203.0.113.99"}
 
     def test_seeded_states_match_each_example(self):
         from src.db.models import Node
@@ -537,15 +537,15 @@ class TestCmdSeedExamples:
 
         with Session() as s:
             by_ip = {n.ip: n for n in s.query(Node).all()}
-            assert by_ip["5.6.7.8"].port == 8332
-            assert by_ip["5.6.7.8"].has_exposed_rpc is True
-            assert by_ip["5.6.7.8"].risk_level == "CRITICAL"
-            assert by_ip["9.10.11.12"].hostname.endswith(".onion")
-            assert "tor" in (by_ip["9.10.11.12"].tags_json or "")
-            assert by_ip["1.3.3.7"].is_vulnerable is True
-            assert by_ip["1.3.3.7"].risk_level == "HIGH"
-            assert by_ip["1.2.3.4"].risk_level == "LOW"
-            assert by_ip["1.2.3.4"].has_exposed_rpc is False
+            assert by_ip["198.51.100.13"].port == 8332
+            assert by_ip["198.51.100.13"].has_exposed_rpc is True
+            assert by_ip["198.51.100.13"].risk_level == "CRITICAL"
+            assert by_ip["203.0.113.42"].hostname.endswith(".onion")
+            assert "tor" in (by_ip["203.0.113.42"].tags_json or "")
+            assert by_ip["203.0.113.99"].is_vulnerable is True
+            assert by_ip["203.0.113.99"].risk_level == "HIGH"
+            assert by_ip["192.0.2.7"].risk_level == "LOW"
+            assert by_ip["192.0.2.7"].has_exposed_rpc is False
 
     def test_idempotent_on_second_run(self):
         from src.db.models import Node
@@ -570,8 +570,8 @@ class TestCmdSeedExamples:
         # Pre-seed legacy rows with example IPs at non-canonical ports + a
         # non-example row that must be left alone.
         with Session() as s:
-            s.add(Node(ip="5.6.7.8", port=8333, is_example=True, risk_level="CRITICAL"))
-            s.add(Node(ip="9.10.11.12", port=8332, is_example=True, risk_level="HIGH"))
+            s.add(Node(ip="198.51.100.13", port=8333, is_example=True, risk_level="CRITICAL"))
+            s.add(Node(ip="203.0.113.42", port=8332, is_example=True, risk_level="HIGH"))
             s.add(Node(ip="8.8.8.8", port=8333, is_example=False, risk_level="LOW"))
             s.commit()
 
@@ -584,13 +584,13 @@ class TestCmdSeedExamples:
         with Session() as s:
             ips_ports = {(n.ip, n.port, n.is_example) for n in s.query(Node).all()}
             # Canonical seed survives
-            assert ("1.2.3.4", 8333, True) in ips_ports
-            assert ("5.6.7.8", 8332, True) in ips_ports
-            assert ("9.10.11.12", 8333, True) in ips_ports
-            assert ("1.3.3.7", 8333, True) in ips_ports
+            assert ("192.0.2.7", 8333, True) in ips_ports
+            assert ("198.51.100.13", 8332, True) in ips_ports
+            assert ("203.0.113.42", 8333, True) in ips_ports
+            assert ("203.0.113.99", 8333, True) in ips_ports
             # Legacy example-flagged extras were purged
-            assert ("5.6.7.8", 8333, True) not in ips_ports
-            assert ("9.10.11.12", 8332, True) not in ips_ports
+            assert ("198.51.100.13", 8333, True) not in ips_ports
+            assert ("203.0.113.42", 8332, True) not in ips_ports
             # Non-example node untouched
             assert ("8.8.8.8", 8333, False) in ips_ports
 
@@ -603,7 +603,7 @@ class TestCmdSeedExamples:
 
         Session, fake_session = self._empty_db()
         with Session() as s:
-            s.add(Node(ip="5.6.7.8", port=8333, is_example=True, risk_level="CRITICAL"))
+            s.add(Node(ip="198.51.100.13", port=8333, is_example=True, risk_level="CRITICAL"))
             s.commit()
 
         with patch("src.db.cli.is_database_configured", return_value=True), \
@@ -612,4 +612,4 @@ class TestCmdSeedExamples:
             assert cmd_seed_examples(_make_args()) == 0
 
         with Session() as s:
-            assert s.query(Node).filter_by(ip="5.6.7.8", port=8333).count() == 1
+            assert s.query(Node).filter_by(ip="198.51.100.13", port=8333).count() == 1

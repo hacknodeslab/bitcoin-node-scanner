@@ -1,6 +1,6 @@
 ## 1. Canonical example IP module
 
-- [x] 1.1 Create `src/example_ips.py` with `EXAMPLE_IPS = frozenset({"1.2.3.4", "5.6.7.8", "9.10.11.12", "1.3.3.7"})` and `is_example_ip(ip) -> bool` (handles `None`, empty, malformed inputs by returning `False`)
+- [x] 1.1 Create `src/example_ips.py` with `EXAMPLE_IPS = frozenset({"192.0.2.7", "198.51.100.13", "203.0.113.42", "203.0.113.99"})` (RFC 5737 documentation ranges only) and `is_example_ip(ip) -> bool` (handles `None`, empty, malformed inputs by returning `False`)
 - [x] 1.2 Add `tests/test_example_ips.py` covering recognized IPs, unknown IPs, and invalid inputs
 
 ## 2. Database schema

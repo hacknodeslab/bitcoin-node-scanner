@@ -118,9 +118,9 @@ describe("NodeTable", () => {
   });
 
   it("EXAMPLE node renders the EXAMPLE pill and is marked with data-example", () => {
-    const exampleNode: NodeOut = { ...BASE, id: 9, ip: "1.2.3.4", port: 8333, is_example: true };
+    const exampleNode: NodeOut = { ...BASE, id: 9, ip: "192.0.2.7", port: 8333, is_example: true };
     render(<NodeTable nodes={[exampleNode]} />);
-    const row = screen.getByTestId("node-row-1.2.3.4");
+    const row = screen.getByTestId("node-row-192.0.2.7");
     expect(row.dataset.example).toBe("true");
     expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeTruthy();
   });

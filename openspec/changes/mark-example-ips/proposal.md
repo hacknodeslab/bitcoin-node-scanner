@@ -1,10 +1,10 @@
 ## Why
 
-Hardcoded example/demo IP addresses (`1.2.3.4`, `5.6.7.8`, `9.10.11.12`, `1.3.3.7`) currently look identical to real scanned nodes when they leak into the database (tests, screenshots, manual seeds). This creates two problems: stats and trends silently include junk data, and developers/reviewers cannot tell at a glance whether a row in the dashboard reflects real reconnaissance or a fixture. We need an explicit, stable way to mark these rows so they are visually obvious in the UI and excludable from filters and analytics.
+Hardcoded example/demo IP addresses currently look identical to real scanned nodes when they leak into the database (tests, screenshots, manual seeds). This creates two problems: stats and trends silently include junk data, and developers/reviewers cannot tell at a glance whether a row in the dashboard reflects real reconnaissance or a fixture. We need an explicit, stable way to mark these rows so they are visually obvious in the UI and excludable from filters and analytics, and the canonical IP set MUST come exclusively from the IANA-reserved documentation ranges (RFC 5737) so the flag never collides with a real public host.
 
 ## What Changes
 
-- Maintain a canonical, code-defined list of example IPs (`1.2.3.4`, `5.6.7.8`, `9.10.11.12`, `1.3.3.7`) in a single module (`src/example_ips.py`).
+- Maintain a canonical, code-defined list of example IPs drawn exclusively from RFC 5737 documentation ranges (`192.0.2.7`, `198.51.100.13`, `203.0.113.42`, `203.0.113.99`) in a single module (`src/example_ips.py`).
 - Add an `is_example` boolean column to the `Node` model, defaulting to `false`, populated automatically when the scanner integration persists or updates a node whose IP matches the canonical list.
 - Expose `is_example` through the node serializers so it reaches the API and the frontend.
 - Add an `is_example` filter to `GET /api/v1/nodes` (default behavior: include them so existing callers do not break; opt-out via `is_example=false`).

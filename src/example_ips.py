@@ -4,6 +4,16 @@ screenshots. Nodes whose IP appears here are flagged with `is_example=True`
 in the database and rendered with a distinct visual treatment in the UI so
 they can be excluded from analytics or hidden from operators.
 
+The IPs are drawn exclusively from IANA documentation ranges reserved by
+RFC 5737:
+- 192.0.2.0/24    (TEST-NET-1)
+- 198.51.100.0/24 (TEST-NET-2)
+- 203.0.113.0/24  (TEST-NET-3)
+
+These ranges are guaranteed never to be allocated to a real host on the
+public internet, so flagging them as "example" cannot collide with a real
+Bitcoin node observed in the wild.
+
 Single source of truth for the entire backend; do not duplicate this list in
 the frontend (the frontend reacts to `node.is_example` from the API).
 """
@@ -13,10 +23,10 @@ import json
 from typing import Any
 
 EXAMPLE_IPS: frozenset[str] = frozenset({
-    "1.2.3.4",
-    "5.6.7.8",
-    "9.10.11.12",
-    "1.3.3.7",
+    "192.0.2.7",       # TEST-NET-1
+    "198.51.100.13",   # TEST-NET-2
+    "203.0.113.42",    # TEST-NET-3
+    "203.0.113.99",    # TEST-NET-3
 })
 
 
@@ -37,7 +47,7 @@ def is_example_ip(ip: Any) -> bool:
 # leetspeak so Shodan never returns them in real scans.
 EXAMPLE_NODES: list[dict[str, Any]] = [
     {
-        "ip": "1.2.3.4",
+        "ip": "192.0.2.7",
         "port": 8333,
         "version": "Satoshi:25.0.0",
         "user_agent": "/Satoshi:25.0.0/",
@@ -59,7 +69,7 @@ EXAMPLE_NODES: list[dict[str, Any]] = [
         "tags_json": json.dumps(["bitcoin"]),
     },
     {
-        "ip": "5.6.7.8",
+        "ip": "198.51.100.13",
         "port": 8332,
         "version": "Satoshi:24.0.1",
         "user_agent": "/Satoshi:24.0.1/",
@@ -81,7 +91,7 @@ EXAMPLE_NODES: list[dict[str, Any]] = [
         "tags_json": json.dumps(["bitcoin"]),
     },
     {
-        "ip": "9.10.11.12",
+        "ip": "203.0.113.42",
         "port": 8333,
         "version": "Satoshi:23.0.0",
         "user_agent": "/Satoshi:23.0.0/",
@@ -103,7 +113,7 @@ EXAMPLE_NODES: list[dict[str, Any]] = [
         "tags_json": json.dumps(["bitcoin", "tor"]),
     },
     {
-        "ip": "1.3.3.7",
+        "ip": "203.0.113.99",
         "port": 8333,
         "version": "Satoshi:0.20.0",
         "user_agent": "/Satoshi:0.20.0/",

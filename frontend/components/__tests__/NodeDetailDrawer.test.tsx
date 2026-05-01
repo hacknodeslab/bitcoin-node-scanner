@@ -189,7 +189,7 @@ describe("NodeDetailDrawer", () => {
   });
 
   it("renders EXAMPLE badge in the header when node.is_example is true", () => {
-    const exampleNode: NodeOut = { ...NODE, is_example: true };
+    const exampleNode: NodeOut = { ...NODE, ip: "192.0.2.7", is_example: true };
     render(
       <NodeDetailDrawer
         ip={exampleNode.ip}
