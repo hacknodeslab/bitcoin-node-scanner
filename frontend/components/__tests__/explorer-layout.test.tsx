@@ -151,6 +151,7 @@ describe("Viewport-bounded NodeTable layout", () => {
     is_vulnerable: false,
     has_exposed_rpc: false,
     is_dev_version: false,
+    is_example: false,
     country_code: null,
     country_name: null,
     city: null,
