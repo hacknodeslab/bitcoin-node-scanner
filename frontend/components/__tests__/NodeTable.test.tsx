@@ -125,11 +125,21 @@ describe("NodeTable", () => {
     expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeTruthy();
   });
 
-  it("non-EXAMPLE row has no EXAMPLE pill and no data-example marker", () => {
+  it("non-EXAMPLE row has no EXAMPLE pill, no data-example marker, and no accent styling", () => {
     render(<NodeTable nodes={[NODE_LOW]} />);
     const row = screen.getByTestId("node-row-1.1.1.1");
     expect(row.dataset.example).toBeUndefined();
     expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeNull();
+    // Defend against regressions in both directions:
+    //   1) legacy `example-*` classes from before the rename to `accent-*`
+    //      must never reappear (the rename was driven by the rule that the
+    //      tint belongs to selection, not to the example flag).
+    //   2) the current selection-only classes (`bg-accent-bg`,
+    //      `border-l-primary`) must not bleed onto non-selected rows.
+    expect(row.className).not.toMatch(/bg-example-bg/);
+    expect(row.className).not.toMatch(/border-example/);
+    expect(row.className).not.toMatch(/bg-accent-bg/);
+    expect(row.className).not.toMatch(/border-l-primary/);
   });
 
   it("selected row carries the accent tint", () => {
