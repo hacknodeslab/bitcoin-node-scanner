@@ -20,7 +20,7 @@ The system SHALL maintain a single canonical list of example/demo IP addresses i
 - **THEN** every entry SHALL parse as an IPv4 address that falls inside `192.0.2.0/24`, `198.51.100.0/24`, or `203.0.113.0/24`
 
 ### Requirement: Example flag is set on every node write
-The system SHALL set `Node.is_example = True` when persisting or upserting a node whose IP is in the canonical example list, and `False` otherwise. This SHALL apply uniformly to every code path that writes `Node` rows from the scanner, including `BitcoinNodeScanner` and `OptimizedBitcoinScanner` paths.
+The system SHALL set `Node.is_example = True` when persisting or upserting a node whose IP is in the canonical example list, and `False` otherwise. This SHALL apply uniformly to every code path that writes `Node` rows from the scanner, including `BitcoinNodeScanner` and `OptimizedBitcoinScanner` paths. The `is_example` value SHALL be derived inside the repository write paths from `is_example_ip(ip)`; any caller-supplied `is_example` value in the upsert payload SHALL be ignored.
 
 #### Scenario: New example node is flagged
 - **WHEN** the scanner integration persists a node with IP `192.0.2.7` for the first time
@@ -33,6 +33,14 @@ The system SHALL set `Node.is_example = True` when persisting or upserting a nod
 #### Scenario: Existing node is corrected on update
 - **WHEN** an existing node with IP `192.0.2.7` and `is_example = False` is upserted by the scanner integration
 - **THEN** the resulting row SHALL have `is_example = True` after the upsert
+
+#### Scenario: Caller cannot override the derived flag
+- **WHEN** a caller invokes `NodeRepository.upsert({"ip": "8.8.8.8", "port": 8333, "is_example": True})`
+- **THEN** the persisted row SHALL have `is_example = False` (the canonical list, not the caller, is authoritative)
+
+#### Scenario: Caller cannot unflag a canonical IP
+- **WHEN** a caller invokes `NodeRepository.upsert({"ip": "192.0.2.7", "port": 8333, "is_example": False})`
+- **THEN** the persisted row SHALL have `is_example = True`
 
 ### Requirement: Backfill helper for existing rows
 The system SHALL provide a repository method `backfill_example_flag()` and a CLI subcommand `python -m src.db.cli db-mark-examples` that idempotently set `is_example = True` for every persisted node whose IP is in the canonical list and `is_example = False` for any node previously flagged whose IP is no longer in the list.

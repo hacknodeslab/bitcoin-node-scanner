@@ -135,6 +135,78 @@ class TestNodeRepository:
         assert count == 150
         assert repo.count_all() == 150
 
+    def test_upsert_derives_is_example_from_ip_and_ignores_caller(self, session):
+        """Caller cannot override `is_example`; the repo derives it from the IP.
+
+        This is the load-bearing invariant that prevents a non-canonical IP
+        from being mislabelled as demo data via `repo.upsert({..., "is_example": True})`,
+        and prevents a canonical IP from being unflagged.
+        """
+        repo = NodeRepository(session)
+
+        # Canonical IP with caller trying to UNFLAG → repo flags True anyway.
+        repo.upsert({"ip": "192.0.2.7", "port": 8333, "is_example": False})
+        # Non-canonical IP with caller trying to FLAG → repo persists False.
+        repo.upsert({"ip": "8.8.8.8", "port": 8333, "is_example": True})
+        session.commit()
+
+        canonical = repo.find_by_ip_port("192.0.2.7", 8333)
+        rogue = repo.find_by_ip_port("8.8.8.8", 8333)
+        assert canonical.is_example is True
+        assert rogue.is_example is False
+
+        # Same invariant on update path: a stale `is_example=True` row at a
+        # non-canonical IP must be corrected to False on the next upsert,
+        # regardless of what the caller passes.
+        rogue.is_example = True
+        session.flush()
+        repo.upsert({"ip": "8.8.8.8", "port": 8333, "is_example": True})
+        session.commit()
+        assert repo.find_by_ip_port("8.8.8.8", 8333).is_example is False
+
+    def test_bulk_upsert_postgresql_path_derives_is_example_from_ip(self, session):
+        """The PostgreSQL ON CONFLICT bulk path uses `is_example_ip(ip)` —
+        not the caller's `is_example` value — when assembling the INSERT row.
+
+        We don't have a real PostgreSQL backend in this suite, so we patch
+        `pg_insert(...).values()` to capture the values list and assert each
+        row carries the derived flag.
+        """
+        from unittest.mock import MagicMock, patch
+
+        repo = NodeRepository(session)
+        captured_values: list = []
+
+        original_pg_insert = NodeRepository.__module__  # placeholder for clarity
+
+        class _StubStmt:
+            def __init__(self, values):
+                captured_values.extend(values)
+                self.excluded = MagicMock()
+
+            def on_conflict_do_update(self, *_, **__):
+                return self
+
+        def fake_pg_insert(_table):
+            return MagicMock(values=lambda v: _StubStmt(v))
+
+        class _StubResult:
+            rowcount = 0
+
+        batch = [
+            {"ip": "192.0.2.7", "port": 8333, "is_example": False},   # canonical
+            {"ip": "8.8.8.8", "port": 8333, "is_example": True},       # rogue
+            {"ip": None, "port": 8333},                                # malformed
+        ]
+        with patch("src.db.repositories.node_repository.pg_insert", fake_pg_insert), \
+             patch.object(session, "execute", return_value=_StubResult()):
+            repo._bulk_upsert_postgresql(batch)
+
+        by_ip = {row["ip"]: row for row in captured_values}
+        assert by_ip["192.0.2.7"]["is_example"] is True
+        assert by_ip["8.8.8.8"]["is_example"] is False
+        assert by_ip[None]["is_example"] is False  # safe default for malformed input
+
     def test_count_by_country(self, session):
         """Test counting nodes by country."""
         repo = NodeRepository(session)

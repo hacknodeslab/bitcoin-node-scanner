@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from ...example_ips import is_example_ip
 from ..models import Node
 from ..connection import is_postgresql, get_database_url
 
@@ -28,17 +29,25 @@ class NodeRepository:
 
         If node exists, updates last_seen and changed fields.
         If node is new, creates with first_seen and last_seen set to now.
+
+        `is_example` is always derived from the IP via `is_example_ip()` and
+        IGNORED if present in `node_data` — callers cannot mark a non-canonical
+        IP as example, nor unflag a canonical one.
         """
         ip = node_data.get("ip")
         port = node_data.get("port", 8333)
+        derived_is_example = is_example_ip(ip)
 
         existing = self.find_by_ip_port(ip, port)
 
         if existing:
             # Update existing node
             for key, value in node_data.items():
-                if key not in ("id", "first_seen") and hasattr(existing, key):
+                if key in ("id", "first_seen", "is_example"):
+                    continue
+                if hasattr(existing, key):
                     setattr(existing, key, value)
+            existing.is_example = derived_is_example
             existing.last_seen = datetime.utcnow()
             return existing
         else:
@@ -48,10 +57,11 @@ class NodeRepository:
             now = datetime.utcnow()
             node = Node(ip=ip, port=port, first_seen=now, last_seen=now)
             for key, value in node_data.items():
-                if key in ("id", "ip", "port", "first_seen", "last_seen"):
+                if key in ("id", "ip", "port", "first_seen", "last_seen", "is_example"):
                     continue
                 if hasattr(node, key):
                     setattr(node, key, value)
+            node.is_example = derived_is_example
             self.session.add(node)
             return node
 
@@ -110,7 +120,9 @@ class NodeRepository:
                 "is_vulnerable": node_data.get("is_vulnerable", False),
                 "has_exposed_rpc": node_data.get("has_exposed_rpc", False),
                 "is_dev_version": node_data.get("is_dev_version", False),
-                "is_example": node_data.get("is_example", False),
+                # Derived from IP, never trusted from caller — keeps
+                # the canonical example list as the single source of truth.
+                "is_example": is_example_ip(node_data.get("ip")),
                 "first_seen": now,
                 "last_seen": now,
             })
