@@ -74,6 +74,7 @@ def _make_node(
     last_seen=None,
     tags_json=None,
     hostname=None,
+    is_example=False,
 ):
     return Node(
         ip=ip,
@@ -82,6 +83,7 @@ def _make_node(
         risk_level=risk_level,
         is_vulnerable=False,
         has_exposed_rpc=has_exposed_rpc,
+        is_example=is_example,
         first_seen=datetime.utcnow(),
         last_seen=last_seen or datetime.utcnow(),
         tags_json=tags_json,
@@ -189,6 +191,58 @@ class TestNodesEndpoint:
 
         r = client.get("/api/v1/nodes", headers=HEADERS)
         assert r.headers["X-Total-Count"].isdigit()
+
+    def test_response_includes_is_example_field(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", is_example=False))
+        db_session.add(_make_node("192.0.2.7", is_example=True))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        by_ip = {n["ip"]: n for n in data}
+        assert by_ip["1.1.1.1"]["is_example"] is False
+        assert by_ip["192.0.2.7"]["is_example"] is True
+
+    def test_filter_is_example_false_excludes_examples(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", is_example=False))
+        db_session.add(_make_node("192.0.2.7", is_example=True))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?is_example=false", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "1.1.1.1"
+
+    def test_filter_is_example_true_returns_only_examples(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", is_example=False))
+        db_session.add(_make_node("192.0.2.7", is_example=True))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?is_example=true", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "192.0.2.7"
+
+    def test_filter_is_example_invalid_returns_422(self, client):
+        r = client.get("/api/v1/nodes?is_example=maybe", headers=HEADERS)
+        assert r.status_code == 422
+
+    def test_filter_combines_risk_level_and_is_example(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", risk_level="CRITICAL", is_example=False))
+        db_session.add(_make_node("192.0.2.7", risk_level="CRITICAL", is_example=True))
+        db_session.add(_make_node("2.2.2.2", risk_level="LOW", is_example=False))
+        db_session.commit()
+
+        r = client.get(
+            "/api/v1/nodes?risk_level=CRITICAL&is_example=false",
+            headers=HEADERS,
+        )
+        assert r.status_code == 200
+        data = r.json()
+        assert [n["ip"] for n in data] == ["1.1.1.1"]
 
 
 class TestStatsEndpoint:

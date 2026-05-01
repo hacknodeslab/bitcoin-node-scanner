@@ -17,11 +17,14 @@
   --color-ok: #00ff9c;
   --color-warn: #ffb000;
   --color-alert: #ff4444;
+  --color-accent: #ff6fb5;
   --color-on-primary: #0a0a0a;
   --color-alert-bg: #2a0000;
   --color-warn-bg: #2a1f00;
   --color-ok-bg: #002a1a;
   --color-l402-bg: #1a1200;
+  --color-accent-bg: #2a0a1a;
+  --color-accent-border: #5a1a3a;
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 12px;
@@ -62,11 +65,14 @@
   --color-ok: #008f5c;
   --color-warn: #a36a00;
   --color-alert: #cc0000;
+  --color-accent: #a01055;
   --color-on-primary: #0a0a0a;
   --color-alert-bg: #ffe5e5;
   --color-warn-bg: #fff4d6;
   --color-ok-bg: #daf5e8;
   --color-l402-bg: #fff2d6;
+  --color-accent-bg: #ffe3f0;
+  --color-accent-border: #e090b8;
 }
 /* === END GENERATED TOKENS === */
 

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from ...example_ips import is_example_ip
 from ..models import Node
 from ..connection import is_postgresql, get_database_url
 
@@ -28,44 +29,39 @@ class NodeRepository:
 
         If node exists, updates last_seen and changed fields.
         If node is new, creates with first_seen and last_seen set to now.
+
+        `is_example` is always derived from the IP via `is_example_ip()` and
+        IGNORED if present in `node_data` — callers cannot mark a non-canonical
+        IP as example, nor unflag a canonical one.
         """
         ip = node_data.get("ip")
         port = node_data.get("port", 8333)
+        derived_is_example = is_example_ip(ip)
 
         existing = self.find_by_ip_port(ip, port)
 
         if existing:
             # Update existing node
             for key, value in node_data.items():
-                if key not in ("id", "first_seen") and hasattr(existing, key):
+                if key in ("id", "first_seen", "is_example"):
+                    continue
+                if hasattr(existing, key):
                     setattr(existing, key, value)
+            existing.is_example = derived_is_example
             existing.last_seen = datetime.utcnow()
             return existing
         else:
-            # Create new node
+            # Create new node — start with required identity, then set any
+            # other matching column from node_data so enrichment fields
+            # (hostname, tags_json, geo_*, etc.) survive the initial insert.
             now = datetime.utcnow()
-            node = Node(
-                ip=ip,
-                port=port,
-                country_code=node_data.get("country_code"),
-                country_name=node_data.get("country_name"),
-                city=node_data.get("city"),
-                latitude=node_data.get("latitude"),
-                longitude=node_data.get("longitude"),
-                asn=node_data.get("asn"),
-                asn_name=node_data.get("asn_name"),
-                version=node_data.get("version"),
-                user_agent=node_data.get("user_agent"),
-                banner=node_data.get("banner"),
-                protocol_version=node_data.get("protocol_version"),
-                services=node_data.get("services"),
-                risk_level=node_data.get("risk_level"),
-                is_vulnerable=node_data.get("is_vulnerable", False),
-                has_exposed_rpc=node_data.get("has_exposed_rpc", False),
-                is_dev_version=node_data.get("is_dev_version", False),
-                first_seen=now,
-                last_seen=now,
-            )
+            node = Node(ip=ip, port=port, first_seen=now, last_seen=now)
+            for key, value in node_data.items():
+                if key in ("id", "ip", "port", "first_seen", "last_seen", "is_example"):
+                    continue
+                if hasattr(node, key):
+                    setattr(node, key, value)
+            node.is_example = derived_is_example
             self.session.add(node)
             return node
 
@@ -124,6 +120,9 @@ class NodeRepository:
                 "is_vulnerable": node_data.get("is_vulnerable", False),
                 "has_exposed_rpc": node_data.get("has_exposed_rpc", False),
                 "is_dev_version": node_data.get("is_dev_version", False),
+                # Derived from IP, never trusted from caller — keeps
+                # the canonical example list as the single source of truth.
+                "is_example": is_example_ip(node_data.get("ip")),
                 "first_seen": now,
                 "last_seen": now,
             })
@@ -148,6 +147,7 @@ class NodeRepository:
                 "is_vulnerable": stmt.excluded.is_vulnerable,
                 "has_exposed_rpc": stmt.excluded.has_exposed_rpc,
                 "is_dev_version": stmt.excluded.is_dev_version,
+                "is_example": stmt.excluded.is_example,
                 "last_seen": now,
             }
         )
@@ -258,3 +258,47 @@ class NodeRepository:
     def delete(self, node: Node) -> None:
         """Delete a node."""
         self.session.delete(node)
+
+    def purge_example_extras(self, keep: List[tuple]) -> int:
+        """Delete every node flagged `is_example=True` whose (ip, port) is NOT
+        in `keep`. Used by `db-seed-examples --purge-extras` to drop legacy
+        example-IP rows at non-canonical ports. Returns the row count deleted.
+        """
+        from sqlalchemy import delete, tuple_
+
+        if not keep:
+            stmt = delete(Node).where(Node.is_example == True)  # noqa: E712
+        else:
+            stmt = delete(Node).where(
+                Node.is_example == True,  # noqa: E712
+                tuple_(Node.ip, Node.port).notin_(keep),
+            )
+        return int(self.session.execute(stmt).rowcount or 0)
+
+    def backfill_example_flag(self) -> Dict[str, int]:
+        """Reconcile `is_example` against `src.example_ips.EXAMPLE_IPS`.
+
+        - Sets `is_example=True` for any node whose IP is in the canonical list
+          but currently flagged False.
+        - Clears `is_example` on nodes whose IP is no longer in the list (stale).
+
+        Returns a dict with `flagged` and `cleared` counts.
+        """
+        from sqlalchemy import update
+
+        from ...example_ips import EXAMPLE_IPS
+
+        ips = list(EXAMPLE_IPS)
+        flagged = self.session.execute(
+            update(Node)
+            .where(Node.ip.in_(ips), Node.is_example == False)  # noqa: E712
+            .values(is_example=True)
+        ).rowcount or 0
+
+        cleared = self.session.execute(
+            update(Node)
+            .where(Node.is_example == True, Node.ip.notin_(ips))  # noqa: E712
+            .values(is_example=False)
+        ).rowcount or 0
+
+        return {"flagged": int(flagged), "cleared": int(cleared)}

@@ -18,11 +18,14 @@ themes:
     ok: "#00ff9c"
     warn: "#ffb000"
     alert: "#ff4444"
+    accent: "#ff6fb5"
     on-primary: "#0a0a0a"
     alert-bg: "#2a0000"
     warn-bg: "#2a1f00"
     ok-bg: "#002a1a"
     l402-bg: "#1a1200"
+    accent-bg: "#2a0a1a"
+    accent-border: "#5a1a3a"
   light:
     primary: "#F7931A"
     bg: "#f6f6f6"
@@ -37,11 +40,14 @@ themes:
     ok: "#008f5c"
     warn: "#a36a00"
     alert: "#cc0000"
+    accent: "#a01055"
     on-primary: "#0a0a0a"
     alert-bg: "#ffe5e5"
     warn-bg: "#fff4d6"
     ok-bg: "#daf5e8"
     l402-bg: "#fff2d6"
+    accent-bg: "#ffe3f0"
+    accent-border: "#e090b8"
 
 typography:
   display:

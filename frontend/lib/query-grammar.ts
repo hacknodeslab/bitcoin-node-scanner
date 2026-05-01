@@ -2,8 +2,8 @@
  * Bridge between the query-bar grammar (key=value tokens) and the
  * NodeListParams shape consumed by `useNodes`.
  *
- * The grammar is closed: only `risk`, `country`, `exposed`, `tor` are
- * accepted. Unknown keys produce diagnostics but are not silently
+ * The grammar is closed: only `risk`, `country`, `exposed`, `tor`, `example`
+ * are accepted. Unknown keys produce diagnostics but are not silently
  * dropped — `tokensToFilters` returns a `warnings` array so the UI can
  * surface them inline if it wants.
  */
@@ -12,7 +12,7 @@ import type { NodeListParams, RiskLevel } from "@/lib/api/types";
 
 export type ExplorerFilters = Pick<
   NodeListParams,
-  "risk_level" | "country" | "exposed" | "tor"
+  "risk_level" | "country" | "exposed" | "tor" | "is_example"
 >;
 
 export interface ParseResult {
@@ -67,6 +67,15 @@ export function tokensToFilters(tokens: QueryToken[]): ParseResult {
           break;
         }
         filters.tor = true;
+        break;
+      }
+      case "example": {
+        const b = parseBool(t.value);
+        if (b === "invalid") {
+          warnings.push(`example=${t.value}: must be true|false`);
+          break;
+        }
+        filters.is_example = b;
         break;
       }
       default:

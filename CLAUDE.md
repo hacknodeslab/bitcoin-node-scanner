@@ -36,6 +36,9 @@ python -m src.db.cli db-export --output export.json
 python -m src.db.cli enrich-geo          # Retroactively enrich geo data
 python -m src.db.cli db-link-cves        # (Re)build node→CVE links from cve_entries
 python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
+python -m src.db.cli db-mark-examples    # Reconcile is_example flag against canonical IP list
+python -m src.db.cli db-seed-examples    # Upsert canonical example nodes (idempotent demo data)
+python -m src.db.cli db-seed-examples --purge-extras  # also drop legacy is_example rows at non-canonical ports
 ```
 
 ## Required Environment Variables
@@ -78,7 +81,7 @@ The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and N
 ### Database Layer (`src/db/`)
 
 Uses **SQLAlchemy 2.0** with SQLite (default) or PostgreSQL. Key models in `models.py`:
-- `Node` — Bitcoin node with risk/geo/version data; indexes on `ip`, `(ip, port)`, `last_seen`, `risk_level`, `is_vulnerable`.
+- `Node` — Bitcoin node with risk/geo/version data; indexes on `ip`, `(ip, port)`, `last_seen`, `risk_level`, `is_vulnerable`, `is_example`. The `is_example` flag is set automatically at write time for IPs in `src/example_ips.py`; backfill via `db-mark-examples`.
 - `Scan` — Session metadata (queries, node count, credits used, status).
 - `CVEEntry` — Vulnerability catalog from NVD with CVSS scores.
 - `NodeVulnerability` — Many-to-many junction (node ↔ CVE) with detection timestamps.
@@ -89,7 +92,7 @@ Repository pattern in `db/repositories/` abstracts all queries. `db/scanner_inte
 ### Web API (`src/web/`)
 
 FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`auth.py`). Routers:
-- `GET /api/v1/nodes` — Paginated, filterable node list
+- `GET /api/v1/nodes` — Paginated, filterable node list (filters: `risk_level`, `country`, `exposed`, `tor`, `is_example`). Each node payload includes `is_example: bool`.
 - `GET /api/v1/stats` — Aggregate statistics
 - `POST /api/v1/scans`, `GET /api/v1/scans/{job_id}` — Background scan jobs
 - `GET /api/v1/vulnerabilities` — CVE lookups
@@ -103,7 +106,7 @@ Fetches CVE data from the National Vulnerability Database. `client.py` handles H
 
 ### Frontend theming (`frontend/`)
 
-Tokens are sourced from `/DESIGN.md`'s YAML front matter. The `themes:` map defines two colour palettes — `dark` (default) and `light` — both with the same 18 token names. `pnpm tokens:gen` regenerates `frontend/lib/design-tokens.ts` (typed `themes` + `colors` exports) and the `:root` + `[data-theme="light"]` blocks inside `frontend/app/globals.css`. Tailwind utilities reference CSS custom properties, so the active theme swaps at runtime when `<html>` carries `data-theme="light"`.
+Tokens are sourced from `/DESIGN.md`'s YAML front matter. The `themes:` map defines two colour palettes — `dark` (default) and `light` — both with the same 21 token names: the original 18 (`primary`, `bg`, `surface`, `surface-2`, `border`, `border-dim`, `text`, `text-dim`, `muted`, `dim`, `ok`, `warn`, `alert`, `on-primary`, `alert-bg`, `warn-bg`, `ok-bg`, `l402-bg`) plus the `accent` triplet (`accent`, `accent-bg`, `accent-border`) added by `mark-example-ips`. The accent triplet drives both the `EXAMPLE` pill and the selected-row tint — both palettes MUST keep them in sync. `pnpm tokens:gen` regenerates `frontend/lib/design-tokens.ts` (typed `themes` + `colors` exports) and the `:root` + `[data-theme="light"]` blocks inside `frontend/app/globals.css`. Tailwind utilities reference CSS custom properties, so the active theme swaps at runtime when `<html>` carries `data-theme="light"`.
 
 The active mode (`dark` / `light` / `system`) lives in `localStorage['bns:theme']`. An inline pre-hydration script in `app/layout.tsx` (`THEME_INIT_SCRIPT` from `lib/theme.ts`) reads it before React mounts to avoid a flash of wrong theme. `ThemeProvider` (`components/providers/ThemeProvider.tsx`) owns the runtime state and tracks `prefers-color-scheme` only while in `system` mode.
 

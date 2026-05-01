@@ -54,8 +54,22 @@ class TestNodeModel:
         assert node.is_vulnerable is False
         assert node.has_exposed_rpc is False
         assert node.is_dev_version is False
+        assert node.is_example is False
         assert node.first_seen is not None
         assert node.last_seen is not None
+
+    def test_is_example_column_and_index(self, engine):
+        """The nodes table SHALL have an is_example column and matching index."""
+        from sqlalchemy import inspect
+
+        inspector = inspect(engine)
+        columns = {c["name"]: c for c in inspector.get_columns("nodes")}
+        assert "is_example" in columns
+        assert columns["is_example"]["nullable"] is False
+
+        indexes = {idx["name"]: idx for idx in inspector.get_indexes("nodes")}
+        assert "idx_nodes_is_example" in indexes
+        assert indexes["idx_nodes_is_example"]["column_names"] == ["is_example"]
 
     def test_node_unique_ip_port(self, session):
         """Test that IP+port combination is unique."""

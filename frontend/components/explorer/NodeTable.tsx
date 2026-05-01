@@ -63,6 +63,7 @@ function isTorNode(node: NodeOut): boolean {
 
 function pillsFor(node: NodeOut) {
   const out: React.ReactNode[] = [];
+  if (node.is_example) out.push(<Pill key="example" kind="EXAMPLE" />);
   if (node.has_exposed_rpc) out.push(<Pill key="exposed" kind="EXPOSED" />);
   if (isStale(node.last_seen)) out.push(<Pill key="stale" kind="STALE" />);
   if (isTorNode(node)) out.push(<Pill key="tor" kind="TOR" />);
@@ -137,6 +138,7 @@ function NodeRow({
       onClick={onSelect}
       selected={selected}
       className={cn("cursor-pointer", `grid ${GRID_TEMPLATE} gap-[14px]`)}
+      data-example={node.is_example ? "true" : undefined}
       data-testid={`node-row-${node.ip}`}
     >
       <span className="flex items-center gap-[6px] text-body-sm">
