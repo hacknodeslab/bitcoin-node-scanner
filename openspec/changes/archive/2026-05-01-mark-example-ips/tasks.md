@@ -54,5 +54,5 @@
 
 - [x] 10.1 Run `python -m pytest tests/ -v` and confirm all backend tests pass (519 passing; 8 failures pre-existing on main, verified via `git stash`)
 - [x] 10.2 Run `pnpm --filter frontend test` (or the project's equivalent) and confirm frontend tests pass (171/171 passing)
-- [ ] 10.3 Manually load the dashboard against a DB containing one of the example IPs and visually confirm the pink/rose accent renders correctly in both `dark` and `light` themes
+- [x] 10.3 Manually load the dashboard against a DB containing one of the example IPs and visually confirm the pink/rose accent renders correctly in both `dark` and `light` themes (verified in PRO and local after deploy of merge 13072c9)
 - [x] 10.4 Run `openspec validate mark-example-ips` and confirm the change validates cleanly before archiving
