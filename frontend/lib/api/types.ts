@@ -6,6 +6,22 @@
 
 export type RiskLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
+export interface CVESummary {
+  cve_id: string;
+  severity: string;
+  cvss_score: number | null;
+}
+
+export interface CVELink {
+  cve_id: string;
+  severity: string;
+  cvss_score: number | null;
+  description: string | null;
+  detected_at: string | null;
+  detected_version: string | null;
+  resolved_at: string | null;
+}
+
 export interface NodeOut {
   id: number;
   ip: string;
@@ -37,6 +53,12 @@ export interface NodeOut {
   vulns: string[] | null;
   tags: string[] | null;
   cpe: string[] | null;
+  cve_count: number;
+  top_cve: CVESummary | null;
+}
+
+export interface NodeDetailOut extends NodeOut {
+  cves: CVELink[];
 }
 
 export interface NodeGeoOut {

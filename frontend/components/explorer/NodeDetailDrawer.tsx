@@ -15,14 +15,20 @@ import { Button } from "@/components/ui/Button";
 import { useNodeDetail } from "@/lib/hooks";
 import { fetchL402Example } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
-import type { NodeOut, RiskLevel } from "@/lib/api/types";
+import type { NodeOut } from "@/lib/api/types";
 
-const RISK_TO_CVE_SEVERITY: Record<RiskLevel, CveSeverity> = {
-  CRITICAL: "critical",
-  HIGH: "high",
-  MEDIUM: "medium",
-  LOW: "low",
-};
+function severityToCveSeverity(severity: string | null | undefined): CveSeverity {
+  switch ((severity ?? "").toUpperCase()) {
+    case "CRITICAL":
+      return "critical";
+    case "HIGH":
+      return "high";
+    case "MEDIUM":
+      return "medium";
+    default:
+      return "low";
+  }
+}
 
 export interface NodeDetailDrawerProps {
   /** When `null`, the drawer is closed. Setting an IP opens it. */
@@ -97,11 +103,13 @@ export function NodeDetailDrawer({
   const node = detail.detail?.node;
   const open = ip !== null;
 
-  // Counts (computed even when node is missing — defaults to 0)
+  // Counts (computed even when node is missing — defaults to 0).
+  // `cves` are the NVD-derived links from `node_vulnerabilities`; we filter
+  // out resolved entries so the badge reflects only what is currently active.
   const openPorts = asOpenPorts(node?.open_ports);
-  const vulnList = node?.vulns ?? [];
+  const cveList = (node?.cves ?? []).filter((c) => c.resolved_at === null);
   const portCount = openPorts.length;
-  const cveCount = vulnList.length;
+  const cveCount = cveList.length;
 
   return (
     <Drawer
@@ -214,21 +222,14 @@ export function NodeDetailDrawer({
             <TabsContent value="vulnerabilities">
               <Card data-testid="card-vulns">
                 <CardLabel>cves</CardLabel>
-                {vulnList.length === 0 ? (
+                {cveList.length === 0 ? (
                   <CardRow className="text-meta text-muted">· no vulnerabilities recorded</CardRow>
                 ) : (
                   <div className="px-[12px] py-[8px] flex flex-wrap gap-[6px]">
-                    {vulnList.map((cve) => (
-                      <span key={cve} className="flex items-center gap-[6px]">
-                        <Pill
-                          kind="CVE"
-                          severity={
-                            node.risk_level
-                              ? RISK_TO_CVE_SEVERITY[node.risk_level]
-                              : "low"
-                          }
-                        />
-                        <span className="text-meta text-muted">{cve}</span>
+                    {cveList.map((cve) => (
+                      <span key={cve.cve_id} className="flex items-center gap-[6px]">
+                        <Pill kind="CVE" severity={severityToCveSeverity(cve.severity)} />
+                        <span className="text-meta text-muted">{cve.cve_id}</span>
                       </span>
                     ))}
                   </div>

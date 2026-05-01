@@ -6,9 +6,9 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 
 import { NodeDetailDrawer } from "../explorer/NodeDetailDrawer";
-import type { NodeOut } from "@/lib/api/types";
+import type { NodeDetailOut } from "@/lib/api/types";
 
-const NODE: NodeOut = {
+const NODE: NodeDetailOut = {
   id: 1,
   ip: "1.2.3.4",
   port: 8333,
@@ -42,19 +42,42 @@ const NODE: NodeOut = {
   vulns: null,
   tags: ["bitcoin"],
   cpe: null,
+  cve_count: 0,
+  top_cve: null,
+  cves: [],
 };
 
-const EXPOSED_NODE: NodeOut = {
+const EXPOSED_NODE: NodeDetailOut = {
   ...NODE,
   ip: "2.2.2.2",
   port: 8332,
   has_exposed_rpc: true,
   risk_level: "CRITICAL",
-  vulns: ["CVE-2024-1234", "CVE-2024-5678"],
   is_vulnerable: true,
+  cve_count: 2,
+  cves: [
+    {
+      cve_id: "CVE-2024-1234",
+      severity: "HIGH",
+      cvss_score: 7.5,
+      description: null,
+      detected_at: null,
+      detected_version: null,
+      resolved_at: null,
+    },
+    {
+      cve_id: "CVE-2024-5678",
+      severity: "CRITICAL",
+      cvss_score: 9.8,
+      description: null,
+      detected_at: null,
+      detected_version: null,
+      resolved_at: null,
+    },
+  ],
 };
 
-const HOOK_LOADED = (node: NodeOut | null) => ({
+const HOOK_LOADED = (node: NodeDetailOut | null) => ({
   detail: node ? { node, geo: null } : null,
   isLoading: false,
   error: null,
@@ -189,7 +212,7 @@ describe("NodeDetailDrawer", () => {
   });
 
   it("renders EXAMPLE badge in the header when node.is_example is true", () => {
-    const exampleNode: NodeOut = { ...NODE, ip: "192.0.2.7", is_example: true };
+    const exampleNode: NodeDetailOut = { ...NODE, ip: "192.0.2.7", is_example: true };
     render(
       <NodeDetailDrawer
         ip={exampleNode.ip}

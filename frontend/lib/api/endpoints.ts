@@ -5,6 +5,7 @@
 import { request, requestWithHeaders, setCsrfToken, fetchProtected } from "./client";
 import type {
   CsrfTokenOut,
+  NodeDetailOut,
   NodeGeoOut,
   NodeListParams,
   NodeOut,
@@ -50,6 +51,10 @@ export function listCountries(): Promise<string[]> {
 
 export function getNodeGeo(nodeId: number): Promise<NodeGeoOut> {
   return request<NodeGeoOut>("GET", `/nodes/${nodeId}/geo`);
+}
+
+export function getNodeDetail(nodeId: number): Promise<NodeDetailOut> {
+  return request<NodeDetailOut>("GET", `/nodes/${nodeId}`);
 }
 
 /**

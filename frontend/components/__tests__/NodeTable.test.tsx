@@ -45,6 +45,8 @@ const BASE: Omit<NodeOut, "ip" | "port" | "id"> = {
   vulns: null,
   tags: null,
   cpe: null,
+  cve_count: 0,
+  top_cve: null,
 };
 
 const NODE_LOW: NodeOut = { ...BASE, id: 1, ip: "1.1.1.1", port: 8333 };
