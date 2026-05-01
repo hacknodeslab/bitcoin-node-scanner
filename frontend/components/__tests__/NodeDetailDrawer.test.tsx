@@ -20,6 +20,7 @@ const NODE: NodeOut = {
   is_vulnerable: false,
   has_exposed_rpc: false,
   is_dev_version: false,
+  is_example: false,
   country_code: "DE",
   country_name: "Germany",
   city: null,
@@ -185,6 +186,34 @@ describe("NodeDetailDrawer", () => {
     );
     fireEvent.click(screen.getByText(EXPOSED_NODE.ip));
     expect(onActivateIp).toHaveBeenCalledWith(EXPOSED_NODE.ip);
+  });
+
+  it("renders EXAMPLE badge and tinted header when node.is_example is true", () => {
+    const exampleNode: NodeOut = { ...NODE, is_example: true };
+    render(
+      <NodeDetailDrawer
+        ip={exampleNode.ip}
+        onOpenChange={() => {}}
+        detailOverride={HOOK_LOADED(exampleNode)}
+      />,
+    );
+    const header = screen.getByTestId("drawer-header");
+    expect(header.dataset.example).toBe("true");
+    expect(header.className).toMatch(/bg-example-bg/);
+    expect(screen.getByText("EXAMPLE")).toBeTruthy();
+  });
+
+  it("does not render EXAMPLE badge when node.is_example is false", () => {
+    render(
+      <NodeDetailDrawer
+        ip={NODE.ip}
+        onOpenChange={() => {}}
+        detailOverride={HOOK_LOADED(NODE)}
+      />,
+    );
+    const header = screen.getByTestId("drawer-header");
+    expect(header.dataset.example).toBeUndefined();
+    expect(screen.queryByText("EXAMPLE")).toBeNull();
   });
 
   it("L402 button click reaches fetchL402Example and surfaces the challenge note", async () => {

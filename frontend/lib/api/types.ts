@@ -18,6 +18,7 @@ export interface NodeOut {
   is_vulnerable: boolean;
   has_exposed_rpc: boolean;
   is_dev_version: boolean;
+  is_example: boolean;
   country_code: string | null;
   country_name: string | null;
   city: string | null;
@@ -102,6 +103,7 @@ export interface NodeListParams {
   country?: string;
   exposed?: boolean;
   tor?: boolean;
+  is_example?: boolean;
   sort_by?: string;
   sort_dir?: "asc" | "desc";
   limit?: number;

@@ -26,6 +26,7 @@ const BASE: Omit<NodeOut, "ip" | "port" | "id"> = {
   is_vulnerable: false,
   has_exposed_rpc: false,
   is_dev_version: false,
+  is_example: false,
   country_code: "US",
   country_name: "United States",
   city: null,
@@ -114,6 +115,24 @@ describe("NodeTable", () => {
     expect(pill).toBeTruthy();
     // toneFor maps high → alert (text-alert / bg-alert-bg)
     expect(pill?.className).toMatch(/text-alert/);
+  });
+
+  it("EXAMPLE node renders the EXAMPLE pill and the row carries the example accent", () => {
+    const exampleNode: NodeOut = { ...BASE, id: 9, ip: "1.2.3.4", port: 8333, is_example: true };
+    render(<NodeTable nodes={[exampleNode]} />);
+    const row = screen.getByTestId("node-row-1.2.3.4");
+    expect(row.dataset.example).toBe("true");
+    expect(row.className).toMatch(/bg-example-bg/);
+    expect(row.className).toMatch(/border-example/);
+    expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeTruthy();
+  });
+
+  it("non-EXAMPLE row has no EXAMPLE pill and no example accent class", () => {
+    render(<NodeTable nodes={[NODE_LOW]} />);
+    const row = screen.getByTestId("node-row-1.1.1.1");
+    expect(row.dataset.example).toBeUndefined();
+    expect(row.className).not.toMatch(/bg-example-bg/);
+    expect(row.querySelector('[data-pill-kind="EXAMPLE"]')).toBeNull();
   });
 
   it("clicking a row calls onSelectNode with that IP", () => {

@@ -167,4 +167,18 @@ describe("requestWithHeaders + listNodesWithTotal", () => {
     fetchMock.mockResolvedValue(makeResponse(500, { detail: "boom" }));
     await expect(requestWithHeaders("GET", "/nodes")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("listNodesWithTotal serializes is_example=false into the URL when set", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, [], { "X-Total-Count": "0" }));
+    await listNodesWithTotal({ is_example: false });
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).toContain("is_example=false");
+  });
+
+  it("listNodesWithTotal omits is_example from the URL when not set", async () => {
+    fetchMock.mockResolvedValue(makeResponse(200, [], { "X-Total-Count": "0" }));
+    await listNodesWithTotal({});
+    const url = fetchMock.mock.calls[0][0] as string;
+    expect(url).not.toContain("is_example");
+  });
 });

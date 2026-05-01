@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any
 
 from sqlalchemy import select
 
+from ..example_ips import is_example_ip
 from .connection import get_db_session, is_database_configured, init_db
 from .repositories import NodeRepository, ScanRepository, VulnerabilityRepository
 from .models import CVEEntry, Node, Scan
@@ -132,6 +133,7 @@ class DatabaseScannerMixin:
             "ip": ip,
             "ip_numeric": self._ip_to_int(ip) if ip else None,
             "port": node_data.get("port", 8333),
+            "is_example": is_example_ip(ip),
             "country_code": node_data.get("country_code"),
             "country_name": node_data.get("country"),
             "city": node_data.get("city"),

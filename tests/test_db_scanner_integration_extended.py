@@ -110,6 +110,16 @@ class TestDatabaseScannerMixinMapNodeData:
         assert mapped["country_code"] is None
         assert mapped["version"] is None
 
+    def test_maps_example_ip_flag(self):
+        with patch("src.db.scanner_integration.is_database_configured", return_value=False):
+            scanner = DBScanner()
+
+        for ip in ("1.2.3.4", "5.6.7.8", "9.10.11.12", "1.3.3.7"):
+            assert scanner._map_node_data({"ip": ip})["is_example"] is True
+
+        assert scanner._map_node_data({"ip": "8.8.8.8"})["is_example"] is False
+        assert scanner._map_node_data({"ip": None})["is_example"] is False
+
 
 class TestDatabaseScannerMixinInit:
     """Test DatabaseScannerMixin __init__."""
@@ -184,6 +194,66 @@ class TestDatabaseScannerMixinSaveNodeToDb:
         with patch("src.db.scanner_integration.get_db_session", null_session):
             result = scanner._save_node_to_db({"ip": "1.2.3.4", "port": 8333})
         assert result is None
+
+    def test_new_example_node_is_flagged(self, sqlite_url, db_engine):
+        from contextlib import contextmanager
+
+        Session = sessionmaker(bind=db_engine)
+        captured = {}
+
+        @contextmanager
+        def mock_session():
+            s = Session()
+            try:
+                yield s
+                s.commit()
+                for n in s.query(Node).all():
+                    captured[n.ip] = n.is_example
+            finally:
+                s.close()
+
+        with patch("src.db.scanner_integration.is_database_configured", return_value=True):
+            with patch("src.db.scanner_integration.init_db"):
+                scanner = DBScanner()
+
+        with patch("src.db.scanner_integration.get_db_session", mock_session):
+            scanner._save_node_to_db({"ip": "1.2.3.4", "port": 8333})
+            scanner._save_node_to_db({"ip": "198.51.100.7", "port": 8333})
+
+        assert captured["1.2.3.4"] is True
+        assert captured["198.51.100.7"] is False
+
+    def test_stale_flag_is_corrected_on_upsert(self, sqlite_url, db_engine):
+        from contextlib import contextmanager
+
+        Session = sessionmaker(bind=db_engine)
+
+        # Pre-seed an example IP with the wrong flag
+        seed = Session()
+        seed.add(Node(ip="1.2.3.4", port=8333, is_example=False))
+        seed.commit()
+        seed.close()
+
+        @contextmanager
+        def mock_session():
+            s = Session()
+            try:
+                yield s
+                s.commit()
+            finally:
+                s.close()
+
+        with patch("src.db.scanner_integration.is_database_configured", return_value=True):
+            with patch("src.db.scanner_integration.init_db"):
+                scanner = DBScanner()
+
+        with patch("src.db.scanner_integration.get_db_session", mock_session):
+            scanner._save_node_to_db({"ip": "1.2.3.4", "port": 8333})
+
+        verify = Session()
+        node = verify.query(Node).filter_by(ip="1.2.3.4", port=8333).one()
+        assert node.is_example is True
+        verify.close()
 
 
 class TestDatabaseScannerMixinStartScanSession:

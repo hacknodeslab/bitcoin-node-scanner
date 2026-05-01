@@ -7,9 +7,10 @@ export type PillKind =
   | { kind: "STALE" }
   | { kind: "TOR" }
   | { kind: "CVE"; severity: CveSeverity }
-  | { kind: "OK" };
+  | { kind: "OK" }
+  | { kind: "EXAMPLE" };
 
-type Tone = "alert" | "warn" | "ok";
+type Tone = "alert" | "warn" | "ok" | "example";
 
 function toneFor(p: PillKind): Tone {
   switch (p.kind) {
@@ -22,6 +23,8 @@ function toneFor(p: PillKind): Tone {
       return p.severity === "high" || p.severity === "critical" ? "alert" : "warn";
     case "OK":
       return "ok";
+    case "EXAMPLE":
+      return "example";
   }
 }
 
@@ -29,6 +32,7 @@ const TONE_CLASSES: Record<Tone, string> = {
   alert: "text-alert bg-alert-bg",
   warn: "text-warn bg-warn-bg",
   ok: "text-ok bg-ok-bg",
+  example: "text-example bg-example-bg",
 };
 
 export function Pill(props: PillKind & { className?: string }) {

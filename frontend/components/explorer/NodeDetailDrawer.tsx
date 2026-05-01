@@ -116,7 +116,14 @@ export function NodeDetailDrawer({
       </DrawerDescription>
 
       {/* Header */}
-      <div className="px-[16px] py-[12px] border-b border-border" data-testid="drawer-header">
+      <div
+        className={cn(
+          "px-[16px] py-[12px] border-b border-border",
+          node?.is_example && "bg-example-bg border-l-2 border-l-example",
+        )}
+        data-testid="drawer-header"
+        data-example={node?.is_example ? "true" : undefined}
+      >
         <div className="flex items-center text-meta text-muted">
           <span>last seen {node?.last_seen ?? "—"}</span>
           {node?.asn ? <span className="mx-[8px] text-dim">·</span> : null}
@@ -132,6 +139,7 @@ export function NodeDetailDrawer({
           >
             {node?.port ?? "—"}
           </span>
+          {node?.is_example ? <Pill kind="EXAMPLE" /> : null}
           {node ? (
             <button
               type="button"

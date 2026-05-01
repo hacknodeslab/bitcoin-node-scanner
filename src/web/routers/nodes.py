@@ -60,6 +60,7 @@ class NodeOut(BaseModel):
     is_vulnerable: bool
     has_exposed_rpc: bool
     is_dev_version: bool
+    is_example: bool = False
     country_code: Optional[str]
     country_name: Optional[str]
     city: Optional[str]
@@ -138,6 +139,7 @@ def _node_out_kwargs(n: Node) -> dict:
         is_vulnerable=n.is_vulnerable,
         has_exposed_rpc=n.has_exposed_rpc,
         is_dev_version=n.is_dev_version,
+        is_example=getattr(n, "is_example", False),
         country_code=n.country_code,
         country_name=n.country_name,
         city=n.city,
@@ -228,6 +230,7 @@ def list_nodes(
     country: Annotated[Optional[str], Query(description="Filter by server location country name (case-insensitive)")] = None,
     exposed: Annotated[Optional[bool], Query(description="Filter by has_exposed_rpc.")] = None,
     tor: Annotated[Optional[bool], Query(description="Filter by tor signal (tags include 'tor' or hostname ends in '.onion'). Only `true` is supported in v0.")] = None,
+    is_example: Annotated[Optional[bool], Query(description="Filter by is_example flag. Omit to include both example and real nodes.")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -256,6 +259,8 @@ def list_nodes(
     if tor is True:
         # Same predicate as NodeRepository.count_tor — keep them in sync.
         conds.append(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
+    if is_example is not None:
+        conds.append(Node.is_example == is_example)
 
     total = db.scalar(select(func.count()).select_from(Node).where(*conds)) or 0
     response.headers["X-Total-Count"] = str(total)

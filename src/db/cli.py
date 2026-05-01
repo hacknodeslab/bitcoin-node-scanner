@@ -407,6 +407,30 @@ def cmd_link_cves(args):
     return 0
 
 
+def cmd_mark_examples(args):
+    """Backfill the is_example flag on existing nodes."""
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+
+    init_db()
+
+    with get_db_session() as session:
+        if session is None:
+            print("Error: Could not connect to database")
+            return 1
+
+        node_repo = NodeRepository(session)
+        result = node_repo.backfill_example_flag()
+
+    print("=" * 50)
+    print("EXAMPLE IP BACKFILL COMPLETE")
+    print("=" * 50)
+    print(f"  Flagged (set True):   {result['flagged']}")
+    print(f"  Cleared (set False):  {result['cleared']}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bitcoin Node Scanner Database CLI"
@@ -453,6 +477,12 @@ def main():
         help="Limit backfill to nodes of a specific scan id",
     )
 
+    # db-mark-examples command
+    subparsers.add_parser(
+        "db-mark-examples",
+        help="Reconcile is_example flag on existing nodes against the canonical example IP list",
+    )
+
     args = parser.parse_args()
 
     if args.command == "db-stats":
@@ -469,6 +499,8 @@ def main():
         return cmd_enrich_geo(args)
     elif args.command == "db-link-cves":
         return cmd_link_cves(args)
+    elif args.command == "db-mark-examples":
+        return cmd_mark_examples(args)
     else:
         parser.print_help()
         return 1

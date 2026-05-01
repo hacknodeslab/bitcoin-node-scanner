@@ -63,6 +63,7 @@ class NodeRepository:
                 is_vulnerable=node_data.get("is_vulnerable", False),
                 has_exposed_rpc=node_data.get("has_exposed_rpc", False),
                 is_dev_version=node_data.get("is_dev_version", False),
+                is_example=node_data.get("is_example", False),
                 first_seen=now,
                 last_seen=now,
             )
@@ -124,6 +125,7 @@ class NodeRepository:
                 "is_vulnerable": node_data.get("is_vulnerable", False),
                 "has_exposed_rpc": node_data.get("has_exposed_rpc", False),
                 "is_dev_version": node_data.get("is_dev_version", False),
+                "is_example": node_data.get("is_example", False),
                 "first_seen": now,
                 "last_seen": now,
             })
@@ -148,6 +150,7 @@ class NodeRepository:
                 "is_vulnerable": stmt.excluded.is_vulnerable,
                 "has_exposed_rpc": stmt.excluded.has_exposed_rpc,
                 "is_dev_version": stmt.excluded.is_dev_version,
+                "is_example": stmt.excluded.is_example,
                 "last_seen": now,
             }
         )
@@ -258,3 +261,31 @@ class NodeRepository:
     def delete(self, node: Node) -> None:
         """Delete a node."""
         self.session.delete(node)
+
+    def backfill_example_flag(self) -> Dict[str, int]:
+        """Reconcile `is_example` against `src.example_ips.EXAMPLE_IPS`.
+
+        - Sets `is_example=True` for any node whose IP is in the canonical list
+          but currently flagged False.
+        - Clears `is_example` on nodes whose IP is no longer in the list (stale).
+
+        Returns a dict with `flagged` and `cleared` counts.
+        """
+        from sqlalchemy import update
+
+        from ...example_ips import EXAMPLE_IPS
+
+        ips = list(EXAMPLE_IPS)
+        flagged = self.session.execute(
+            update(Node)
+            .where(Node.ip.in_(ips), Node.is_example == False)  # noqa: E712
+            .values(is_example=True)
+        ).rowcount or 0
+
+        cleared = self.session.execute(
+            update(Node)
+            .where(Node.is_example == True, Node.ip.notin_(ips))  # noqa: E712
+            .values(is_example=False)
+        ).rowcount or 0
+
+        return {"flagged": int(flagged), "cleared": int(cleared)}

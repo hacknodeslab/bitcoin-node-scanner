@@ -47,6 +47,17 @@ describe("parseQueryToFilters", () => {
     expect(r.warnings.join(" ")).toMatch(/tor=false is not supported/);
   });
 
+  it("example=false → filters.is_example=false; example=true → true", () => {
+    expect(parseQueryToFilters("example=false").filters).toEqual({ is_example: false });
+    expect(parseQueryToFilters("example=true").filters).toEqual({ is_example: true });
+  });
+
+  it("example=maybe → warning, no filter", () => {
+    const r = parseQueryToFilters("example=maybe");
+    expect(r.filters).toEqual({});
+    expect(r.warnings.join(" ")).toMatch(/example=maybe/);
+  });
+
   it("unknown key → warning, no filter", () => {
     const r = parseQueryToFilters("color=orange");
     expect(r.filters).toEqual({});

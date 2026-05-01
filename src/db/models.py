@@ -7,8 +7,9 @@ import uuid
 
 import sqlalchemy as sa
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Text, ForeignKey, Index, Table
+    Boolean, Column, Integer, String, Float, DateTime, Text, ForeignKey, Index, Table
 )
+from sqlalchemy.sql import expression
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -73,6 +74,15 @@ class Node(Base):
     has_exposed_rpc: Mapped[bool] = mapped_column(default=False)
     is_dev_version: Mapped[bool] = mapped_column(default=False)
 
+    # Marks rows whose IP is in src.example_ips.EXAMPLE_IPS — set at write time
+    # by db.scanner_integration; backfilled by `db-mark-examples`.
+    is_example: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=expression.false(),
+    )
+
     # Timestamps
     first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -96,6 +106,7 @@ class Node(Base):
         Index('idx_nodes_country_code', 'country_code'),
         Index('idx_nodes_risk_level', 'risk_level'),
         Index('idx_nodes_is_vulnerable', 'is_vulnerable'),
+        Index('idx_nodes_is_example', 'is_example'),
     )
 
     def __repr__(self) -> str:

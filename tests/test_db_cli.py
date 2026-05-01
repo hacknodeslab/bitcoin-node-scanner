@@ -9,7 +9,7 @@ import tempfile
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, main
+from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, cmd_mark_examples, main
 
 
 def _make_args(**kwargs):
@@ -394,3 +394,81 @@ class TestCmdLinkCves:
         out = capsys.readouterr().out
         assert "Links created:    2" in out
         assert "Nodes processed:  3" in out
+
+
+class TestCmdMarkExamples:
+    """Tests for the db-mark-examples backfill command."""
+
+    def test_returns_1_when_db_not_configured(self, capsys):
+        with patch("src.db.cli.is_database_configured", return_value=False):
+            result = cmd_mark_examples(_make_args())
+        assert result == 1
+        assert "DATABASE_URL not configured" in capsys.readouterr().out
+
+    def _seeded_db(self):
+        """Build an in-memory DB with: 2 example IPs (one already flagged,
+        one not), 1 non-example, and 1 stale row flagged True by mistake.
+        """
+        from contextlib import contextmanager
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.db.models import Base, Node
+
+        engine = create_engine("sqlite:///:memory:", echo=False)
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            s.add(Node(ip="1.2.3.4", port=8333, is_example=False))   # should flip True
+            s.add(Node(ip="5.6.7.8", port=8333, is_example=True))    # already correct
+            s.add(Node(ip="8.8.8.8", port=8333, is_example=False))   # untouched
+            s.add(Node(ip="192.0.2.1", port=8333, is_example=True))  # stale → flip False
+            s.commit()
+
+        @contextmanager
+        def fake_session():
+            s = Session()
+            try:
+                yield s
+                s.commit()
+            finally:
+                s.close()
+
+        return Session, fake_session
+
+    def test_flips_correct_rows(self, capsys):
+        from src.db.models import Node
+
+        Session, fake_session = self._seeded_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            result = cmd_mark_examples(_make_args())
+
+        assert result == 0
+        with Session() as s:
+            assert s.query(Node).filter_by(ip="1.2.3.4").one().is_example is True
+            assert s.query(Node).filter_by(ip="5.6.7.8").one().is_example is True
+            assert s.query(Node).filter_by(ip="8.8.8.8").one().is_example is False
+            assert s.query(Node).filter_by(ip="192.0.2.1").one().is_example is False
+
+        out = capsys.readouterr().out
+        assert "Flagged (set True):   1" in out
+        assert "Cleared (set False):  1" in out
+
+    def test_idempotent_on_second_run(self, capsys):
+        Session, fake_session = self._seeded_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            assert cmd_mark_examples(_make_args()) == 0
+            capsys.readouterr()  # discard first run output
+            assert cmd_mark_examples(_make_args()) == 0
+
+        out = capsys.readouterr().out
+        assert "Flagged (set True):   0" in out
+        assert "Cleared (set False):  0" in out

@@ -6,7 +6,7 @@ import os
 from contextlib import contextmanager
 from typing import Generator, Optional
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -160,11 +160,46 @@ def init_db() -> bool:
 
     try:
         Base.metadata.create_all(bind=engine)
+        _migrate_schema(engine)
         logger.info("Database tables created successfully")
         return True
     except Exception as e:
         logger.error(f"Failed to create database tables: {e}")
         return False
+
+
+def _migrate_schema(engine: Engine) -> None:
+    """Apply additive, idempotent schema upgrades on pre-existing databases.
+
+    `Base.metadata.create_all` is a no-op for already-existing tables, so when
+    we add new columns to a model we need to ALTER TABLE the live schema.
+    Keep migrations here narrow and idempotent — guarded by inspector checks
+    so re-runs are safe.
+    """
+    inspector = inspect(engine)
+    if "nodes" not in inspector.get_table_names():
+        return
+
+    existing_cols = {col["name"] for col in inspector.get_columns("nodes")}
+
+    if "is_example" not in existing_cols:
+        # SQLite and PostgreSQL both accept this exact statement.
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE nodes ADD COLUMN is_example BOOLEAN NOT NULL DEFAULT 0"
+                )
+                if is_sqlite(get_database_url() or "")
+                else text(
+                    "ALTER TABLE nodes ADD COLUMN is_example BOOLEAN NOT NULL DEFAULT FALSE"
+                )
+            )
+        logger.info("Added is_example column to nodes table")
+
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes("nodes")}
+    if "idx_nodes_is_example" not in existing_indexes:
+        with engine.begin() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS idx_nodes_is_example ON nodes (is_example)"))
 
 
 def close_db() -> None:
