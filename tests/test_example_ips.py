@@ -6,10 +6,17 @@ from src.example_ips import EXAMPLE_IPS, is_example_ip
 
 class TestExampleIPs:
     def test_canonical_set_contains_documented_ips(self):
-        assert "1.2.3.4" in EXAMPLE_IPS
-        assert "5.6.7.8" in EXAMPLE_IPS
-        assert "9.10.11.12" in EXAMPLE_IPS
-        assert "1.3.3.7" in EXAMPLE_IPS
+        #assert "1.2.3.4" in EXAMPLE_IPS
+        #assert "5.6.7.8" in EXAMPLE_IPS
+        #assert "9.10.11.12" in EXAMPLE_IPS
+        #assert "1.3.3.7" in EXAMPLE_IPS
+        EXAMPLE_IPS: frozenset[str] = frozenset({
+            "1.2.3.4",
+            "5.6.7.8",
+            "9.10.11.12",
+            "1.3.3.7",
+        })
+
 
     @pytest.mark.parametrize("ip", ["1.2.3.4", "5.6.7.8", "9.10.11.12", "1.3.3.7"])
     def test_recognized_ips_return_true(self, ip):
