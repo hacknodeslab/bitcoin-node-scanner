@@ -82,9 +82,12 @@ class DatabaseScannerMixin:
             # Determine risk level
             risk_level = self.analyze_risk_level(node_data)
             db_data["risk_level"] = risk_level
-            db_data["is_vulnerable"] = self.is_vulnerable_version(
-                node_data.get("version", "")
-            )
+            # `is_vulnerable` reflects whether the NVD-derived CVEMatcher links any
+            # CVE to this version, so the dashboard pill stays consistent with
+            # `node_vulnerabilities`.
+            matcher = self._get_cve_matcher(session)
+            expected = matcher.matches_for(node_data.get("version") or "")
+            db_data["is_vulnerable"] = bool(expected)
             db_data["has_exposed_rpc"] = node_data.get("port") == 8332
             db_data["is_dev_version"] = ".99." in node_data.get("version", "")
 
@@ -99,8 +102,6 @@ class DatabaseScannerMixin:
 
             # Sync CVE links based on the current node version
             if node:
-                matcher = self._get_cve_matcher(session)
-                expected = matcher.matches_for(node.version)
                 vuln_repo = VulnerabilityRepository(session)
                 vuln_repo.sync_node_links(node, expected)
 
@@ -186,6 +187,18 @@ class DatabaseScannerMixin:
             session.flush()
             self._current_scan_id = self._current_scan.id
             self.log(f"Database scan session created: ID={self._current_scan_id}")
+
+            # Refresh the NVD catalog if stale (24h TTL). Without this hook the
+            # cache only gets touched when someone hits /api/v1/vulnerabilities,
+            # so a long-running deployment can drift months out of date and the
+            # CVE pill stops reflecting reality. NVD outages must not block the
+            # scan — log and continue.
+            try:
+                from ..nvd.service import NVDService
+                NVDService(session).get_vulnerabilities()
+            except Exception as exc:
+                self.log(f"NVD catalog refresh skipped: {exc}", level="WARNING")
+
             return self._current_scan
 
     def _complete_scan_session(self, stats: Dict[str, Any]) -> None:
@@ -246,13 +259,17 @@ class DatabaseScannerMixin:
 
             node_repo = NodeRepository(session)
 
+            # Build the matcher once; reused both for `is_vulnerable` derivation
+            # and for syncing the per-node CVE links below.
+            matcher = self._get_cve_matcher(session)
+
             # Map all node data
             db_nodes = []
             for node_data in nodes_data:
                 db_data = self._map_node_data(node_data)
                 db_data["risk_level"] = self.analyze_risk_level(node_data)
-                db_data["is_vulnerable"] = self.is_vulnerable_version(
-                    node_data.get("version", "")
+                db_data["is_vulnerable"] = bool(
+                    matcher.matches_for(node_data.get("version") or "")
                 )
                 db_data["has_exposed_rpc"] = node_data.get("port") == 8332
                 db_data["is_dev_version"] = ".99." in node_data.get("version", "")
@@ -262,7 +279,6 @@ class DatabaseScannerMixin:
             self.log(f"Saved {count} nodes to database")
 
             # Sync CVE links for each persisted node
-            matcher = self._get_cve_matcher(session)
             vuln_repo = VulnerabilityRepository(session)
             scan_repo = ScanRepository(session) if self._current_scan_id else None
             scan = scan_repo.get_by_id(self._current_scan_id) if scan_repo else None

@@ -132,16 +132,21 @@ class NVDService:
         matcher = CVEMatcher(entries)
         vuln_repo = VulnerabilityRepository(self._session)
 
-        added = resolved = 0
+        added = resolved = is_vuln_changed = 0
         nodes = list(self._session.scalars(select(Node)).all())
         for node in nodes:
-            a, r = vuln_repo.sync_node_links(node, matcher.matches_for(node.version))
+            expected = matcher.matches_for(node.version)
+            a, r = vuln_repo.sync_node_links(node, expected)
             added += a
             resolved += r
+            desired = bool(expected)
+            if node.is_vulnerable != desired:
+                node.is_vulnerable = desired
+                is_vuln_changed += 1
         self._session.commit()
         logger.info(
-            "Auto-relink complete: %d nodes processed, %d links added, %d resolved",
-            len(nodes), added, resolved,
+            "Auto-relink complete: %d nodes processed, %d links added, %d resolved, %d is_vulnerable updated",
+            len(nodes), added, resolved, is_vuln_changed,
         )
 
     def _fetch_sorted(self) -> List[CVEEntryModel]:

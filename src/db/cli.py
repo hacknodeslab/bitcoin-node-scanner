@@ -386,6 +386,7 @@ def cmd_link_cves(args):
         total_added = 0
         total_resolved = 0
         skipped = 0
+        is_vuln_changed = 0
         for node in nodes:
             expected = matcher.matches_for(node.version)
             if not expected and not node.version:
@@ -394,6 +395,10 @@ def cmd_link_cves(args):
             added, resolved = vuln_repo.sync_node_links(node, expected)
             total_added += added
             total_resolved += resolved
+            desired = bool(expected)
+            if node.is_vulnerable != desired:
+                node.is_vulnerable = desired
+                is_vuln_changed += 1
 
         session.commit()
 
@@ -404,6 +409,7 @@ def cmd_link_cves(args):
     print(f"  Skipped (no version): {skipped}")
     print(f"  Links created:    {total_added}")
     print(f"  Links resolved:   {total_resolved}")
+    print(f"  is_vulnerable updated: {is_vuln_changed}")
     return 0
 
 
