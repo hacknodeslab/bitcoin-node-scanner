@@ -460,7 +460,7 @@ class TestCmdMarkExamples:
         assert "Cleared (set False):  1" in out
 
     def test_idempotent_on_second_run(self, capsys):
-        Session, fake_session = self._seeded_db()
+        _, fake_session = self._seeded_db()
 
         with patch("src.db.cli.is_database_configured", return_value=True), \
              patch("src.db.cli.init_db"), \
