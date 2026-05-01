@@ -161,14 +161,74 @@ class TestInitDb:
             result = conn_module.init_db()
         assert result is True
 
-    def test_returns_false_on_error(self):
+    def test_propagates_error_instead_of_swallowing(self):
+        """init_db() must NOT swallow DDL failures — a half-migrated schema
+        is worse than a fail-fast process. Earlier versions returned False
+        on error; the contract is now that the caller sees the exception."""
         from src.db.models import Base
-        mock_engine = MagicMock()
 
-        with patch.object(conn_module, "get_engine", return_value=mock_engine):
+        with patch.dict(os.environ, {"DATABASE_URL": "sqlite:///:memory:"}):
             with patch.object(Base.metadata, "create_all", side_effect=Exception("failed")):
-                result = conn_module.init_db()
-        assert result is False
+                with pytest.raises(Exception, match="failed"):
+                    conn_module.init_db()
+
+    def test_acquires_advisory_lock_on_postgresql(self):
+        """The PostgreSQL path must call pg_advisory_xact_lock to serialize
+        concurrent worker startups before issuing DDL."""
+        from sqlalchemy import text as sa_text
+
+        executed_sql: list[str] = []
+
+        class _StubConn:
+            def execute(self, stmt, *args, **kwargs):
+                executed_sql.append(str(stmt))
+                class _R:
+                    pass
+                return _R()
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        class _StubEngine:
+            def begin(self):
+                return _StubConn()
+
+        with patch.object(conn_module, "get_engine", return_value=_StubEngine()), \
+             patch.object(conn_module, "get_database_url",
+                          return_value="postgresql://x/y"), \
+             patch("src.db.connection.Base.metadata.create_all"), \
+             patch("src.db.connection._migrate_schema"):
+            result = conn_module.init_db()
+
+        assert result is True
+        assert any("pg_advisory_xact_lock" in s for s in executed_sql), \
+            f"expected pg_advisory_xact_lock in: {executed_sql}"
+
+    def test_does_not_acquire_advisory_lock_on_sqlite(self):
+        """SQLite has no advisory locks; the function must skip the
+        PG-specific call cleanly."""
+        executed_sql: list[str] = []
+
+        class _StubConn:
+            def execute(self, stmt, *args, **kwargs):
+                executed_sql.append(str(stmt))
+                class _R:
+                    pass
+                return _R()
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        class _StubEngine:
+            def begin(self):
+                return _StubConn()
+
+        with patch.object(conn_module, "get_engine", return_value=_StubEngine()), \
+             patch.object(conn_module, "get_database_url",
+                          return_value="sqlite:///:memory:"), \
+             patch("src.db.connection.Base.metadata.create_all"), \
+             patch("src.db.connection._migrate_schema"):
+            conn_module.init_db()
+
+        assert not any("pg_advisory" in s for s in executed_sql)
 
 
 class TestCloseDb:
