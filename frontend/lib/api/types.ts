@@ -43,8 +43,11 @@ export interface NodeOut {
   asn_name: string | null;
   geo_country_code: string | null;
   geo_country_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
   first_seen: string | null;
   last_seen: string | null;
+  banner: string | null;
   hostname: string | null;
   os_info: string | null;
   isp: string | null;

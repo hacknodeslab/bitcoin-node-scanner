@@ -2,7 +2,7 @@
 
 ### Requirement: Banner card surfaces the raw Shodan banner
 
-The drawer body SHALL render a `BANNER` card between the open-ports card and the vulnerabilities card. The card body SHALL render the value of `node.banner` inside a `<pre>` element using monospaced typography (`font-mono`, `text-body-sm`), `whitespace: pre-wrap`, and a maximum height of `180px` with internal vertical scroll. When `node.banner` is null or empty, the card SHALL be omitted entirely (no placeholder row).
+The drawer body SHALL render a `BANNER` card above the tabs row (always visible regardless of the active tab). The card body SHALL render the value of `node.banner` inside a `<pre>` element using monospaced typography (`font-mono`, `text-body-sm`), `whitespace: pre-wrap`, and a maximum height of `180px` with internal vertical scroll. When `node.banner` is null or empty, the card SHALL be omitted entirely (no placeholder row).
 
 #### Scenario: Banner card renders the multi-line banner verbatim
 

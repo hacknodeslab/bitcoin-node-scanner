@@ -20,7 +20,7 @@ The node detail drawer currently surfaces only ~7 columns from `nodes` (ip, port
 
 ## Impact
 
-- **Frontend only.** Affected files: `frontend/components/explorer/NodeDetailDrawer.tsx`, drawer tests (`frontend/components/__tests__/NodeDetailDrawer.test.tsx`).
-- **No backend change.** `NodeDetailOut` already exposes every field consumed here; verified against `src/web/routers/nodes.py:_node_out_kwargs`.
+- **Mostly frontend.** Affected files: `frontend/components/explorer/NodeDetailDrawer.tsx`, `frontend/components/ui/Pill.tsx` (extended with `DEV`, `RISK`, `BITCOIN`, `TAG` kinds and a `dim` tone), `frontend/lib/api/types.ts` (banner/lat/lon added to `NodeOut`), and the drawer/table/explorer test files.
+- **Tiny backend addition.** `NodeOut` Pydantic model and `_node_out_kwargs` (in `src/web/routers/nodes.py`) gain `banner`, `latitude`, `longitude`. The DB columns already exist; this is purely an API-surface change to expose them. Original proposal incorrectly claimed "no backend change" — corrected during implementation.
 - **No database migration.** All fields exist in `nodes` today.
-- **Test fixtures**: existing test fixtures already cover the new fields after the recent type-shape sync; only assertions need updating.
+- **Test fixtures**: drawer/table/explorer fixtures gain the three new fields; new drawer tests added for DEV pill, tags, RISK pill, subtitle composition, MaxMind divergence, banner card, host card row filtering, and the `host` tab label.
