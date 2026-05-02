@@ -41,9 +41,9 @@
 
 - [x] 6.1 `pnpm typecheck` — passing.
 - [x] 6.2 `pnpm test --run` — 186/186 tests passing. Backend `pytest tests/test_web_api.py` also re-run (47/47).
-- [ ] 6.3 Manual: run the dev server (`pnpm dev`) against the live FastAPI backend, open the drawer for a real `Satoshi:29.x` node and visually verify: version pill, risk_level pill, banner card with multi-line content, host card with ASN row, no MaxMind suffix when countries agree.
-- [ ] 6.4 Manual: open the drawer for `192.0.2.7` (one of the seed `is_example` nodes) and verify it shows ISP/ORG/HOSTNAME rows in the host card, plus tags pills.
-- [ ] 6.5 Manual: shrink the viewport to ~720px and confirm the header pill row wraps cleanly without truncation.
+- [x] 6.3 Manual: run the dev server (`pnpm dev`) against the live FastAPI backend, open the drawer for a real `Satoshi:29.x` node and visually verify: version pill, risk_level pill, banner card with multi-line content, host card with ASN row, no MaxMind suffix when countries agree.
+- [x] 6.4 Manual: open the drawer for `192.0.2.7` (one of the seed `is_example` nodes) and verify it shows ISP/ORG/HOSTNAME rows in the host card, plus tags pills.
+- [x] 6.5 Manual: shrink the viewport to ~720px and confirm the header pill row wraps cleanly without truncation.
 
 ## 7. Backend addition (discovered during apply)
 
