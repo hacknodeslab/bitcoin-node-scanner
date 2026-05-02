@@ -70,6 +70,7 @@ geoip_dbs.zip
 # Database files
 bitcoin_scanner.db
 electrum_monitor.db*
+*.bak
 
 # Local dev runner state (Makefile up/down)
 .dev/
