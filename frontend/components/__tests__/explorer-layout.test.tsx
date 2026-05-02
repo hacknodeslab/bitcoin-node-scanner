@@ -172,6 +172,9 @@ describe("Viewport-bounded NodeTable layout", () => {
     cpe: null,
     cve_count: 0,
     top_cve: null,
+    banner: null,
+    latitude: null,
+    longitude: null,
   };
 
   it("body wrapper has overflow-y-auto and flex-1 min-h-0 utility classes", () => {

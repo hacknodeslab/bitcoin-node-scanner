@@ -69,8 +69,12 @@ class NodeOut(BaseModel):
     asn_name: Optional[str]
     geo_country_code: Optional[str]
     geo_country_name: Optional[str]
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     first_seen: Optional[str]
     last_seen: Optional[str]
+    # Shodan banner (raw text — UA, protocol version, lastblock, etc.)
+    banner: Optional[str] = None
     # Shodan enrichment
     hostname: Optional[str]
     os_info: Optional[str]
@@ -148,8 +152,11 @@ def _node_out_kwargs(n: Node) -> dict:
         asn_name=n.asn_name,
         geo_country_code=getattr(n, "geo_country_code", None),
         geo_country_name=getattr(n, "geo_country_name", None),
+        latitude=getattr(n, "latitude", None),
+        longitude=getattr(n, "longitude", None),
         first_seen=n.first_seen.isoformat() if n.first_seen else None,
         last_seen=n.last_seen.isoformat() if n.last_seen else None,
+        banner=getattr(n, "banner", None),
         hostname=getattr(n, "hostname", None),
         os_info=getattr(n, "os_info", None),
         isp=getattr(n, "isp", None),
