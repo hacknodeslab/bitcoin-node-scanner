@@ -66,7 +66,7 @@ The drawer header subtitle line (third visual line, below IP:port) SHALL render 
 #### Scenario: MaxMind divergence is shown when country differs
 
 - **WHEN** a node has `country_code = "DE"` (Shodan) and `geo_country_code = "FR"` `geo_country_name = "France"` (MaxMind)
-- **THEN** the subtitle SHALL append ` · (MM: France)` after the locality string
+- **THEN** the subtitle SHALL append `· (MM: France)` after the locality string
 
 ### Requirement: Header meta row carries first-seen alongside last-seen
 

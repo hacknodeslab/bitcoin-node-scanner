@@ -45,7 +45,9 @@ function tagsToPillProps(tags: string[] | null | undefined): PillKind[] {
 
 function formatTimestamp(value: string | null | undefined): string | null {
   if (!value) return null;
-  // Trim ISO timestamp to YYYY-MM-DD when possible; leave as-is if not parseable.
+  // Extract YYYY-MM-DD directly from ISO-like strings to preserve calendar date.
+  const m = /^\s*(\d{4}-\d{2}-\d{2})(?:[T\s].*)?$/.exec(value);
+  if (m) return m[1];
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toISOString().slice(0, 10);
