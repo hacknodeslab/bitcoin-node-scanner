@@ -55,5 +55,5 @@
 
 ## 8. Wrap-up
 
-- [ ] 8.1 Add a one-paragraph note to the PR description flagging the duplicate `except shodan.APIError` block (lines 183-184) and the hardcoded Shodan API key fallback as follow-up concerns _(deferred to when the PR is opened)_
+- [x] 8.1 ~~Add a one-paragraph note to the PR description flagging the duplicate `except shodan.APIError` block (lines 183-184) and the hardcoded Shodan API key fallback as follow-up concerns~~ **N/A** — the test code landed direct-to-main (commit `f2c5aa7`) without a dedicated PR, so the "PR description" anchor never existed. Follow-up concerns remain documented in `design.md` Risks.
 - [x] 8.2 Run `openspec validate test-full-db-scan --strict` and fix any issues — passes: "Change 'test-full-db-scan' is valid"
