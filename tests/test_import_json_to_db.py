@@ -219,6 +219,42 @@ class TestImportFile:
 
 
 # ===========================================================================
+# Section 3b — Import records a Scan provenance row
+# ===========================================================================
+
+class TestImportRecordsScan:
+    def test_successful_import_creates_completed_scan_row(self, db_setup, tmp_path):
+        from src.db.models import Scan
+
+        nodes = [make_node_dict(f"1.2.3.{i}") for i in range(3)]
+        f = tmp_path / "nodes_20260513_213234.json"
+        f.write_text(json.dumps(nodes))
+
+        JSONImporter(verbose=False).import_file(str(f))
+
+        with _script.get_db_session() as session:
+            scans = session.query(Scan).all()
+            assert len(scans) == 1
+            scan = scans[0]
+            assert scan.status == "completed"
+            assert scan.credits_used == 0
+            assert scan.queries_executed == "json-import:nodes_20260513_213234.json"
+            assert scan.total_nodes == 3
+
+    def test_failed_import_leaves_no_completed_scan_row(self, db_setup, tmp_path):
+        from src.db.models import Scan
+
+        f = tmp_path / "bad.json"
+        f.write_text("{not valid json")
+
+        JSONImporter(verbose=False).import_file(str(f))
+
+        with _script.get_db_session() as session:
+            completed = session.query(Scan).filter(Scan.status == "completed").count()
+            assert completed == 0
+
+
+# ===========================================================================
 # Section 4 — _import_node and _analyze_risk_level
 # ===========================================================================
 
@@ -228,7 +264,7 @@ class TestImportNode:
         from src.db.connection import get_db_session
         with get_db_session() as session:
             repo = NodeRepository(session)
-            result = importer._import_node(repo, {"port": 8333})
+            result, _, _ = importer._import_node(repo, {"port": 8333})
         assert result == "skipped"
 
     def test_rpc_port_sets_critical_and_exposed(self, db_setup):
@@ -237,7 +273,7 @@ class TestImportNode:
         node_data = make_node_dict("7.7.7.7", port=8332)
         with get_db_session() as session:
             repo = NodeRepository(session)
-            result = importer._import_node(repo, node_data)
+            result, _, _ = importer._import_node(repo, node_data)
         assert result == "imported"
         # Verify stored values via a fresh session
         with get_db_session() as session:

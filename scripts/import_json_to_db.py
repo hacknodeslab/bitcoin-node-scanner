@@ -122,6 +122,8 @@ class JSONImporter:
 
         # Process nodes
         progress = ProgressBar(len(nodes), prefix="Processing")
+        risk_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+        vulnerable_count = 0
 
         with get_db_session() as session:
             if session is None:
@@ -132,13 +134,21 @@ class JSONImporter:
 
             for node_data in nodes:
                 try:
-                    result = self._import_node(node_repo, node_data, file_timestamp)
+                    result, risk_level, is_vulnerable = self._import_node(
+                        node_repo, node_data, file_timestamp
+                    )
                     if result == "imported":
                         file_stats["imported"] += 1
                     elif result == "updated":
                         file_stats["updated"] += 1
                     else:
                         file_stats["skipped"] += 1
+
+                    if result in ("imported", "updated"):
+                        if risk_level in risk_counts:
+                            risk_counts[risk_level] += 1
+                        if is_vulnerable:
+                            vulnerable_count += 1
                 except Exception as e:
                     file_stats["errors"] += 1
                     if self.verbose:
@@ -147,6 +157,19 @@ class JSONImporter:
                 progress.update()
 
             progress.finish()
+
+            # Record the import as a Scan row (provenance marker) in the
+            # same transaction as the nodes, so a failed import leaves no
+            # completed scan behind.
+            scan_repo = ScanRepository(session)
+            scan_repo.record_import(
+                file_name=filename,
+                total_nodes=file_stats["imported"] + file_stats["updated"],
+                critical_nodes=risk_counts["CRITICAL"],
+                high_risk_nodes=risk_counts["HIGH"],
+                vulnerable_nodes=vulnerable_count,
+                timestamp=file_timestamp,
+            )
 
         self.log(f"Imported: {file_stats['imported']}, Updated: {file_stats['updated']}, "
                 f"Skipped: {file_stats['skipped']}, Errors: {file_stats['errors']}")
@@ -164,15 +187,16 @@ class JSONImporter:
         node_repo: NodeRepository,
         node_data: Dict[str, Any],
         file_timestamp: datetime = None
-    ) -> str:
+    ) -> tuple:
         """
         Import a single node, handling deduplication.
 
-        Returns 'imported', 'updated', or 'skipped'.
+        Returns a tuple of (result, risk_level, is_vulnerable) where
+        result is 'imported', 'updated', or 'skipped'.
         """
         ip = node_data.get("ip")
         if not ip:
-            return "skipped"
+            return "skipped", None, False
 
         port = node_data.get("port", 8333)
 
@@ -205,11 +229,11 @@ class JSONImporter:
                 if key not in ("id", "first_seen") and value is not None:
                     setattr(existing, key, value)
             existing.last_seen = file_timestamp or datetime.utcnow()
-            return "updated"
+            return "updated", db_data["risk_level"], db_data["is_vulnerable"]
         else:
             # Create new node
             node_repo.upsert(db_data)
-            return "imported"
+            return "imported", db_data["risk_level"], db_data["is_vulnerable"]
 
     def _analyze_risk_level(self, node_data: Dict) -> str:
         """Determine risk level for a node."""

@@ -78,6 +78,48 @@ class ScanRepository:
         scan.duration_seconds = duration_seconds
         return scan
 
+    def record_import(
+        self,
+        file_name: str,
+        total_nodes: int = 0,
+        critical_nodes: int = 0,
+        high_risk_nodes: int = 0,
+        vulnerable_nodes: int = 0,
+        timestamp: Optional[datetime] = None,
+    ) -> Scan:
+        """
+        Record a completed JSON import as a Scan row.
+
+        The `json-import:` prefix on `queries_executed` is the provenance
+        marker that keeps import rows distinguishable from real Shodan
+        scans (which store a JSON list). Consumers of scan history can
+        exclude imports with `queries_executed LIKE 'json-import:%'`.
+
+        Args:
+            file_name: Basename of the imported JSON file.
+            total_nodes: Nodes imported plus updated.
+            critical_nodes: Count of CRITICAL risk nodes in the import.
+            high_risk_nodes: Count of HIGH risk nodes in the import.
+            vulnerable_nodes: Count of vulnerable nodes in the import.
+            timestamp: Scan timestamp (defaults to now).
+
+        Returns:
+            The created Scan object.
+        """
+        scan = Scan(
+            timestamp=timestamp or datetime.utcnow(),
+            queries_executed=f"json-import:{file_name}",
+            status="completed",
+            total_nodes=total_nodes,
+            critical_nodes=critical_nodes,
+            high_risk_nodes=high_risk_nodes,
+            vulnerable_nodes=vulnerable_nodes,
+            credits_used=0,
+        )
+        self.session.add(scan)
+        self.session.flush()
+        return scan
+
     def fail(self, scan: Scan, error_message: str) -> Scan:
         """
         Mark a scan as failed.
