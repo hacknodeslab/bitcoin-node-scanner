@@ -28,11 +28,14 @@ python -m src.web.main
 python -m src.scanner
 python -m src.scanner --quick            # Cache + limited enrichment
 python -m src.scanner --check-credits    # Check Shodan API credits
+# NOTE: scanner runs write JSON/CSV to output/ only — they do NOT persist to
+# the database. Load the results with `db-import` (see below).
 
 # Database CLI
 python -m src.db.cli db-stats --days 30
 python -m src.db.cli db-trends --days 30 --granularity week
 python -m src.db.cli db-export --output export.json
+python -m src.db.cli db-import output/raw_data/nodes_<ts>.json  # Load a scanner JSON dump into the DB
 python -m src.db.cli enrich-geo          # Retroactively enrich geo data
 python -m src.db.cli db-link-cves        # (Re)build node→CVE links from cve_entries
 python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
@@ -49,7 +52,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`.
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`).
 
 ## Architecture
 

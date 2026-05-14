@@ -513,6 +513,54 @@ class TestBitcoinNodeScanner:
         assert critical[0]['ip'] == '1.2.3.4'
         assert critical[0]['risk_level'] == 'CRITICAL'
 
+    # --- search_bitcoin_nodes pagination & credit guards ---
+
+    def _page_search(self, total, per_page=100, empty_after=None):
+        """Build a Shodan-search side_effect: pages of `per_page` matches,
+        returning empty `matches` once `page > empty_after`."""
+        def _search(query, page=1):
+            if empty_after is not None and page > empty_after:
+                matches = []
+            else:
+                matches = [
+                    {'ip_str': f'10.0.{page}.{i}', 'port': 8333}
+                    for i in range(per_page)
+                ]
+            return {'total': total, 'matches': matches}
+        return _search
+
+    def test_pagination_caps_at_ceil_of_target(self, tmp_path):
+        # Shodan claims a huge total, but max_results bounds the real target:
+        # min(250, 999999) -> ceil(250/100) = 3 pages, no more.
+        scanner, _ = self._make_scanner(tmp_path)
+        scanner.api.search.side_effect = self._page_search(total=999999)
+        with patch('scanner.time.sleep'):
+            scanner.search_bitcoin_nodes('q', max_results=250)
+        assert scanner.api.search.call_count == 3
+        assert scanner.pages_fetched == 3
+
+    def test_pagination_stops_on_empty_page(self, tmp_path):
+        # total overestimates (says 900) but the result set dries up at page 3;
+        # the empty page 4 stops the loop instead of looping on credits.
+        scanner, _ = self._make_scanner(tmp_path)
+        scanner.api.search.side_effect = self._page_search(total=900, empty_after=3)
+        with patch('scanner.time.sleep'):
+            scanner.search_bitcoin_nodes('q', max_results=900)
+        assert scanner.api.search.call_count == 4
+        assert scanner.pages_fetched == 4
+
+    def test_scan_aborts_when_credit_ceiling_reached(self, tmp_path):
+        import scanner as scanner_mod
+        scanner, _ = self._make_scanner(tmp_path)
+        scanner.api.search.side_effect = self._page_search(total=999999)
+        with patch.object(scanner_mod.Config, 'MAX_QUERY_CREDITS_PER_SCAN', 2), \
+             patch('scanner.time.sleep'):
+            scanner.search_bitcoin_nodes('q', max_results=10000)
+        # Guard trips before the 3rd search -> exactly 2 pages fetched.
+        assert scanner.api.search.call_count == 2
+        assert scanner.pages_fetched == 2
+        assert scanner.budget_exhausted is True
+
 
 # ============================================================================
 # CachedNodeManager Tests

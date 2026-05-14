@@ -7,6 +7,7 @@ Comprehensive analysis of Bitcoin nodes exposed on clearnet using Shodan
 import shodan
 import json
 import csv
+import math
 import time
 from datetime import datetime, timedelta
 from collections import Counter
@@ -45,6 +46,12 @@ class Config:
     # Search queries from environment
     _QUERIES_STRING = os.getenv('QUERIES', 'Satoshi,product:Bitcoin port:8333,port:8332,Bitcoin Core,Bitcoin Knots,bitcoin,btcd,bcoin')
     QUERIES = [query.strip() for query in _QUERIES_STRING.split(',') if query.strip()]
+
+    # Per-scan query-credit ceiling. Each Shodan search page costs one query
+    # credit; a single run aborts before it can fetch more pages than this,
+    # so one query can never drain the whole monthly allowance.
+    _MAX_QUERY_CREDITS_ENV = os.getenv('MAX_QUERY_CREDITS_PER_SCAN')
+    MAX_QUERY_CREDITS_PER_SCAN = int(_MAX_QUERY_CREDITS_ENV) if _MAX_QUERY_CREDITS_ENV else 50
 
     # Ports of interest
     BITCOIN_PORTS = {
@@ -100,6 +107,12 @@ class BitcoinNodeScanner:
         self.unique_ips = set()
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
+        # Run-level Shodan query-credit accounting. `pages_fetched` counts
+        # every `api.search()` call (each costs one credit); once it hits
+        # the ceiling, `budget_exhausted` tells the query loops to stop.
+        self.pages_fetched = 0
+        self.budget_exhausted = False
+
         # GeoIP enrichment (fail-open: works without .mmdb files)
         from src.geoip import GeoIPService  # noqa: PLC0415
         self._geoip = GeoIPService()
@@ -121,6 +134,14 @@ class BitcoinNodeScanner:
         with open(self.log_file, 'a') as f:
             f.write(log_message + '\n')
 
+    def _log_credit_ceiling(self):
+        """Log the active per-scan query-credit ceiling and its source."""
+        source = 'env' if Config._MAX_QUERY_CREDITS_ENV else 'default'
+        self.log(
+            f"Query-credit ceiling: {Config.MAX_QUERY_CREDITS_PER_SCAN} "
+            f"pages per scan ({source})"
+        )
+
     def get_account_info(self):
         """Check Shodan credits"""
         try:
@@ -138,39 +159,61 @@ class BitcoinNodeScanner:
         results = []
 
         try:
-            # Initial search
-            search_results = self.api.search(query)
-            total = search_results['total']
-            self.log(f"Total found for '{query}': {total}")
-
-            # Paginate results
             page = 1
             collected = 0
+            total = None
+            max_pages = None
 
-            while collected < min(max_results, total):
+            while True:
+                # Per-scan credit budget guard: never issue a search that
+                # would push the run past its query-credit ceiling.
+                if self.pages_fetched >= Config.MAX_QUERY_CREDITS_PER_SCAN:
+                    self.budget_exhausted = True
+                    self.log(
+                        f"Query-credit budget reached "
+                        f"({self.pages_fetched}/{Config.MAX_QUERY_CREDITS_PER_SCAN}) — "
+                        f"aborting before exhausting the monthly limit.",
+                        'WARNING'
+                    )
+                    break
+
                 try:
-                    if page > 1:
-                        search_results = self.api.search(query, page=page)
-
-                    for result in search_results['matches']:
-                        if collected >= max_results:
-                            break
-
-                        # Process result
-                        node_data = self.parse_node_data(result, query)
-                        results.append(node_data)
-                        self.unique_ips.add(result['ip_str'])
-                        collected += 1
-
-                    page += 1
-                    time.sleep(1)  # Rate limiting
-
+                    search_results = self.api.search(query, page=page)
                 except shodan.APIError as e:
-                    if 'upgrade your API plan' in str(e).lower():
+                    if 'upgrade your api plan' in str(e).lower():
                         self.log(f"Limit reached at page {page}. Collected: {collected}", 'WARNING')
                         break
-                    else:
-                        raise
+                    raise
+                self.pages_fetched += 1
+
+                # First page: read total and derive the hard page cap.
+                # Shodan's `total` is an estimate, so this is an upper
+                # bound — an empty page below it still stops the loop.
+                if total is None:
+                    total = search_results['total']
+                    self.log(f"Total found for '{query}': {total}")
+                    target = min(max_results, total)
+                    max_pages = max(1, math.ceil(target / 100))
+
+                matches = search_results.get('matches', [])
+                if not matches:
+                    # Retrievable result set exhausted (Shodan's `total`
+                    # overestimated) — stop instead of looping on credits.
+                    break
+
+                for result in matches:
+                    if collected >= max_results:
+                        break
+                    node_data = self.parse_node_data(result, query)
+                    results.append(node_data)
+                    self.unique_ips.add(result['ip_str'])
+                    collected += 1
+
+                if collected >= max_results or page >= max_pages:
+                    break
+
+                page += 1
+                time.sleep(1)  # Rate limiting
 
             self.log(f"Collected {collected} results for '{query}'")
 
@@ -252,8 +295,12 @@ class BitcoinNodeScanner:
         self.log("="*80)
         self.log("STARTING FULL SCAN")
         self.log("="*80)
+        self._log_credit_ceiling()
 
         for query in Config.QUERIES:
+            if self.budget_exhausted:
+                self.log("Skipping remaining queries — query-credit budget reached.", 'WARNING')
+                break
             results = self.search_bitcoin_nodes(query, max_per_query)
             self.results.extend(results)
             time.sleep(2)  # Cooldown between queries
@@ -620,9 +667,9 @@ class OptimizedConfig(Config):
     CACHE_FILE = f'{CACHE_DIR}/nodes_cache.json'
     CACHE_MAX_AGE_DAYS = 7
     
-    # Smart pagination limits
-    MAX_RESULTS_CRITICAL = 1000    # For port 8332 (RPC)
-    MAX_RESULTS_NORMAL = 500       # For other queries
+    # Smart pagination limits (env-overridable)
+    MAX_RESULTS_CRITICAL = int(os.getenv('MAX_RESULTS_CRITICAL', '1000'))    # For port 8332 (RPC)
+    MAX_RESULTS_NORMAL = int(os.getenv('MAX_RESULTS_NORMAL', '500'))         # For other queries
     
     # Enrichment limits
     MAX_ENRICHMENTS = 100          # Stay within scan credit limit
@@ -749,9 +796,11 @@ class OptimizedBitcoinScanner(BitcoinNodeScanner):
         
         # Search
         results = self.search_bitcoin_nodes(query, max_results)
-        self.credit_usage['query_credits_used'] += 1
+        # Real credit consumption is the number of Shodan search pages
+        # fetched across the run, not the count of queries issued.
+        self.credit_usage['query_credits_used'] = self.pages_fetched
         self.credit_usage['nodes_scanned'] += len(results)
-        
+
         return results
     
     def scan_optimized_queries(self) -> List[Dict]:
@@ -763,13 +812,17 @@ class OptimizedBitcoinScanner(BitcoinNodeScanner):
         """
         self.log("Starting optimized scan...")
         self.log(f"Using {len(OptimizedConfig.QUERIES_OPTIMIZED)} queries (vs 9 original)")
-        
+        self._log_credit_ceiling()
+
         all_results = []
-        
+
         for query in OptimizedConfig.QUERIES_OPTIMIZED:
+            if self.budget_exhausted:
+                self.log("Skipping remaining queries — query-credit budget reached.", 'WARNING')
+                break
             # Check if critical query
             is_critical = 'port:8332' in query or 'RPC' in query
-            
+
             results = self.smart_search(query, is_critical)
             all_results.extend(results)
         
