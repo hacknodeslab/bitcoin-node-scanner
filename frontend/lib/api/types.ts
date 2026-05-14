@@ -133,6 +133,7 @@ export interface NodeListParams {
   sort_dir?: "asc" | "desc";
   limit?: number;
   offset?: number;
+  port?: number;
 }
 
 /**

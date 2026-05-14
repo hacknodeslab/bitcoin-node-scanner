@@ -57,7 +57,28 @@ describe("parseQueryToFilters", () => {
     expect(r.filters).toEqual({});
     expect(r.warnings.join(" ")).toMatch(/example=maybe/);
   });
+  it("port=8333 → filters.port=8333", () => {
+    expect(parseQueryToFilters("port=8333").filters).toEqual({ port: 8333 });
+  });
 
+  it("port=abc → warning, no filter", () => {
+    const r = parseQueryToFilters("port=abc");
+    expect(r.filters).toEqual({});
+    expect(r.warnings.join(" ")).toMatch(/port=abc/);
+  });
+
+  it("port=0 → warning, no filter", () => {
+    const r = parseQueryToFilters("port=0");
+    expect(r.filters).toEqual({});
+    expect(r.warnings.join(" ")).toMatch(/port=0/);
+  });
+
+  it("port out of range → warning, no filter", () => {
+    const r = parseQueryToFilters("port=99999");
+    expect(r.filters).toEqual({});
+    expect(r.warnings.join(" ")).toMatch(/port=99999/);
+  });
+  
   it("unknown key → warning, no filter", () => {
     const r = parseQueryToFilters("color=orange");
     expect(r.filters).toEqual({});

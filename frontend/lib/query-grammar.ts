@@ -12,7 +12,7 @@ import type { NodeListParams, RiskLevel } from "@/lib/api/types";
 
 export type ExplorerFilters = Pick<
   NodeListParams,
-  "risk_level" | "country" | "exposed" | "tor" | "is_example"
+  "risk_level" | "country" | "exposed" | "tor" | "is_example" | "port"
 >;
 
 export interface ParseResult {
@@ -76,6 +76,15 @@ export function tokensToFilters(tokens: QueryToken[]): ParseResult {
           break;
         }
         filters.is_example = b;
+        break;
+      }
+      case "port": {
+        const n = Number(t.value);
+        if (!Number.isInteger(n) || n < 1 || n > 65535) {
+          warnings.push(`port=${t.value}: must be an integer between 1 and 65535`);
+          break;
+        }
+        filters.port = n;
         break;
       }
       default:

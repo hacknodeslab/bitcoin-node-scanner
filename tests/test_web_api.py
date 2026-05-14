@@ -143,6 +143,18 @@ class TestNodesEndpoint:
         assert len(data) == 1
         assert data[0]["ip"] == "2.2.2.2"
 
+    def test_filter_by_port(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", port=8333))
+        db_session.add(_make_node("2.2.2.2", port=8332))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?port=8332", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "2.2.2.2"
+        assert data[0]["port"] == 8332
+
     def test_filter_by_tor_true_matches_tag_or_onion(self, client, db_session):
         db_session.add(_make_node("1.1.1.1", tags_json='["tor","other"]'))
         db_session.add(_make_node("2.2.2.2", hostname="abc.onion"))

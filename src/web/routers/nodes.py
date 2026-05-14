@@ -238,6 +238,7 @@ def list_nodes(
     exposed: Annotated[Optional[bool], Query(description="Filter by has_exposed_rpc.")] = None,
     tor: Annotated[Optional[bool], Query(description="Filter by tor signal (tags include 'tor' or hostname ends in '.onion'). Only `true` is supported in v0.")] = None,
     is_example: Annotated[Optional[bool], Query(description="Filter by is_example flag. Omit to include both example and real nodes.")] = None,
+    port: Annotated[Optional[int], Query(description="Filter by exact port number")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -268,6 +269,8 @@ def list_nodes(
         conds.append(or_(Node.tags_json.like("%tor%"), Node.hostname.like("%.onion")))
     if is_example is not None:
         conds.append(Node.is_example == is_example)
+    if port is not None:
+          conds.append(Node.port == port)    
 
     total = db.scalar(select(func.count()).select_from(Node).where(*conds)) or 0
     response.headers["X-Total-Count"] = str(total)

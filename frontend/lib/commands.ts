@@ -83,6 +83,12 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
     label: "node: filter risk low",
     restEndpoint: "GET /api/v1/nodes",
   },
+  {
+      id: "node.filter.port.8333",
+      group: "NODES",
+      label: "node: filter port 8333 (p2p)",
+      restEndpoint: "GET /api/v1/nodes",
+  },
 
   // VULNERABILITIES
   { id: "vuln.list", group: "VULNERABILITIES", label: "vuln: list", restEndpoint: "GET /api/v1/vulnerabilities" },

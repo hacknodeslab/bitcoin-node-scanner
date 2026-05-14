@@ -50,6 +50,8 @@ export function CommandPaletteRoot() {
           return () => cmds.setQuery("risk=MEDIUM");
         case "node.filter.risk.low":
           return () => cmds.setQuery("risk=LOW");
+        case "node.filter.port.8333":
+            return () => cmds.setQuery("port=8333");
         case "vuln.list":
           return () => {
             mutate("/api/v1/vulnerabilities");
