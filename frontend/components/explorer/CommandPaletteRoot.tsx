@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { mutate } from "swr";
 import {
   CommandPalette,
@@ -26,6 +27,7 @@ const GROUP_ORDER = ["SCAN", "STATS", "NODES", "VULNERABILITIES", "NAV"] as cons
 export function CommandPaletteRoot() {
   const [open, setOpen] = useState(false);
   const cmds = useExplorerCommands();
+  const router = useRouter();
 
   const groups: CommandGroup[] = useMemo(() => {
     function actionFor(spec: CommandSpec): () => void | Promise<void> {
@@ -53,9 +55,7 @@ export function CommandPaletteRoot() {
         case "node.filter.port.8333":
             return () => cmds.setQuery("port=8333");
         case "vuln.list":
-          return () => {
-            mutate("/api/v1/vulnerabilities");
-          };
+          return () => router.push("/vulnerabilities");
         case "nav.explorer":
           // SPA root is the explorer in v0; future nav targets land here.
           return () => {};
@@ -89,7 +89,7 @@ export function CommandPaletteRoot() {
       label: g,
       items: byGroup.get(g)!,
     }));
-  }, [cmds]);
+  }, [cmds, router]);
 
   return (
     <CommandPalette

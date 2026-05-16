@@ -4,6 +4,7 @@
  */
 import { request, requestWithHeaders, setCsrfToken, fetchProtected } from "./client";
 import type {
+  AffectedNodesOut,
   CsrfTokenOut,
   NodeDetailOut,
   NodeGeoOut,
@@ -79,6 +80,13 @@ export function getScanJob(jobId: string): Promise<ScanJobOut> {
 
 export function getVulnerabilities(): Promise<VulnerabilitiesOut> {
   return request<VulnerabilitiesOut>("GET", "/vulnerabilities");
+}
+
+export function getAffectedNodes(cveId: string): Promise<AffectedNodesOut> {
+  return request<AffectedNodesOut>(
+    "GET",
+    `/vulnerabilities/${encodeURIComponent(cveId)}/nodes`,
+  );
 }
 
 /**

@@ -19,7 +19,7 @@ export default function ExplorerPage() {
   // on flex children that should shrink is applied inside Explorer.
   return (
     <div className="h-[100dvh] flex flex-col">
-      <TopNav />
+      <TopNav current="explorer" />
       <StatsStrip />
       <Explorer />
     </div>

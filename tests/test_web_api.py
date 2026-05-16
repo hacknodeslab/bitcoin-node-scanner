@@ -623,3 +623,22 @@ class TestVulnerabilitiesAffectedNodes:
     def test_404_for_unknown_cve(self, client, db_session):
         r = client.get("/api/v1/vulnerabilities/CVE-NOPE/nodes", headers=HEADERS)
         assert r.status_code == 404
+
+
+class TestVulnerabilitiesCatalog:
+    def test_catalog_includes_affected_node_count(self, client, db_session):
+        node_a = _make_node("10.1.0.1")
+        node_b = _make_node("10.1.0.2")
+        db_session.add_all([node_a, node_b])
+        db_session.add(CVEEntry(cve_id="CVE-LINKED", severity="HIGH", affected_versions="[]"))
+        db_session.add(CVEEntry(cve_id="CVE-UNLINKED", severity="LOW", affected_versions="[]"))
+        db_session.commit()
+        db_session.add(NodeVulnerability(node_id=node_a.id, cve_id="CVE-LINKED"))
+        db_session.add(NodeVulnerability(node_id=node_b.id, cve_id="CVE-LINKED"))
+        db_session.commit()
+
+        r = client.get("/api/v1/vulnerabilities", headers=HEADERS)
+        assert r.status_code == 200
+        items = {i["cve_id"]: i for i in r.json()["items"]}
+        assert items["CVE-LINKED"]["affected_node_count"] == 2
+        assert items["CVE-UNLINKED"]["affected_node_count"] == 0

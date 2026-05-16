@@ -112,11 +112,28 @@ export interface CVEEntryOut {
   description: string | null;
   affected_versions: string[] | null;
   fetched_at: string;
+  affected_node_count: number;
 }
 
 export interface VulnerabilitiesOut {
   total: number;
   items: CVEEntryOut[];
+}
+
+export interface AffectedNodeOut {
+  id: number;
+  ip: string;
+  port: number;
+  version: string | null;
+  risk_level: RiskLevel | null;
+  country_name: string | null;
+  last_seen: string | null;
+}
+
+export interface AffectedNodesOut {
+  cve_id: string;
+  total: number;
+  nodes: AffectedNodeOut[];
 }
 
 export interface CsrfTokenOut {

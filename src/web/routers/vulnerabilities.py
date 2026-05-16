@@ -26,6 +26,7 @@ class CVEEntryOut(BaseModel):
     description: Optional[str]
     affected_versions: Optional[List[Any]]
     fetched_at: str
+    affected_node_count: int
 
 
 class VulnerabilitiesOut(BaseModel):
@@ -63,6 +64,9 @@ def get_vulnerabilities(db: Session = Depends(get_db)):
             detail="NVD API unavailable and no cached data",
         ) from exc
 
+    # One grouped query for every CVE's active node count — no N+1.
+    affected_counts = VulnerabilityRepository(db).count_affected_nodes_by_cve()
+
     items: List[CVEEntryOut] = []
     for e in entries:
         affected: Optional[List[Any]] = None
@@ -82,6 +86,7 @@ def get_vulnerabilities(db: Session = Depends(get_db)):
                 description=e.description,
                 affected_versions=affected,
                 fetched_at=e.fetched_at.isoformat(),
+                affected_node_count=affected_counts.get(e.cve_id, 0),
             )
         )
 
