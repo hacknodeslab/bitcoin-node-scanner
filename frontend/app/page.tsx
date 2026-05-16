@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { TopNav } from "@/components/explorer/TopNav";
 import { StatsStrip } from "@/components/explorer/StatsStrip";
 import { Explorer } from "@/components/explorer/Explorer";
@@ -21,7 +22,11 @@ export default function ExplorerPage() {
     <div className="h-[100dvh] flex flex-col">
       <TopNav current="explorer" />
       <StatsStrip />
-      <Explorer />
+      {/* Explorer reads `?ip=` via useSearchParams, which Next.js requires
+          to live inside a Suspense boundary so prerendering can bail out. */}
+      <Suspense fallback={null}>
+        <Explorer />
+      </Suspense>
     </div>
   );
 }

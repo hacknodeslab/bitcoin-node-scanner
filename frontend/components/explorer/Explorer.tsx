@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { QueryBarController } from "./QueryBarController";
 import { NodeTable } from "./NodeTable";
 import { ExplorerFooter } from "./ExplorerFooter";
@@ -29,17 +30,14 @@ import { useTheme } from "@/components/providers/ThemeProvider";
  */
 export function Explorer() {
   const [appliedQuery, setAppliedQuery] = useState<string>("");
-  const [selectedIp, setSelectedIp] = useState<string | null>(null);
-
   // Honour `?ip=<addr>` deep links once on mount (used by the
   // vulnerabilities page to open the drawer for an affected node).
-  // Has to be useEffect, not a useState lazy initializer: the latter
-  // runs during the SSR pass when `window` is undefined and hydration
-  // would keep that stale null.
-  useEffect(() => {
-    const ip = new URLSearchParams(window.location.search).get("ip");
-    if (ip) setSelectedIp(ip);
-  }, []);
+  // `useSearchParams` is SSR-safe and reads the URL during render, so
+  // the initial state already has the right value at hydration time.
+  const searchParams = useSearchParams();
+  const [selectedIp, setSelectedIp] = useState<string | null>(
+    searchParams.get("ip"),
+  );
 
   const { filters, warnings } = useMemo(
     () => parseQueryToFilters(appliedQuery),
