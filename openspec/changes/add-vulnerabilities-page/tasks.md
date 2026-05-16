@@ -29,3 +29,7 @@
 - [x] 5.1 Add a frontend test for the vulnerabilities page: renders catalog rows, sorts by affected node count, and expands a row to show affected nodes (mocked API)
 - [x] 5.2 Run `pnpm typecheck && pnpm test` in `frontend/` and the backend suite `python -m pytest tests/ -v`; confirm no new failures
 - [x] 5.3 Manually verify in the browser: navigate via palette and nav link, sort/paginate, expand a CVE, click through to a node — verified by operator after backend restart (affected_node_count) and Explorer useEffect fix for `?ip=` deep links
+
+## 6. Follow-up fixes from manual testing
+
+- [x] 6.1 Drawer showed "node not found" for any IP outside the most-recent 1000 (`getNodeByIp` was scanning, not filtering) — added `ip=` filter to `GET /api/v1/nodes` (mirror of the `port` filter) and switched `getNodeByIp` to use it, with a backend test

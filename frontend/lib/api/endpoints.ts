@@ -59,15 +59,13 @@ export function getNodeDetail(nodeId: number): Promise<NodeDetailOut> {
 }
 
 /**
- * V0 node-by-IP resolution: list and filter. The REST surface lacks
- * `GET /nodes/by-ip/{ip}` today (tracked as parity debt in `design.md` D10).
- * For typical operator queries the returned list is small, so this is good
- * enough for v0; M5 will use this where the drawer or palette opens by IP.
+ * Resolves a node by its IP via the `ip=` filter on the node list. Returns
+ * the first match or null. (`GET /nodes/by-ip/{ip}` doesn't exist yet —
+ * parity debt tracked in D10 — but the list filter is enough and scales.)
  */
 export async function getNodeByIp(ip: string): Promise<NodeOut | null> {
-  // The API doesn't filter by IP, so we paginate and scan.
-  const matches = await listNodes({ limit: 1000 });
-  return matches.find((n) => n.ip === ip) ?? null;
+  const matches = await listNodes({ ip, limit: 1 });
+  return matches[0] ?? null;
 }
 
 export function triggerScan(): Promise<ScanJobOut> {

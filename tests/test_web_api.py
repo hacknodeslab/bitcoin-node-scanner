@@ -143,6 +143,17 @@ class TestNodesEndpoint:
         assert len(data) == 1
         assert data[0]["ip"] == "2.2.2.2"
 
+    def test_filter_by_ip(self, client, db_session):
+        db_session.add(_make_node("9.9.9.9", port=8333))
+        db_session.add(_make_node("10.10.10.10", port=8333))
+        db_session.commit()
+
+        r = client.get("/api/v1/nodes?ip=9.9.9.9", headers=HEADERS)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data) == 1
+        assert data[0]["ip"] == "9.9.9.9"
+
     def test_filter_by_port(self, client, db_session):
         db_session.add(_make_node("1.1.1.1", port=8333))
         db_session.add(_make_node("2.2.2.2", port=8332))

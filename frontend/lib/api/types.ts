@@ -151,6 +151,7 @@ export interface NodeListParams {
   limit?: number;
   offset?: number;
   port?: number;
+  ip?: string;
 }
 
 /**
