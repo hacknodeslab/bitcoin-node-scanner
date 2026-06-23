@@ -10,6 +10,9 @@ import type {
   NodeGeoOut,
   NodeListParams,
   NodeOut,
+  NostrRelayListParams,
+  NostrRelayOut,
+  NostrStatsOut,
   ProtectedResult,
   ScanJobOut,
   StatsOut,
@@ -85,6 +88,26 @@ export function getAffectedNodes(cveId: string): Promise<AffectedNodesOut> {
     "GET",
     `/vulnerabilities/${encodeURIComponent(cveId)}/nodes`,
   );
+}
+
+export function getNostrStats(): Promise<NostrStatsOut> {
+  return request<NostrStatsOut>("GET", "/nostr/stats");
+}
+
+/**
+ * Paginated Nostr relay list, scoped server-side to the latest scan. Returns
+ * the parsed `X-Total-Count` header so the caller can render pagination (null
+ * when the header is absent/unparseable).
+ */
+export async function getNostrRelays(
+  params: NostrRelayListParams = {},
+): Promise<{ relays: NostrRelayOut[]; total: number | null }> {
+  const { data, headers } = await requestWithHeaders<NostrRelayOut[]>("GET", "/nostr/relays", {
+    query: { ...params },
+  });
+  const raw = headers.get("X-Total-Count");
+  const parsed = raw === null ? NaN : Number.parseInt(raw, 10);
+  return { relays: data, total: Number.isFinite(parsed) ? parsed : null };
 }
 
 /**

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Glyph } from "@/components/ui/Glyph";
+import { Pagination } from "@/components/ui/Pagination";
 import { Pill, type CveSeverity } from "@/components/ui/Pill";
 import { TableExpandedRow, TableRow } from "@/components/ui/TableRow";
 import { useAffectedNodes, useVulnerabilities } from "@/lib/hooks";
@@ -188,63 +189,6 @@ function AffectedNodesPanel({ cveId }: { cveId: string }) {
   );
 }
 
-interface PaginationProps {
-  page: number;
-  pageSize: PageSize;
-  total: number;
-  onPrev: () => void;
-  onNext: () => void;
-  onPageSizeChange: (size: PageSize) => void;
-}
-
-function Pagination({ page, pageSize, total, onPrev, onNext, onPageSizeChange }: PaginationProps) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const prevDisabled = page <= 1;
-  const nextDisabled = page >= totalPages;
-  return (
-    <div
-      data-testid="pagination"
-      className="flex items-center gap-[14px] px-[14px] py-[8px] border-t border-border text-meta text-muted"
-    >
-      <button
-        type="button"
-        onClick={onPrev}
-        disabled={prevDisabled}
-        data-testid="pagination-prev"
-        className="text-text-dim hover:text-text disabled:text-dim disabled:cursor-not-allowed cursor-pointer"
-      >
-        ‹ prev
-      </button>
-      <span data-testid="pagination-status">
-        Page {page} of {totalPages} · {total} CVEs
-      </span>
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={nextDisabled}
-        data-testid="pagination-next"
-        className="text-text-dim hover:text-text disabled:text-dim disabled:cursor-not-allowed cursor-pointer"
-      >
-        next ›
-      </button>
-      <span className="ml-auto flex items-center gap-[6px]">
-        <span className="text-dim">rows</span>
-        <select
-          data-testid="pagination-page-size"
-          value={pageSize}
-          onChange={(e) => onPageSizeChange(Number(e.target.value) as PageSize)}
-          className="bg-surface-2 text-text-dim border border-border px-[6px] py-[2px] text-meta cursor-pointer"
-        >
-          {PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
-      </span>
-    </div>
-  );
-}
 
 export interface VulnerabilitiesViewProps {
   /** Override the SWR result — used for tests. */
@@ -388,9 +332,11 @@ export function VulnerabilitiesView(props: VulnerabilitiesViewProps = {}) {
           page={page}
           pageSize={pageSize}
           total={total}
+          noun="CVEs"
+          pageSizes={PAGE_SIZES}
           onPrev={() => setPage((p) => Math.max(1, p - 1))}
           onNext={() => setPage((p) => p + 1)}
-          onPageSizeChange={setPageSize}
+          onPageSizeChange={(s) => setPageSize(s as PageSize)}
         />
       ) : null}
     </main>

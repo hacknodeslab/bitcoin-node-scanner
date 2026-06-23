@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from src.db.connection import is_database_configured, init_db, get_db_session
 from src.db.analysis import HistoricalAnalyzer
-from src.db.repositories import NodeRepository, ScanRepository, VulnerabilityRepository
+from src.db.repositories import NodeRepository, ScanRepository, VulnerabilityRepository, NostrRepository
 
 
 def cmd_stats(args):
@@ -206,6 +206,42 @@ def cmd_import(args):
         cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     return result.returncode
+
+
+def cmd_import_nostr(args):
+    """Import a Nostr CDN-recon scanner dump into the database."""
+    if not args.file:
+        print("Error: No file specified")
+        return 1
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+    if not os.path.exists(args.file):
+        print(f"Error: file not found: {args.file}")
+        return 1
+
+    init_db()
+
+    with open(args.file) as f:
+        dump = json.load(f)
+
+    results = dump.get("results", [])
+    with get_db_session() as session:
+        if session is None:
+            print("Error: database session unavailable")
+            return 1
+        repo = NostrRepository(session)
+        scan = repo.create_scan(
+            source=os.path.basename(args.file),
+            total=dump.get("total", len(results)),
+            resolved=dump.get("resolved", 0),
+            behind_any_cdn=dump.get("behind_any_cdn", 0),
+        )
+        repo.bulk_upsert_relays(results, scan)
+
+    print(f"Imported {len(results)} relays (scan source={os.path.basename(args.file)})")
+    print(f"  total={dump.get('total')} resolved={dump.get('resolved')} behind_any_cdn={dump.get('behind_any_cdn')}")
+    return 0
 
 
 def cmd_node(args):
@@ -501,6 +537,13 @@ def main():
     import_parser = subparsers.add_parser("db-import", help="Import JSON data")
     import_parser.add_argument("file", help="JSON file to import")
 
+    # db-import-nostr command
+    import_nostr_parser = subparsers.add_parser(
+        "db-import-nostr",
+        help="Import a Nostr CDN-recon scanner JSON dump into the database",
+    )
+    import_nostr_parser.add_argument("file", help="Nostr scanner JSON dump to import")
+
     # db-node command
     node_parser = subparsers.add_parser("db-node", help="Get node lifecycle information")
     node_parser.add_argument("ip", help="IP address of the node")
@@ -551,6 +594,8 @@ def main():
         return cmd_export(args)
     elif args.command == "db-import":
         return cmd_import(args)
+    elif args.command == "db-import-nostr":
+        return cmd_import_nostr(args)
     elif args.command == "db-node":
         return cmd_node(args)
     elif args.command == "enrich-geo":

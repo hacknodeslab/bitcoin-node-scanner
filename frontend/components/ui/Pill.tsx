@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { NON_CDN_VERDICTS } from "@/lib/nostr";
 
 export type CveSeverity = "low" | "medium" | "high" | "critical";
 
@@ -12,6 +13,7 @@ export type PillKind =
   | { kind: "DEV" }
   | { kind: "RISK"; severity: CveSeverity }
   | { kind: "BITCOIN" }
+  | { kind: "CDN"; verdict: string }
   | { kind: "TAG"; label: string };
 
 type Tone = "alert" | "warn" | "ok" | "accent" | "dim" | "primary";
@@ -34,6 +36,14 @@ function toneFor(p: PillKind): Tone {
       return "warn";
     case "BITCOIN":
       return "primary";
+    case "CDN": {
+      const v = p.verdict.toLowerCase();
+      // `direct` = origin visible (decentralized → ok); behind a CDN =
+      // centralization concern (warn); unresolved/skipped = neutral.
+      if (v === "direct") return "ok";
+      if (NON_CDN_VERDICTS.has(v)) return "dim";
+      return "warn";
+    }
     case "TAG":
       return "dim";
   }
@@ -58,7 +68,9 @@ export function Pill(props: PillKind & { className?: string }) {
       ? props.label.toUpperCase()
       : props.kind === "RISK"
         ? props.severity.toUpperCase()
-        : props.kind;
+        : props.kind === "CDN"
+          ? props.verdict.replace(/_/g, " ").toUpperCase()
+          : props.kind;
   return (
     <span
       data-pill-kind={props.kind}

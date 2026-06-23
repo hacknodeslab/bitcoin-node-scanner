@@ -136,6 +136,35 @@ export interface AffectedNodesOut {
   nodes: AffectedNodeOut[];
 }
 
+export interface NostrRelayOut {
+  host: string;
+  verdict: string;
+  providers: string[];
+  ips: string[];
+  error: string | null;
+  last_seen: string | null;
+}
+
+export interface NostrStatsOut {
+  total: number;
+  resolved: number;
+  behind_any_cdn: number;
+  behind_cdn_pct: number;
+  /** Counts keyed by verdict (provider name, '+'-joined combo, direct, dns_error, skipped). */
+  counts: Record<string, number>;
+  /** Per-provider counts, derived server-side (combos counted once per provider). */
+  providers: Record<string, number>;
+  started_at: string | null;
+}
+
+export interface NostrRelayListParams {
+  verdict?: string;
+  provider?: string;
+  behind_cdn?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
 export interface CsrfTokenOut {
   csrfToken: string;
 }

@@ -60,7 +60,7 @@ export function QueryBarController({
           placeholder="risk=critical exposed=true ↵ to apply"
           aria-label="filter query"
           data-testid="query-bar-input"
-          className="bg-transparent text-text placeholder:text-dim text-body-sm flex-1 outline-none"
+          className="text-text placeholder:text-dim text-body-sm flex-1 outline-none"
         />
         <span className="text-meta text-dim">↵ apply</span>
       </form>

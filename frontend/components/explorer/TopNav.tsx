@@ -7,6 +7,7 @@ import { ThemeToggle } from "./ThemeToggle";
 const NAV_LINKS = [
   { key: "explorer", label: "explorer", href: "/" },
   { key: "vulnerabilities", label: "vulnerabilities", href: "/vulnerabilities" },
+  { key: "nostr", label: "nostr", href: "/nostr" },
 ] as const;
 
 /**
@@ -15,7 +16,7 @@ const NAV_LINKS = [
  * and palette UI live in `CommandPaletteRoot` — here we render the
  * affordance only. `current` highlights the active route.
  */
-export function TopNav({ current }: { current?: "explorer" | "vulnerabilities" }) {
+export function TopNav({ current }: { current?: "explorer" | "vulnerabilities" | "nostr" }) {
   return (
     <header
       className="flex items-center justify-between px-[14px] py-[10px] border-b border-border"

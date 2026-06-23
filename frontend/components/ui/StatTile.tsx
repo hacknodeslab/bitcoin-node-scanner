@@ -6,6 +6,8 @@ export interface StatTileProps {
   label: string;
   value: string | number;
   delta?: { value: string; direction: DeltaDirection };
+  /** Optional muted sub-label rendered under the value (e.g. "303 / 1067 resolved"). */
+  hint?: string;
   className?: string;
 }
 
@@ -16,7 +18,7 @@ export interface StatTileProps {
  * OK is good → use `ok`. The caller declares the direction; the tile colours
  * accordingly. There is no "auto-sign" detection: meaning is data-domain.
  */
-export function StatTile({ label, value, delta, className }: StatTileProps) {
+export function StatTile({ label, value, delta, hint, className }: StatTileProps) {
   const deltaClass =
     !delta
       ? ""
@@ -35,6 +37,7 @@ export function StatTile({ label, value, delta, className }: StatTileProps) {
           <span className={cn("ml-[4px] text-label", deltaClass)}>{delta.value}</span>
         ) : null}
       </div>
+      {hint ? <div className="mt-[2px] text-label text-muted">{hint}</div> : null}
     </div>
   );
 }
