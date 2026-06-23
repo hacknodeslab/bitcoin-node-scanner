@@ -15,7 +15,7 @@ import argparse
 import json
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime
 from typing import Dict, List
 
@@ -42,12 +42,28 @@ def scan_hosts(
     workers: int = 50,
     timeout: float = 5.0,
 ) -> List[dict]:
-    """Classify every host concurrently and return the per-host results."""
+    """Classify every host concurrently and return the per-host results.
+
+    Each resolution is bounded by ``timeout`` seconds. Because ``getaddrinfo``
+    ignores socket-level timeouts, the deadline is enforced here via the future
+    result timeout; a host that exceeds it is recorded as a ``dns_error``
+    instead of stalling the whole scan.
+    """
     results: List[dict] = []
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = [pool.submit(classify, h, timeout, nets) for h in hosts]
-        for fut in as_completed(futures):
-            results.append(fut.result())
+    pool = ThreadPoolExecutor(max_workers=workers)
+    try:
+        future_to_host = {pool.submit(classify, h, nets): h for h in hosts}
+        for fut, host in future_to_host.items():
+            try:
+                results.append(fut.result(timeout=timeout))
+            except FuturesTimeout:
+                results.append(
+                    {"host": host, "verdict": "dns_error", "ips": [], "providers": [], "error": "timeout"}
+                )
+    finally:
+        # Don't block on a hung resolver thread (getaddrinfo can outlive the
+        # deadline); abandon any stragglers rather than joining them.
+        pool.shutdown(wait=False)
     return results
 
 

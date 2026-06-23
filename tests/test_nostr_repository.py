@@ -61,6 +61,22 @@ class TestImport:
         assert len(rows) == 1
         assert rows[0].verdict == "cloudflare"
 
+    def test_bulk_skips_results_without_a_host(self, db_session):
+        # A malformed entry (no host) must be skipped, not abort the import.
+        repo = NostrRepository(db_session)
+        scan = repo.create_scan(source="bad.json", total=2, resolved=2, behind_any_cdn=1)
+        imported = repo.bulk_upsert_relays(
+            [
+                {"host": "ok.relay", "verdict": "cloudflare", "providers": ["cloudflare"], "ips": ["104.16.0.1"], "error": None},
+                {"verdict": "direct", "providers": [], "ips": [], "error": None},  # no host
+            ],
+            scan,
+        )
+        db_session.commit()
+        assert imported == 1
+        assert db_session.query(NostrRelay).count() == 1
+        assert db_session.query(NostrRelay).one().host == "ok.relay"
+
     def test_reimport_updates_in_place_no_duplicate(self, db_session):
         _import_dump(db_session, DUMP_A)
         # Second scan: cf.relay moved off Cloudflare to direct.
@@ -136,6 +152,29 @@ class TestQueries:
         assert stats["counts"]["dns_error"] == 1
         # provider breakdown derived server-side (non-CDN verdicts excluded)
         assert stats["providers"] == {"cloudflare": 1, "fastly": 1}
+
+    def test_stats_derived_from_rows_not_dump_summary(self, db_session):
+        # Stats must reconcile with the persisted rows even when the dump's
+        # top-level aggregates are wrong (here: zeroed) and a host is duplicated.
+        repo = NostrRepository(db_session)
+        scan = repo.create_scan(source="skewed.json", total=999, resolved=0, behind_any_cdn=0)
+        repo.bulk_upsert_relays(
+            [
+                {"host": "cf.relay", "verdict": "cloudflare", "providers": ["cloudflare"], "ips": ["104.16.0.1"], "error": None},
+                {"host": "cf.relay", "verdict": "cloudflare", "providers": ["cloudflare"], "ips": ["104.16.0.1"], "error": None},  # dup
+                {"host": "plain.relay", "verdict": "direct", "providers": [], "ips": ["8.8.8.8"], "error": None},
+                {"host": "bad.relay", "verdict": "dns_error", "providers": [], "ips": [], "error": "nxdomain"},
+            ],
+            scan,
+        )
+        db_session.commit()
+        stats = repo.stats()
+        # 3 deduped rows; resolved = 3 - 1 dns_error = 2; behind = 1 cloudflare.
+        assert stats["total"] == 3
+        assert stats["resolved"] == 2
+        assert stats["behind_any_cdn"] == 1
+        assert stats["behind_cdn_pct"] == pytest.approx(50.0, abs=0.1)
+        assert sum(stats["counts"].values()) == stats["total"]
 
     def test_stats_empty_when_no_scan(self, db_session):
         repo = NostrRepository(db_session)

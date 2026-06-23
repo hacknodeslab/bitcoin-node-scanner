@@ -237,9 +237,9 @@ def cmd_import_nostr(args):
             resolved=dump.get("resolved", 0),
             behind_any_cdn=dump.get("behind_any_cdn", 0),
         )
-        repo.bulk_upsert_relays(results, scan)
+        imported = repo.bulk_upsert_relays(results, scan)
 
-    print(f"Imported {len(results)} relays (scan source={os.path.basename(args.file)})")
+    print(f"Imported {imported} relays (scan source={os.path.basename(args.file)})")
     print(f"  total={dump.get('total')} resolved={dump.get('resolved')} behind_any_cdn={dump.get('behind_any_cdn')}")
     return 0
 

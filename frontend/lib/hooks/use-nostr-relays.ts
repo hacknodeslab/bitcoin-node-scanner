@@ -16,8 +16,14 @@ interface NostrRelaysResult {
  */
 export function useNostrRelays(params: NostrRelayListParams = {}) {
   const key = ["/api/v1/nostr/relays", JSON.stringify(params)] as const;
-  const { data, error, isLoading } = useSWR<NostrRelaysResult>(key, () =>
-    getNostrRelays(params),
+  // keepPreviousData: the key includes the offset, so without it `data` goes
+  // undefined on every page change — collapsing `total` to 0 and unmounting the
+  // pagination footer (gated on total > 0). Keeping the previous page steady
+  // avoids that blink while the next page loads.
+  const { data, error, isLoading } = useSWR<NostrRelaysResult>(
+    key,
+    () => getNostrRelays(params),
+    { keepPreviousData: true },
   );
 
   return {

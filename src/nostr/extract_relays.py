@@ -21,8 +21,10 @@ def extract(src: str, dst: str, only_online: bool = False, only_clearnet: bool =
     rows = ws.iter_rows(values_only=True)
     header = list(next(rows))
     url_idx = header.index("url")
-    rstate_idx = header.index("in_rstate")
-    net_idx = header.index("network")
+    # Only the requested filters need their columns — look them up lazily so a
+    # no-flag run doesn't crash on an export that omits in_rstate/network.
+    rstate_idx = header.index("in_rstate") if only_online else None
+    net_idx = header.index("network") if only_clearnet else None
 
     seen = set()
     with open(dst, "w") as f:

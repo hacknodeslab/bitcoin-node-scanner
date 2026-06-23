@@ -59,19 +59,24 @@ def provider_for(ip: str, nets: Dict[str, List]) -> Optional[str]:
     return None
 
 
-def resolve(host: str, timeout: float) -> List[str]:
-    """Resolve a host to its sorted, de-duplicated A/AAAA addresses."""
-    socket.setdefaulttimeout(timeout)
+def resolve(host: str) -> List[str]:
+    """Resolve a host to its sorted, de-duplicated A/AAAA addresses.
+
+    No timeout is applied here: ``getaddrinfo`` is a blocking C call that
+    ignores socket-level timeouts (and ``socket.setdefaulttimeout`` would leak
+    process-wide), so wall-clock bounding is the caller's job — see
+    ``scanner.scan_hosts``, which enforces a per-host deadline.
+    """
     infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
     return sorted({i[4][0] for i in infos})
 
 
-def classify(host: str, timeout: float, nets: Dict[str, List]) -> dict:
+def classify(host: str, nets: Dict[str, List]) -> dict:
     """Classify a single host. Returns `{host, verdict, ips, providers, error}`."""
     if host.endswith(".onion") or host.endswith(".i2p"):
         return {"host": host, "verdict": "skipped", "ips": [], "providers": [], "error": "onion/i2p"}
     try:
-        ips = resolve(host, timeout)
+        ips = resolve(host)
     except (socket.gaierror, socket.timeout, OSError, UnicodeError) as e:
         return {"host": host, "verdict": "dns_error", "ips": [], "providers": [], "error": str(e)}
     matches = sorted({p for ip in ips if (p := provider_for(ip, nets))})

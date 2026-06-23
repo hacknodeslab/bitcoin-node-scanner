@@ -18,6 +18,10 @@ from ...nostr.classifier import NON_CDN_VERDICTS, provider_counts  # single sour
 
 logger = logging.getLogger(__name__)
 
+# Chunk the existing-host IN(...) lookup to stay under SQLite's bind-parameter
+# limit (999 on builds older than 3.32); a real import is ~1000+ hosts.
+_HOST_LOOKUP_CHUNK = 500
+
 
 def _escape_like(value: str) -> str:
     """Escape LIKE metacharacters so a filter value can't act as a wildcard."""
@@ -98,19 +102,25 @@ class NostrRepository:
 
         Each result is a dict with `host`, `verdict`, `providers`, `ips`,
         `error` (the scanner dump shape). Avoids the per-relay SELECT that
-        `upsert_relay` issues — one `IN` query covers the whole batch — so a
-        ~1000-relay import is 1 read + N writes instead of N reads + N writes.
-        Returns the number of results processed.
+        `upsert_relay` issues — one chunked `IN` lookup covers the whole batch
+        — so a ~1000-relay import is a few reads + N writes instead of N reads
+        + N writes. Entries with no `host` are skipped (a malformed row must
+        not abort the whole import). Returns the number of relays upserted.
         """
         now = seen_at or datetime.utcnow()
-        hosts = [r["host"] for r in results]
-        existing = {
-            rel.host: rel
+        valid = [r for r in results if r.get("host")]
+        skipped = len(results) - len(valid)
+        if skipped:
+            logger.warning("bulk_upsert_relays: skipping %d result(s) with no host", skipped)
+        hosts = [r["host"] for r in valid]
+        existing: Dict[str, NostrRelay] = {}
+        for i in range(0, len(hosts), _HOST_LOOKUP_CHUNK):
+            chunk = hosts[i : i + _HOST_LOOKUP_CHUNK]
             for rel in self.session.scalars(
-                select(NostrRelay).where(NostrRelay.host.in_(hosts))
-            ).all()
-        }
-        for r in results:
+                select(NostrRelay).where(NostrRelay.host.in_(chunk))
+            ).all():
+                existing[rel.host] = rel
+        for r in valid:
             host = r["host"]
             verdict = r.get("verdict", "direct")
             providers_json = json.dumps(r.get("providers", []))
@@ -138,7 +148,7 @@ class NostrRepository:
                 self.session.add(rel)
                 # Guard against duplicate hosts within the same dump.
                 existing[host] = rel
-        return len(results)
+        return len(valid)
 
     # ------------------------------------------------------------------
     # Reads
@@ -204,7 +214,14 @@ class NostrRepository:
         return {verdict: count for verdict, count in rows}
 
     def stats(self) -> dict:
-        """Aggregates for the latest scan, or zeroed values when none exists."""
+        """Aggregates for the latest scan, or zeroed values when none exists.
+
+        Every headline number is derived from the persisted relay rows (not the
+        `NostrScan` summary columns), so `total`/`resolved`/`behind_cdn_pct`
+        always reconcile with the per-verdict `counts` and the relay table the
+        UI renders — even if the imported dump's top-level aggregates were
+        stale, missing, or counted duplicate hosts the upsert later deduped.
+        """
         scan = self.latest_scan()
         if scan is None:
             return {
@@ -218,12 +235,15 @@ class NostrRepository:
             }
 
         counts = self.counts_by_verdict(scan)
-        resolved = scan.resolved or 0
-        pct = round(100.0 * (scan.behind_any_cdn or 0) / resolved, 1) if resolved else 0.0
+        total = sum(counts.values())
+        behind_any_cdn = sum(c for v, c in counts.items() if v not in NON_CDN_VERDICTS)
+        non_resolving = counts.get("skipped", 0) + counts.get("dns_error", 0)
+        resolved = total - non_resolving
+        pct = round(100.0 * behind_any_cdn / resolved, 1) if resolved else 0.0
         return {
-            "total": scan.total or 0,
+            "total": total,
             "resolved": resolved,
-            "behind_any_cdn": scan.behind_any_cdn or 0,
+            "behind_any_cdn": behind_any_cdn,
             "behind_cdn_pct": pct,
             "counts": counts,
             "providers": provider_counts(counts),

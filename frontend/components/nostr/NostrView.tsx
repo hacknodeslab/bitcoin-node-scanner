@@ -154,11 +154,18 @@ export function NostrView(props: NostrViewProps = {}) {
   const total = injected ? (props.total ?? props.relays?.length ?? 0) : (relaysHook.total ?? 0);
   const isLoading = injected ? (props.loading ?? false) : relaysHook.isLoading;
   const error = injected ? (props.error ?? null) : relaysHook.error;
+  const statsError = injected ? null : statsHook.error;
 
-  // Reset to page 1 whenever the active filters or page size change.
-  const [resetSig, setResetSig] = useState({ filters, pageSize });
-  if (resetSig.filters !== filters || resetSig.pageSize !== pageSize) {
-    setResetSig({ filters, pageSize });
+  // Reset to page 1 whenever the active filters, page size, or the underlying
+  // dataset change — the last guard prevents being stranded on a now-empty
+  // page (e.g. "Page 3 of 1") after a smaller scan is imported or revalidated.
+  const [resetSig, setResetSig] = useState({ filters, pageSize, total });
+  if (
+    resetSig.filters !== filters ||
+    resetSig.pageSize !== pageSize ||
+    resetSig.total !== total
+  ) {
+    setResetSig({ filters, pageSize, total });
     setPage(1);
   }
 
@@ -177,7 +184,19 @@ export function NostrView(props: NostrViewProps = {}) {
 
   return (
     <main className="flex-1 min-h-0 flex flex-col" data-testid="nostr-view">
-      {stats ? <SummaryCards stats={stats} /> : null}
+      {statsError ? (
+        <div
+          role="alert"
+          data-testid="nostr-stats-error"
+          className="px-[14px] py-[8px] border-b border-border text-body-sm text-alert"
+        >
+          · stats failed to load
+        </div>
+      ) : !noScan && stats ? (
+        // Skip the summary on the no-scan state — its zeroed tiles would sit
+        // misleadingly above the "no scan imported" message.
+        <SummaryCards stats={stats} />
+      ) : null}
 
       {noScan ? (
         <div className="flex-1 flex items-center justify-center text-body-sm text-muted" data-testid="nostr-empty">

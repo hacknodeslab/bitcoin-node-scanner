@@ -50,30 +50,30 @@ class TestProviderFor:
 class TestClassify:
     def test_onion_is_skipped_without_dns(self):
         with patch("src.nostr.classifier.resolve") as mock_resolve:
-            r = classify("abcd.onion", 5.0, NETS)
+            r = classify("abcd.onion", NETS)
         assert r["verdict"] == "skipped"
         assert r["error"] == "onion/i2p"
         mock_resolve.assert_not_called()
 
     def test_i2p_is_skipped(self):
-        r = classify("abcd.i2p", 5.0, NETS)
+        r = classify("abcd.i2p", NETS)
         assert r["verdict"] == "skipped"
 
     def test_cloudflare_verdict(self):
         with patch("src.nostr.classifier.resolve", return_value=["104.16.0.5"]):
-            r = classify("relay.cf", 5.0, NETS)
+            r = classify("relay.cf", NETS)
         assert r["verdict"] == "cloudflare"
         assert r["providers"] == ["cloudflare"]
 
     def test_direct_when_no_range_matches(self):
         with patch("src.nostr.classifier.resolve", return_value=["8.8.8.8"]):
-            r = classify("relay.direct", 5.0, NETS)
+            r = classify("relay.direct", NETS)
         assert r["verdict"] == "direct"
         assert r["providers"] == []
 
     def test_multi_cdn_verdict_is_plus_joined_sorted(self):
         with patch("src.nostr.classifier.resolve", return_value=["104.16.0.5", "151.101.1.1"]):
-            r = classify("relay.multi", 5.0, NETS)
+            r = classify("relay.multi", NETS)
         assert r["verdict"] == "cloudflare+fastly"
         assert r["providers"] == ["cloudflare", "fastly"]
 
@@ -81,7 +81,7 @@ class TestClassify:
         import socket
 
         with patch("src.nostr.classifier.resolve", side_effect=socket.gaierror("boom")):
-            r = classify("relay.bad", 5.0, NETS)
+            r = classify("relay.bad", NETS)
         assert r["verdict"] == "dns_error"
         assert r["ips"] == []
         assert r["error"]

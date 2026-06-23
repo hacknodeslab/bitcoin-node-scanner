@@ -48,31 +48,64 @@ def _fresh(path: str) -> bool:
     return (time.time() - os.path.getmtime(path)) < CACHE_TTL_DAYS * 86400
 
 
-def _fetch(url: str, cache_name: str) -> str:
+def _nonempty_lines(data: str) -> bool:
+    """A line-oriented payload is valid only if it has at least one entry."""
+    return any(line.strip() for line in data.splitlines())
+
+
+def _is_json_obj(data: str) -> bool:
+    """A JSON payload is valid only if it decodes to an object."""
+    try:
+        return isinstance(json.loads(data), dict)
+    except (ValueError, TypeError):
+        return False
+
+
+def _fetch(url: str, cache_name: str, validate=None) -> str:
+    """Return the cached payload if fresh AND valid, else (re)fetch it.
+
+    ``validate`` (if given) gates both the cache read and the freshly fetched
+    payload, so an empty/truncated/corrupt cache file — which ``_fresh`` would
+    otherwise trust for the full TTL since it only checks mtime — is ignored
+    and refetched rather than silently served. Writes go through a temp file +
+    ``os.replace`` so an interrupted write can never leave a partial cache.
+    """
     os.makedirs(CACHE_DIR, exist_ok=True)
     p = _cache_path(cache_name)
     if _fresh(p):
-        with open(p) as f:
-            return f.read()
+        try:
+            with open(p) as f:
+                cached = f.read()
+            if validate is None or validate(cached):
+                return cached
+        except OSError:
+            pass  # unreadable cache → fall through and refetch
     req = urllib.request.Request(url, headers={"User-Agent": "nostr-cf-recon/0.1"})
     with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310 - fixed CDN URLs
         data = resp.read().decode()
-    with open(p, "w") as f:
+    if validate is not None and not validate(data):
+        raise ValueError(f"fetched payload for {cache_name} failed validation")
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f:
         f.write(data)
+    os.replace(tmp, p)
     return data
 
 
 def load_cloudflare() -> List[str]:
     try:
-        v4 = _fetch("https://www.cloudflare.com/ips-v4", "cloudflare-v4.txt").splitlines()
-        v6 = _fetch("https://www.cloudflare.com/ips-v6", "cloudflare-v6.txt").splitlines()
-        return [c.strip() for c in v4 + v6 if c.strip()]
+        v4 = _fetch("https://www.cloudflare.com/ips-v4", "cloudflare-v4.txt", _nonempty_lines).splitlines()
+        v6 = _fetch("https://www.cloudflare.com/ips-v6", "cloudflare-v6.txt", _nonempty_lines).splitlines()
+        cidrs = [c.strip() for c in v4 + v6 if c.strip()]
+        # An empty result (e.g. an empty 200) must not silently zero out
+        # Cloudflare — ~99% of real hits — so fall back to the hardcoded list.
+        return cidrs or CLOUDFLARE_FALLBACK
     except Exception:
         return CLOUDFLARE_FALLBACK
 
 
 def load_cloudfront() -> List[str]:
-    raw = _fetch("https://ip-ranges.amazonaws.com/ip-ranges.json", "aws-ip-ranges.json")
+    raw = _fetch("https://ip-ranges.amazonaws.com/ip-ranges.json", "aws-ip-ranges.json", _is_json_obj)
     data = json.loads(raw)
     nets = [p["ip_prefix"] for p in data.get("prefixes", []) if p.get("service") == "CLOUDFRONT"]
     nets += [p["ipv6_prefix"] for p in data.get("ipv6_prefixes", []) if p.get("service") == "CLOUDFRONT"]
@@ -80,7 +113,7 @@ def load_cloudfront() -> List[str]:
 
 
 def load_fastly() -> List[str]:
-    raw = _fetch("https://api.fastly.com/public-ip-list", "fastly.json")
+    raw = _fetch("https://api.fastly.com/public-ip-list", "fastly.json", _is_json_obj)
     data = json.loads(raw)
     return data.get("addresses", []) + data.get("ipv6_addresses", [])
 
