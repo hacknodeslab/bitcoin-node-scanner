@@ -1,9 +1,18 @@
 """
 SQLAlchemy models for Bitcoin Node Scanner database.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 import uuid
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp — a non-deprecated stand-in for ``datetime.utcnow``.
+
+    Stored columns are naive (the rest of the schema uses naive UTC), so we strip
+    the tzinfo to keep all timestamps comparable.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -217,7 +226,7 @@ class NostrScan(Base):
     __tablename__ = 'nostr_scans'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Reference to the source relay list (filename/path of the imported dump).
     source: Mapped[Optional[str]] = mapped_column(String(255))
@@ -264,13 +273,16 @@ class NostrRelay(Base):
         Integer, ForeignKey('nostr_scans.id', ondelete='SET NULL'), nullable=True
     )
 
-    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     scan: Mapped[Optional["NostrScan"]] = relationship("NostrScan", back_populates="relays")
 
     __table_args__ = (
         Index('idx_nostr_relays_host', 'host', unique=True),
+        # scan_id is the predicate for every scan-scoped read (list_relays,
+        # counts_by_verdict), so index it to avoid a full scan as history grows.
+        Index('idx_nostr_relays_scan_id', 'scan_id'),
         Index('idx_nostr_relays_verdict', 'verdict'),
         Index('idx_nostr_relays_last_seen', 'last_seen'),
     )

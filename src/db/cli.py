@@ -222,8 +222,15 @@ def cmd_import_nostr(args):
 
     init_db()
 
-    with open(args.file) as f:
-        dump = json.load(f)
+    try:
+        with open(args.file, encoding="utf-8") as f:
+            dump = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Error: failed to read JSON dump: {exc}")
+        return 1
+    if not isinstance(dump, dict):
+        print("Error: invalid dump format (expected a top-level JSON object)")
+        return 1
 
     results = dump.get("results", [])
     with get_db_session() as session:

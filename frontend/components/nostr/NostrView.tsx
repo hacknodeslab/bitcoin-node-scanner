@@ -155,6 +155,7 @@ export function NostrView(props: NostrViewProps = {}) {
   const isLoading = injected ? (props.loading ?? false) : relaysHook.isLoading;
   const error = injected ? (props.error ?? null) : relaysHook.error;
   const statsError = injected ? null : statsHook.error;
+  const statsLoading = injected ? false : statsHook.isLoading;
 
   // Reset to page 1 whenever the active filters, page size, or the underlying
   // dataset change — the last guard prevents being stranded on a now-empty
@@ -173,7 +174,8 @@ export function NostrView(props: NostrViewProps = {}) {
     setFilters(next);
   }
 
-  const noScan = !isLoading && !error && stats !== undefined && stats.total === 0;
+  const noScan =
+    !isLoading && !statsLoading && !error && stats !== undefined && stats.total === 0;
 
   // Verdict options come straight from the scan's counts, so the dropdown only
   // offers values that exist (including combos) — picking one always matches.
@@ -223,7 +225,7 @@ export function NostrView(props: NostrViewProps = {}) {
                   · relay list failed to load
                 </span>
               </TableRow>
-            ) : isLoading || !relays ? (
+            ) : isLoading || (stats === undefined && !statsError) || !relays ? (
               <TableRow>
                 <span className="text-body-sm text-muted">· loading relays…</span>
               </TableRow>

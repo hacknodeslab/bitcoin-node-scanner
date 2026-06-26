@@ -16,7 +16,7 @@ import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List
 
 from .cdn_ranges import build_provider_nets
@@ -95,7 +95,7 @@ def summarize(results: List[dict]) -> dict:
 def _default_output_path() -> str:
     out_dir = os.getenv("OUTPUT_DIR", "output")
     os.makedirs(out_dir, exist_ok=True)
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return os.path.join(out_dir, f"nostr_relays_{ts}.json")
 
 

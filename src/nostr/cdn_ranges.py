@@ -137,5 +137,13 @@ def build_provider_nets() -> Dict[str, List]:
             cidrs = _LOADERS[name]()
         except Exception:
             cidrs = []
-        nets[name] = [ipaddress.ip_network(c) for c in cidrs]
+        parsed = []
+        for c in cidrs:
+            try:
+                parsed.append(ipaddress.ip_network(c))
+            except ValueError:
+                # A single malformed prefix in a feed must not abort the scan;
+                # skip it and keep the rest of the provider's ranges.
+                continue
+        nets[name] = parsed
     return nets

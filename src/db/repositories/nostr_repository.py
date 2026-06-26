@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..models import NostrRelay, NostrScan
+from ..models import NostrRelay, NostrScan, _utcnow
 from ...nostr.classifier import NON_CDN_VERDICTS, provider_counts  # single source of truth
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class NostrRepository:
         seen_at: Optional[datetime] = None,
     ) -> NostrRelay:
         """Insert a relay or update the existing row for this host in place."""
-        now = seen_at or datetime.utcnow()
+        now = seen_at or _utcnow()
         existing = self.session.scalar(select(NostrRelay).where(NostrRelay.host == host))
         if existing:
             existing.verdict = verdict
@@ -107,11 +107,14 @@ class NostrRepository:
         + N writes. Entries with no `host` are skipped (a malformed row must
         not abort the whole import). Returns the number of relays upserted.
         """
-        now = seen_at or datetime.utcnow()
-        valid = [r for r in results if r.get("host")]
+        now = seen_at or _utcnow()
+        valid = [r for r in results if isinstance(r, dict) and r.get("host")]
         skipped = len(results) - len(valid)
         if skipped:
-            logger.warning("bulk_upsert_relays: skipping %d result(s) with no host", skipped)
+            logger.warning(
+                "bulk_upsert_relays: skipping %d malformed result(s) (non-object or missing host)",
+                skipped,
+            )
         hosts = [r["host"] for r in valid]
         existing: Dict[str, NostrRelay] = {}
         for i in range(0, len(hosts), _HOST_LOOKUP_CHUNK):

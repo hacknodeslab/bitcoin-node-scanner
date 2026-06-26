@@ -57,9 +57,10 @@ export function Pagination({
       >
         next ›
       </button>
-      <span className="ml-auto flex items-center gap-[6px]">
+      <label className="ml-auto flex items-center gap-[6px]">
         <span className="text-dim">rows</span>
         <select
+          aria-label="Rows per page"
           data-testid="pagination-page-size"
           value={pageSize}
           onChange={(e) => onPageSizeChange(Number(e.target.value))}
@@ -71,7 +72,7 @@ export function Pagination({
             </option>
           ))}
         </select>
-      </span>
+      </label>
     </div>
   );
 }
