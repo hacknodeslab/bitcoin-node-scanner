@@ -5,4 +5,6 @@ export { useNodeDetail } from "./use-node-detail";
 export { useScanJob } from "./use-scan-job";
 export { useVulnerabilities } from "./use-vulnerabilities";
 export { useAffectedNodes } from "./use-affected-nodes";
+export { useNostrStats } from "./use-nostr-stats";
+export { useNostrRelays } from "./use-nostr-relays";
 export type { NodeDetail } from "./use-node-detail";

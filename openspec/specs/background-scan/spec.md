@@ -1,4 +1,10 @@
-## ADDED Requirements
+# background-scan Specification
+
+## Purpose
+
+Runs Shodan scans as background jobs so the HTTP API stays responsive: a scan is triggered via the API, executes asynchronously through a tracked job state machine (pending → running → completed/failed), enforces single-flight execution, and persists its results to the database.
+
+## Requirements
 
 ### Requirement: Scan executes asynchronously
 The system SHALL run scans in a background thread so that the HTTP response is returned immediately upon scan trigger.

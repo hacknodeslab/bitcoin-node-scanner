@@ -6,10 +6,11 @@ import json
 import os
 import pytest
 import tempfile
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_node, cmd_link_cves, cmd_mark_examples, cmd_seed_examples, main
+from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_import_nostr, cmd_node, cmd_link_cves, cmd_mark_examples, cmd_seed_examples, main
 
 
 def _make_args(**kwargs):
@@ -613,3 +614,83 @@ class TestCmdSeedExamples:
 
         with Session() as s:
             assert s.query(Node).filter_by(ip="198.51.100.13", port=8333).count() == 1
+
+
+class TestCmdImportNostr:
+    """Tests for the db-import-nostr command."""
+
+    DUMP = {
+        "total": 2,
+        "resolved": 2,
+        "behind_any_cdn": 1,
+        "results": [
+            {"host": "cf.relay", "verdict": "cloudflare", "providers": ["cloudflare"], "ips": ["104.16.0.1"], "error": None},
+            {"host": "plain.relay", "verdict": "direct", "providers": [], "ips": ["8.8.8.8"], "error": None},
+        ],
+    }
+
+    def _empty_db(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from src.db.models import Base
+
+        engine = create_engine("sqlite:///:memory:", echo=False)
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+
+        @contextmanager
+        def fake_session():
+            s = Session()
+            try:
+                yield s
+                s.commit()
+            finally:
+                s.close()
+
+        return Session, fake_session
+
+    def test_returns_1_without_file(self):
+        assert cmd_import_nostr(_make_args(file=None)) == 1
+
+    def test_returns_1_when_db_not_configured(self, tmp_path):
+        f = tmp_path / "d.json"
+        f.write_text(json.dumps(self.DUMP))
+        with patch("src.db.cli.is_database_configured", return_value=False):
+            assert cmd_import_nostr(_make_args(file=str(f))) == 1
+
+    def test_returns_1_when_file_missing(self):
+        with patch("src.db.cli.is_database_configured", return_value=True):
+            assert cmd_import_nostr(_make_args(file="/nope/missing.json")) == 1
+
+    def test_returns_1_on_bad_json(self, tmp_path, capsys):
+        f = tmp_path / "bad.json"
+        f.write_text("{not valid json")
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"):
+            assert cmd_import_nostr(_make_args(file=str(f))) == 1
+        assert "failed to read JSON dump" in capsys.readouterr().out
+
+    def test_returns_1_when_dump_not_object(self, tmp_path, capsys):
+        f = tmp_path / "list.json"
+        f.write_text("[]")
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"):
+            assert cmd_import_nostr(_make_args(file=str(f))) == 1
+        assert "invalid dump format" in capsys.readouterr().out
+
+    def test_imports_dump_creates_scan_and_relays(self, tmp_path):
+        from src.db.models import NostrRelay, NostrScan
+
+        f = tmp_path / "dump.json"
+        f.write_text(json.dumps(self.DUMP))
+        Session, fake_session = self._empty_db()
+
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.db.cli.get_db_session", fake_session):
+            assert cmd_import_nostr(_make_args(file=str(f))) == 0
+
+        with Session() as s:
+            assert s.query(NostrScan).count() == 1
+            assert s.query(NostrRelay).count() == 2

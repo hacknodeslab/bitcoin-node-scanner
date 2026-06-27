@@ -1,9 +1,18 @@
 """
 SQLAlchemy models for Bitcoin Node Scanner database.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 import uuid
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp — a non-deprecated stand-in for ``datetime.utcnow``.
+
+    Stored columns are naive (the rest of the schema uses naive UTC), so we strip
+    the tzinfo to keep all timestamps comparable.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -205,6 +214,81 @@ class NodeVulnerability(Base):
 
     def __repr__(self) -> str:
         return f"<NodeVulnerability(node_id={self.node_id}, cve_id={self.cve_id})>"
+
+
+class NostrScan(Base):
+    """A single Nostr relay CDN-recon scan session.
+
+    Independent of `Scan` (Bitcoin nodes): a relay is keyed by host, not
+    (ip, port), and carries CDN-verdict semantics with no analog on `Node`.
+    Populated by the `db-import-nostr` CLI from a scanner JSON dump.
+    """
+    __tablename__ = 'nostr_scans'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    # Reference to the source relay list (filename/path of the imported dump).
+    source: Mapped[Optional[str]] = mapped_column(String(255))
+
+    # Aggregates (mirror the scanner dump's top-level fields).
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    resolved: Mapped[int] = mapped_column(Integer, default=0)
+    behind_any_cdn: Mapped[int] = mapped_column(Integer, default=0)
+
+    status: Mapped[str] = mapped_column(String(20), default='completed')  # completed, failed
+
+    relays: Mapped[List["NostrRelay"]] = relationship(
+        "NostrRelay",
+        back_populates="scan",
+    )
+
+    __table_args__ = (
+        Index('idx_nostr_scans_started_at', 'started_at'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<NostrScan(id={self.id}, total={self.total}, behind_any_cdn={self.behind_any_cdn})>"
+
+
+class NostrRelay(Base):
+    """A Nostr relay classified by CDN presence in the latest scan it appeared in.
+
+    One row per host (unique). Re-importing a later scan updates the row in
+    place (verdict/providers/ips/last_seen) rather than inserting a duplicate.
+    """
+    __tablename__ = 'nostr_relays'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    host: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Verdict: a provider name, a '+'-joined combo, 'direct', 'dns_error', or 'skipped'.
+    verdict: Mapped[str] = mapped_column(String(50), nullable=False, default='direct')
+    providers_json: Mapped[Optional[str]] = mapped_column(Text)  # JSON: [provider names]
+    ips_json: Mapped[Optional[str]] = mapped_column(Text)        # JSON: [resolved IPs]
+    error: Mapped[Optional[str]] = mapped_column(Text)
+
+    # The most recent scan that classified this host.
+    scan_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey('nostr_scans.id', ondelete='SET NULL'), nullable=True
+    )
+
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    scan: Mapped[Optional["NostrScan"]] = relationship("NostrScan", back_populates="relays")
+
+    __table_args__ = (
+        Index('idx_nostr_relays_host', 'host', unique=True),
+        # scan_id is the predicate for every scan-scoped read (list_relays,
+        # counts_by_verdict), so index it to avoid a full scan as history grows.
+        Index('idx_nostr_relays_scan_id', 'scan_id'),
+        Index('idx_nostr_relays_verdict', 'verdict'),
+        Index('idx_nostr_relays_last_seen', 'last_seen'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<NostrRelay(host={self.host}, verdict={self.verdict})>"
 
 
 class ScanJob(Base):

@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from ..db.connection import init_db
 from . import l402
-from .routers import nodes, stats, scans, vulnerabilities, csrf
+from .routers import nodes, stats, scans, vulnerabilities, csrf, nostr
 
 # Validate required configuration at import time so the process fails fast
 # if misconfigured (e.g., launched by a process manager).
@@ -59,6 +59,7 @@ app.include_router(nodes.router, prefix="/api/v1")
 app.include_router(stats.router, prefix="/api/v1")
 app.include_router(scans.router, prefix="/api/v1")
 app.include_router(vulnerabilities.router, prefix="/api/v1")
+app.include_router(nostr.router, prefix="/api/v1")
 app.include_router(csrf.router, prefix="/api/v1")
 app.include_router(l402.router, prefix="/api/v1")
 

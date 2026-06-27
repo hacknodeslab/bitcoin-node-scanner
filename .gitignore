@@ -44,6 +44,9 @@ reports/
 data/
 *.log
 
+# Nostr CDN-recon range cache (regenerated from upstream every 7 days)
+.cdn_cache/
+
 # OS
 .DS_Store
 Thumbs.db

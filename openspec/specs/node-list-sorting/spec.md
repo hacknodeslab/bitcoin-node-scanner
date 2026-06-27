@@ -1,4 +1,10 @@
-## ADDED Requirements
+# node-list-sorting Specification
+
+## Purpose
+
+Defines server-side sorting of the node list endpoint by a requested column and direction.
+
+## Requirements
 
 ### Requirement: Sort nodes by column
 The API SHALL accept `sort_by` and `sort_dir` query parameters on `GET /api/v1/nodes`. `sort_by` MUST be one of: `ip`, `port`, `version`, `risk_level`, `country_name`, `geo_country_name`, `last_seen`. `sort_dir` MUST be `asc` or `desc` (default: `desc`). Unknown values for `sort_by` SHALL fall back to `last_seen`.

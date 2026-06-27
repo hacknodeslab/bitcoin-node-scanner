@@ -40,6 +40,10 @@ dev = [
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
 ]
+# Only needed by src/nostr/extract_relays.py (nostr.watch xlsx → host list).
+nostr = [
+    "openpyxl>=3.1.0",
+]
 
 [project.scripts]
 bitcoin-scanner = "scanner:main"

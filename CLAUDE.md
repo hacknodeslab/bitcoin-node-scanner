@@ -31,11 +31,21 @@ python -m src.scanner --check-credits    # Check Shodan API credits
 # NOTE: scanner runs write JSON/CSV to output/ only — they do NOT persist to
 # the database. Load the results with `db-import` (see below).
 
+# Run the Nostr relay CDN-recon scanner (phase 0 — measures % of relays behind a CDN)
+python -m src.nostr.scanner relays.txt           # writes output/nostr_relays_<ts>.json
+python -m src.nostr.scanner relays.txt --workers 100 --timeout 4
+python -m src.nostr.extract_relays nw-relays.xlsx relays.txt --online --clearnet  # nostr.watch xlsx → host list
+# NOTE: like the Bitcoin scanner, the Nostr scanner writes JSON only and does
+# NOT persist — load the dump with `db-import-nostr` (see below). No Shodan
+# credits used (pure DNS + CDN CIDR matching). Phase 2 (origin unmasking) is
+# out of scope.
+
 # Database CLI
 python -m src.db.cli db-stats --days 30
 python -m src.db.cli db-trends --days 30 --granularity week
 python -m src.db.cli db-export --output export.json
 python -m src.db.cli db-import output/raw_data/nodes_<ts>.json  # Load a scanner JSON dump into the DB
+python -m src.db.cli db-import-nostr output/nostr_relays_<ts>.json  # Load a Nostr CDN-recon dump into the DB
 python -m src.db.cli enrich-geo          # Retroactively enrich geo data
 python -m src.db.cli db-link-cves        # (Re)build node→CVE links from cve_entries
 python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
@@ -52,7 +62,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`).
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`), `NOSTR_CDN_CACHE_DIR` (where the Nostr scanner caches CDN IP-range lists, default `.cdn_cache`; refreshed every 7 days).
 
 ## Architecture
 
@@ -80,6 +90,7 @@ The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and N
 - **reporter.py** — Multi-format output (JSON, CSV, text reports).
 - **geoip.py** — MaxMind GeoIP enrichment (separate from Shodan geo fields).
 - **credit_tracker.py** — Monitors Shodan API credit consumption.
+- **nostr/** — Nostr relay CDN-recon (phase 0): `classifier.py` (normalize → resolve A/AAAA → CDN CIDR match → verdict), `cdn_ranges.py` (cached Cloudflare/CloudFront/Fastly ranges + hardcoded Cloudflare fallback), `scanner.py` (runnable; writes a JSON dump to `output/`), `extract_relays.py` (nostr.watch xlsx → host list). No Shodan credits; pure DNS. Loaded into the DB via `db-import-nostr`. Phase 2 (origin unmasking) is out of scope.
 
 ### Database Layer (`src/db/`)
 
@@ -89,6 +100,7 @@ Uses **SQLAlchemy 2.0** with SQLite (default) or PostgreSQL. Key models in `mode
 - `CVEEntry` — Vulnerability catalog from NVD with CVSS scores.
 - `NodeVulnerability` — Many-to-many junction (node ↔ CVE) with detection timestamps.
 - `ScanJob` — Background async job tracking (pending → running → completed/failed).
+- `NostrScan` / `NostrRelay` — Nostr relay CDN-recon (dedicated tables, independent of `Node`/`Scan`). `NostrRelay` is keyed by `host` (unique), stores `verdict`/`providers`/`ips`; indexes on `host`, `verdict`, `last_seen`. Re-importing upserts in place (one row per host). The list/stats queries scope to the latest `NostrScan`.
 
 Repository pattern in `db/repositories/` abstracts all queries. `db/scanner_integration.py` bridges the scanner output into the database.
 
@@ -99,6 +111,7 @@ FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`au
 - `GET /api/v1/stats` — Aggregate statistics
 - `POST /api/v1/scans`, `GET /api/v1/scans/{job_id}` — Background scan jobs
 - `GET /api/v1/vulnerabilities` — CVE lookups
+- `GET /api/v1/nostr/relays` — Paginated Nostr relay list from the latest scan (filters: `verdict`, `provider`, `behind_cdn`); `GET /api/v1/nostr/stats` — per-verdict counts, % behind CDN. Surfaced in the dashboard `/nostr` panel.
 - `GET /api/v1/csrf-token` — CSRF token endpoint
 
 Background scans run via `web/background.py` (async task executor) so they don't block the HTTP API. Swagger UI at `/docs`, ReDoc at `/redoc`, and `/openapi.json` are gated behind `ENABLE_API_DOCS` (set to `1`/`true`/`yes` in local dev; disabled by default to keep the public surface minimal).
@@ -119,3 +132,26 @@ The active mode (`dark` / `light` / `system`) lives in `localStorage['bns:theme'
 - **Dual geo sources**: Nodes have both Shodan-provided geo fields (`country_code`, `city`) and MaxMind fields (`geo_country_code`, `geo_subdivision`, `asn`). Don't conflate them.
 - **Risk level enum**: Always use `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` strings (defined in `analyzer.py`) — not numeric scores.
 - **Database portability**: Session management in `db/connection.py` handles SQLite foreign key pragmas automatically; PostgreSQL and SQLite behave differently for some queries.
+
+## Registro en el segundo cerebro (Logseq)
+
+Este repo es el código del proyecto **HackNodes Pesquisa**. Al terminar una sesión
+con cambios relevantes, registra el trabajo en el grafo Logseq que está en:
+
+  /Users/ifuensan/Work/hacknodes/myprojects/research/logseq-claude-brain
+
+Reglas:
+- La página del proyecto YA existe: `pages/HackNodes Pesquisa.md`. No crees una nueva.
+- Respeta la sintaxis de bloques de Logseq (ver el `CLAUDE.md` de ese grafo): cada
+  línea es un bloque `- `, propiedades `clave:: valor` en el primer bloque, NADA de
+  frontmatter YAML.
+- Bajo `## Log` añade un bloque (append-only, nunca borres los antiguos):
+    - DONE [qué se hizo, en pasado]
+      date:: [[Jun 18th, 2026]]   ← formato Logseq: MMM do, yyyy
+- Si hubo una decisión, regístrala bajo `## Decisiones` con `por-que::` y `date::`.
+- Añade una línea resumen en el journal del día `journals/YYYY_MM_DD.md`,
+  enlazando al proyecto: `- Trabajé en [[HackNodes Pesquisa]]: <resumen>.`
+- area:: de este proyecto es [[HackNodes]].
+- Datos sensibles (claves, tokens Shodan/`.env`, IPs concretas de nodos vulnerables):
+  NO los persistas en el grafo; resume sin exponer el dato crudo.
+- Pídeme confirmación antes de escribir si tienes dudas.
