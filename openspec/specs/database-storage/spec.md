@@ -1,4 +1,10 @@
-## ADDED Requirements
+# database-storage Specification
+
+## Purpose
+
+Defines the SQLAlchemy persistence layer: connection management across SQLite/PostgreSQL, and the models and bulk operations for nodes, scan sessions, the NVD CVE catalog, node↔CVE vulnerability links, and Nostr relay CDN-recon data.
+
+## Requirements
 
 ### Requirement: Database connection management
 

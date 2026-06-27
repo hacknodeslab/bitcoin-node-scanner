@@ -1,4 +1,10 @@
-## ADDED Requirements
+# historical-analysis Specification
+
+## Purpose
+
+Provides longitudinal analytics over persisted scans: vulnerability trends, version-distribution history, geographic distribution, node lifecycle tracking, and aggregate statistical queries across time.
+
+## Requirements
 
 ### Requirement: Vulnerability trend analysis
 

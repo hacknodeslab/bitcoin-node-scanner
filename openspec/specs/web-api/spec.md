@@ -1,7 +1,9 @@
 # web-api Specification
 
 ## Purpose
-TBD - canonicalised on archive of paginate-nodes-and-add-footer; previous archive left this file in delta-only form. Update Purpose with a short description of the FastAPI backend's responsibilities.
+
+Defines the FastAPI backend at `/api/v1/*`: a key-authenticated (plus CSRF for mutations) JSON API that exposes the scanned-node list, aggregate stats, the CVE catalog, background scan jobs, and the Nostr relay CDN-recon endpoints consumed by the Next.js dashboard.
+
 ## Requirements
 ### Requirement: API server starts and serves requests
 The system SHALL provide a FastAPI HTTP server runnable via `uvicorn src.web.main:app` that listens on a configurable host and port.

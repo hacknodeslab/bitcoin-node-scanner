@@ -1,4 +1,10 @@
-## ADDED Requirements
+# node-list-filtering Specification
+
+## Purpose
+
+Defines server-side filtering of the node list endpoint: filtering by country (with a distinct-countries lookup) and by the example-data flag.
+
+## Requirements
 
 ### Requirement: Filter nodes by country
 The API SHALL accept a `country` query parameter on `GET /api/v1/nodes` that filters results to nodes whose `country_name` matches the given value (case-insensitive).

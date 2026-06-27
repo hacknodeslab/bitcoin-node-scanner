@@ -1,4 +1,10 @@
-## ADDED Requirements
+# data-migrations Specification
+
+## Purpose
+
+Manages the database schema lifecycle and data loading: an Alembic-based migration system creates and versions the schema, applies migrations safely, and supports importing scanner JSON output into the database.
+
+## Requirements
 
 ### Requirement: Schema migration system
 
