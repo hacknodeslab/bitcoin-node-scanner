@@ -656,7 +656,7 @@ class BitcoinNodeScanner:
     # `rate`) and an optional `max_ips` cap.
     # ------------------------------------------------------------------
 
-    def scan_from_ip_list(self, path: str, max_ips: int = None, rate: float = 1.0) -> Dict:
+    def scan_from_ip_list(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
         """Look up each IP from `path` in Shodan and collect Bitcoin services.
 
         Reuses `parse_node_data` so records are identical to query-based scans.
@@ -664,6 +664,11 @@ class BitcoinNodeScanner:
         dict of counts. Populates `self.results` / `self.unique_ips`.
         """
         from src.ip_list import read_ip_list  # noqa: PLC0415
+
+        if rate < 0:
+            raise ValueError("rate must be >= 0")
+        if max_ips is not None and max_ips < 0:
+            raise ValueError("max_ips must be >= 0")
 
         entries, counts = read_ip_list(path)
         self.log(
@@ -739,7 +744,7 @@ class BitcoinNodeScanner:
             'elapsed_sec': round(time.time() - start, 1),
         }
 
-    def run_ip_list_scan(self, path: str, max_ips: int = None, rate: float = 1.0) -> Dict:
+    def run_ip_list_scan(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
         """Full IP-list run: look up IPs, write the JSON dump, print a summary."""
         self.log("=" * 80)
         self.log("STARTING IP-LIST SCAN")

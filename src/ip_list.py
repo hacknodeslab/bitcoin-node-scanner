@@ -5,6 +5,11 @@ Accepts peer-observer's clearnet exports and common hand-edited forms, per line:
 - IPv6 bracketed ``[ip]:port`` e.g. ``[2001:db8::1]:8333``
 - CSV ``ip,port``              e.g. ``203.0.113.5,8333``
 - a bare IP (v4 or v6) with no port
+- unbracketed full IPv6 + port e.g. ``2001:0:...:79f6:8333``
+
+To attach a port to a *compressed* IPv6 literal, use the bracketed form: an
+unbracketed compressed address such as ``2001:db8::1:8333`` is itself valid
+IPv6 and is read as a bare address (the trailing group is not a port).
 
 Blank lines and ``#`` comments are ignored. The colon split is careful not to
 mistake a bare (unbracketed) IPv6 address — which also contains colons — for a
@@ -47,9 +52,13 @@ def parse_ip_line(line: str) -> Optional[Tuple[str, Optional[int]]]:
         return None
 
     # CSV `ip,port` (also covers `ip,` and bare `ip` with a trailing comma).
+    # Reject rows with more than two fields rather than silently truncating a
+    # malformed export into a plausible-but-wrong entry.
     if "," in s:
         parts = [p.strip() for p in s.split(",")]
-        return _validate(parts[0], parts[1] if len(parts) > 1 else None)
+        if len(parts) > 2:
+            return None
+        return _validate(parts[0], parts[1] if len(parts) == 2 else None)
 
     # Bracketed IPv6, optionally with a port: `[2001:db8::1]:8333`.
     if s.startswith("["):
@@ -66,9 +75,17 @@ def parse_ip_line(line: str) -> Optional[Tuple[str, Optional[int]]]:
         return _validate(ip, port)
 
     # More than one colon, unbracketed: either a bare IPv6, or an unbracketed
-    # IPv6 with a trailing `:port` (peer-observer emits these too). Try the
-    # whole string as an IPv6 first — that resolves the ambiguity safely: a
-    # valid IPv6 is taken as-is (no port), otherwise split the trailing :port.
+    # IPv6 with a trailing `:port` (peer-observer emits full Teredo addresses
+    # this way). Try the whole string as an IPv6 first, then fall back to
+    # splitting a trailing `:port`.
+    #
+    # LIMITATION: for a *compressed* literal this is inherently ambiguous —
+    # e.g. `2001:db8::1:8333` is itself a valid IPv6, so it is taken as a bare
+    # address and the trailing group is NOT treated as a port. To attach a port
+    # to a compressed IPv6, bracket it (`[2001:db8::1]:8333`). This only affects
+    # non-default ports on compressed unbracketed input; peer-observer's IPv6
+    # export is already bracketed, and its unbracketed entries are full (so they
+    # fail the whole-string parse and recover their port via the split).
     whole = _validate(s, None)
     if whole is not None:
         return whole

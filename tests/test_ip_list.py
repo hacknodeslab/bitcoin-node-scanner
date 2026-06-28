@@ -50,6 +50,10 @@ class TestParseIpLine:
         assert parse_ip_line("1.2.3.4:70000") is None
         assert parse_ip_line("1.2.3.4:abc") is None
 
+    def test_csv_too_many_fields_rejected(self):
+        # A malformed CSV row must be rejected, not silently truncated.
+        assert parse_ip_line("1.2.3.4,8333,extra") is None
+
 
 class TestReadIpList:
     def test_mixed_file(self, tmp_path):

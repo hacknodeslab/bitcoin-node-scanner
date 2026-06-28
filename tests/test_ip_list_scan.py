@@ -102,3 +102,11 @@ class TestScanFromIpList:
         summary = scanner.scan_from_ip_list(path, max_ips=2, rate=0)
         assert summary["lookups"] == 2
         assert scanner.api.host.call_count == 2
+
+    def test_rejects_negative_rate_and_max_ips(self, scanner, tmp_path):
+        path = _write(tmp_path, ["1.1.1.1:8333"])
+        with pytest.raises(ValueError):
+            scanner.scan_from_ip_list(path, rate=-1)
+        with pytest.raises(ValueError):
+            scanner.scan_from_ip_list(path, max_ips=-5)
+        scanner.api.host.assert_not_called()  # failed fast, before any lookup
