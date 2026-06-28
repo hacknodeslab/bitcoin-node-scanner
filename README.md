@@ -20,7 +20,7 @@ API, and UI.
 
 | Domain | What it measures | Data source | Docs |
 |--------|------------------|-------------|------|
-| **Bitcoin node scanner** | Vulnerable / misconfigured Bitcoin nodes exposed on the clearnet (bad versions, exposed RPC, risk level, geo) | Shodan API | [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md) |
+| **Bitcoin node scanner** | Vulnerable / misconfigured Bitcoin nodes exposed on the clearnet (bad versions, exposed RPC, risk level, geo) | Shodan API — search queries or a provided IP list (`--ips`, e.g. a peer-observer export) | [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md) |
 | **Nostr relay CDN-recon** | Centralization — what % of Nostr relays sit behind a CDN (Cloudflare / CloudFront / Fastly) vs. exposing their origin | DNS + CDN CIDR ranges (no Shodan credits) | [docs/nostr-cdn-recon.md](docs/nostr-cdn-recon.md) |
 
 Both domains feed the same dashboard and REST API; the Bitcoin engine adds NVD/CVE

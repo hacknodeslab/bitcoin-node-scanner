@@ -60,6 +60,34 @@ python -m src.db.cli db-import output/raw_data/nodes_<ts>.json
 See the [Usage Guide](USAGE.md) and [Methodology](METHODOLOGY.md) for the full
 workflow, query tuning, and risk-assessment rationale.
 
+### Scan from a provided IP list (`--ips`)
+
+Instead of discovering nodes via Shodan search queries, you can feed a list of
+node IPs — e.g. exported from [b10c's peer-observer](https://github.com/0xB10C/peer-observer)
+or `bitcoin-cli getnodeaddresses 0` — and look each one up in Shodan:
+
+```bash
+python -m src.scanner --ips data/peers/peers.txt
+python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
+```
+
+Input is tolerant: peer-observer's `host:port` (IPv4 `1.2.3.4:8333`, IPv6
+`[2001:db8::1]:8333`), a plain IP per line, or CSV `ip,port`; blank lines and
+`#` comments are ignored and IPs deduped.
+
+- **Cost: none.** Shodan host lookups (`/shodan/host/{ip}`) consume **no query
+  credits and no scan credits** — so this works even on the one-time Membership
+  tier. The only limit is the API rate (~1 req/s, so ~3.5 h for ~12k IPs).
+  `--max-ips` caps a run; `--rate` tunes the pacing.
+- **IPs not in Shodan are skipped** (no on-demand scanning) and counted in the
+  summary alongside IPs found and IPs with no Bitcoin service.
+- Like the query-based scan, this **writes a JSON dump to `output/`** and does
+  not persist; load it with `db-import`.
+
+```bash
+python -m src.db.cli db-import output/raw_data/nodes_<ts>.json
+```
+
 ---
 
 ## MaxMind GeoIP Setup

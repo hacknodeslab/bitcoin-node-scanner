@@ -28,8 +28,15 @@ python -m src.web.main
 python -m src.scanner
 python -m src.scanner --quick            # Cache + limited enrichment
 python -m src.scanner --check-credits    # Check Shodan API credits
+python -m src.scanner --ips peers.txt    # Scan a provided IP list via host lookups (not search)
+python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
 # NOTE: scanner runs write JSON/CSV to output/ only — they do NOT persist to
 # the database. Load the results with `db-import` (see below).
+# --ips mode: looks each IP up with api.host() (host:port / [ipv6]:port / CSV /
+# IP-per-line input, e.g. a peer-observer export or `bitcoin-cli getnodeaddresses
+# 0`). Host lookups consume NO query/scan credits (works on any tier incl.
+# Membership); bounded by the API rate limit (~1 req/s) and --max-ips. IPs not
+# in Shodan are skipped. Still writes JSON only → load with db-import.
 
 # Run the Nostr relay CDN-recon scanner (phase 0 — measures % of relays behind a CDN)
 python -m src.nostr.scanner relays.txt           # writes output/nostr_relays_<ts>.json
