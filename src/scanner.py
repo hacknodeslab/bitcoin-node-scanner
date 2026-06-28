@@ -649,6 +649,136 @@ class BitcoinNodeScanner:
         self.log("SCAN COMPLETED")
         self.log("="*80)
 
+    # ------------------------------------------------------------------
+    # IP-list mode (--ips): look up a caller-provided list of node IPs via
+    # Shodan host lookups instead of search queries. Host lookups consume no
+    # query/scan credits; the run is bounded by the API rate limit (paced via
+    # `rate`) and an optional `max_ips` cap.
+    # ------------------------------------------------------------------
+
+    def scan_from_ip_list(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
+        """Look up each IP from `path` in Shodan and collect Bitcoin services.
+
+        Reuses `parse_node_data` so records are identical to query-based scans.
+        IPs not in Shodan are skipped (no on-demand scanning). Returns a summary
+        dict of counts. Populates `self.results` / `self.unique_ips`.
+        """
+        from src.ip_list import read_ip_list  # noqa: PLC0415
+
+        if rate < 0:
+            raise ValueError("rate must be >= 0")
+        if max_ips is not None and max_ips < 0:
+            raise ValueError("max_ips must be >= 0")
+
+        entries, counts = read_ip_list(path)
+        self.log(
+            f"IP-list: {counts['raw']} lines, {counts['unique']} unique IPs, "
+            f"{counts['invalid']} invalid skipped"
+        )
+
+        accept_default = set(Config.BITCOIN_PORTS)
+        found = not_found = no_service = errors = lookups = 0
+        start = time.time()
+
+        for idx, (ip, expected_ports) in enumerate(entries):
+            if max_ips is not None and lookups >= max_ips:
+                self.log(
+                    f"Reached --max-ips cap ({max_ips}); "
+                    f"{len(entries) - idx} IPs left unprocessed.",
+                    'WARNING'
+                )
+                break
+
+            try:
+                host = self.api.host(ip)
+            except shodan.APIError as e:
+                lookups += 1
+                msg = str(e).lower()
+                if 'no information' in msg or 'not found' in msg or 'invalid ip' in msg:
+                    not_found += 1
+                else:
+                    errors += 1
+                    self.log(f"Lookup error for {ip}: {e}", 'WARNING')
+                if rate:
+                    time.sleep(rate)
+                continue
+
+            lookups += 1
+            accept = accept_default | set(expected_ports)
+            matched = 0
+            for banner in host.get('data', []):
+                if banner.get('port') not in accept:
+                    continue
+                # Per-service banner; fall back to host-root fields it omits.
+                merged = dict(banner)
+                for k in ('asn', 'org', 'isp', 'hostnames', 'domains', 'os'):
+                    if not merged.get(k) and host.get(k):
+                        merged[k] = host[k]
+                if not merged.get('location'):
+                    merged['location'] = {
+                        'country_name': host.get('country_name', ''),
+                        'country_code': host.get('country_code', ''),
+                        'city': host.get('city', ''),
+                    }
+                node = self.parse_node_data(merged, f"ip-list:{os.path.basename(path)}")
+                self.results.append(node)
+                self.unique_ips.add(ip)
+                matched += 1
+
+            if matched:
+                found += 1
+            else:
+                no_service += 1  # in Shodan, but no Bitcoin-relevant port
+            if rate:
+                time.sleep(rate)
+
+        return {
+            'total_read': counts['raw'],
+            'unique': counts['unique'],
+            'invalid': counts['invalid'],
+            'found': found,
+            'not_found': not_found,
+            'no_service': no_service,
+            'errors': errors,
+            'lookups': lookups,
+            'elapsed_sec': round(time.time() - start, 1),
+        }
+
+    def run_ip_list_scan(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
+        """Full IP-list run: look up IPs, write the JSON dump, print a summary."""
+        self.log("=" * 80)
+        self.log("STARTING IP-LIST SCAN")
+        self.log("=" * 80)
+        self.get_account_info()
+
+        summary = self.scan_from_ip_list(path, max_ips=max_ips, rate=rate)
+
+        if self.results:
+            stats = self.generate_statistics()
+            self.save_raw_data()
+            self.save_statistics(stats)
+            self.generate_report(stats)
+        else:
+            self.log("No Bitcoin nodes found from the IP list — nothing to save.", 'WARNING')
+
+        self.log("\n" + "=" * 80)
+        self.log("IP-LIST SCAN SUMMARY")
+        self.log(f"  IPs read (non-blank): {summary['total_read']}")
+        self.log(f"  unique IPs:           {summary['unique']} ({summary['invalid']} invalid skipped)")
+        self.log(f"  found in Shodan:      {summary['found']}")
+        self.log(f"  not in Shodan:        {summary['not_found']}")
+        self.log(f"  no Bitcoin service:   {summary['no_service']}")
+        self.log(f"  lookup errors:        {summary['errors']}")
+        self.log(f"  lookups performed:    {summary['lookups']}")
+        self.log(f"  elapsed:              {summary['elapsed_sec']}s")
+        self.log("=" * 80)
+        if self.results:
+            self.log(
+                f"Import with: python -m src.db.cli db-import "
+                f"{Config.RAW_DATA_DIR}/nodes_{self.timestamp}.json"
+            )
+        return summary
+
 # ============================================================================
 # OPTIMIZED SCANNER
 # ============================================================================
@@ -1055,7 +1185,16 @@ Usage examples:
                        help='Quick scan (cache + limited enrichment)')
     parser.add_argument('--check-credits', action='store_true',
                        help='Check credits and exit')
-    
+    parser.add_argument('--ips', metavar='FILE',
+                       help='Scan a provided list of node IPs via Shodan host lookups '
+                            '(host:port, [ipv6]:port, CSV, or IP-per-line) instead of search '
+                            'queries. Host lookups consume no query/scan credits.')
+    parser.add_argument('--max-ips', type=int, default=None,
+                       help='Cap the number of IPs looked up in an --ips run')
+    parser.add_argument('--rate', type=float, default=1.0,
+                       help='Seconds between host lookups in --ips mode '
+                            '(default 1.0 ≈ Shodan rate limit)')
+
     args = parser.parse_args()
     
     try:
@@ -1067,7 +1206,12 @@ Usage examples:
         if args.check_credits:
             scanner.get_account_info()
             return 0
-        
+
+        # IP-list mode: look up a provided list of IPs (credit-free host lookups)
+        if args.ips:
+            scanner.run_ip_list_scan(args.ips, max_ips=args.max_ips, rate=args.rate)
+            return 0
+
         # Quick mode
         if args.quick:
             scanner.run_optimized_scan(
