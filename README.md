@@ -133,6 +133,7 @@ Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
 - [Methodology](docs/METHODOLOGY.md)
 - [Database Support](docs/DATABASE.md)
 - [Frontend Deployment](docs/deploy-frontend.md)
+- [Deploying to frodo (HackNodes Proxmox)](docs/deploy-frodo.md)
 - **Bitcoin node scanner** → [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md)
 - **Nostr relay CDN-recon** → [docs/nostr-cdn-recon.md](docs/nostr-cdn-recon.md)
 
