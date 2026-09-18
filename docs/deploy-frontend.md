@@ -1,5 +1,7 @@
 # Frontend deployment
 
+> **Legacy (EC2).** Production moved to the LXC on frodo on 2026-09-18 — see [deploy-frodo.md](deploy-frodo.md). `deploy.yml` is frozen to manual runs only. The service layout below is the same on frodo; only provisioning and the deploy path (`scripts/deploy.sh` on the host instead of GitHub Actions) differ. Kept until the EC2 is decommissioned.
+
 Production runs both the FastAPI backend and the Next.js dashboard on a single Ubuntu EC2 host (`98.94.124.224`), behind nginx, lifecycle-managed by systemd. Pushing to `main` triggers `.github/workflows/deploy.yml`, which deploys the backend first and then the frontend.
 
 ```
@@ -28,7 +30,7 @@ Run on the EC2, after `git pull`ing this change onto the host:
 ssh ubuntu@98.94.124.224
 cd /home/ubuntu/bitcoin-node-scanner
 git pull origin main
-bash scripts/bootstrap-frontend-host.sh
+bash scripts/bootstrap-host.sh      # bootstrap-frontend-host.sh still works as an alias
 ```
 
 The script is idempotent. It:

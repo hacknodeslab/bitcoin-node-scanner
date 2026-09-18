@@ -1,9 +1,12 @@
-name: Deploy to EC2
+name: Deploy to EC2 (legacy, manual only)
 
+# FROZEN 2026-09-18: production moved to the LXC on frodo, deployed on-host
+# with scripts/deploy.sh (see docs/deploy-frodo.md). This workflow no longer
+# runs on push; it can still be triggered by hand from the Actions tab if the
+# EC2 ever needs a last deploy before it is decommissioned. Delete it together
+# with the EC2 and the EC2_SSH_KEY / WEB_API_KEY repository secrets.
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

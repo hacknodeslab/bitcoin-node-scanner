@@ -81,7 +81,7 @@ Shodan API ──► scanner.py ──► db/scanner_integration.py ──► SQ
 The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and Node (pnpm) for the dashboard at `frontend/`. They run as two processes — FastAPI on `:8000` exposes `/api/v1/*`, the Next.js app on `:3000` consumes it. `GET /` on the backend 302-redirects to `FRONTEND_ORIGIN`. FastAPI no longer serves any HTML.
 
 - **Dev**: cross-origin (`localhost:3000` → `localhost:8000`). CORS allow-list driven by `FRONTEND_ORIGIN`.
-- **Prod**: single-origin via nginx on port 80 (`/api/` → backend, `/` → Next.js). No CORS preflight from browsers. `NEXT_PUBLIC_API_BASE_URL=/api/v1` (relative). Deployment via `.github/workflows/deploy.yml` to a single EC2 host running both as systemd units (`bitcoin-scanner.service` + `bitcoin-scanner-frontend.service`). See `docs/deploy-frontend.md`.
+- **Prod**: single-origin via nginx on port 80 (`/api/` → backend, `/` → Next.js). No CORS preflight from browsers. `NEXT_PUBLIC_API_BASE_URL=/api/v1` (relative). Both run as systemd units (`bitcoin-scanner.service` + `bitcoin-scanner-frontend.service`, sources in `scripts/systemd/`). Production is the LXC `pesquisa` (CT 113) on **frodo**, the HackNodes Proxmox on the lab LAN, published as `https://audit.hacknodes.xyz` through a Cloudflare Tunnel (no inbound ports). Provisioned with `scripts/bootstrap-host.sh`, deployed on-host with `scripts/deploy.sh` because CI cannot reach the LAN; see `docs/deploy-frodo.md`. The old EC2 is frozen (`.github/workflows/deploy.yml` is manual-only, `docs/deploy-frontend.md`) pending decommission. Gondor is the Librería de Satoshi Proxmox — not for this project.
 
 ### Key Modules (`src/`)
 
