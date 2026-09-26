@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Idempotent bootstrap for a bitcoin-node-scanner host (backend + frontend).
 #
-# Works on Ubuntu (EC2) and Debian (LXC on frodo, the HackNodes Proxmox). Installs system
+# Works on Debian (LXC on frodo, the HackNodes Proxmox) and Ubuntu. Installs system
 # packages, Node LTS + pnpm, nginx, both systemd units, the nginx site, the
 # sudoers rules, and prepares the frontend runtime directory. Safe to re-run.
 #
@@ -19,9 +19,9 @@
 #   FRONTEND_RUNTIME_DIR  built Next.js artifact  (default: $HOME/bitcoin-scanner-frontend)
 #   NODE_MAJOR            Node major to install   (default: 22)
 #
-# The shipped unit/sudoers files are written for `ubuntu` under /home/ubuntu;
-# this script rewrites user, group and paths before installing, so on the EC2
-# host (ubuntu) the rendered files are byte-identical to the repo copies.
+# The shipped unit/sudoers files are written for `ubuntu` under /home/ubuntu
+# (the defaults of the former EC2 host); this script rewrites user, group and
+# paths before installing, so they work for any deploy user.
 
 set -euo pipefail
 
@@ -74,7 +74,7 @@ install_node() {
     fi
 }
 
-# render SRC DST MODE — rewrite the ubuntu/EC2 defaults baked into the shipped
+# render SRC DST MODE — rewrite the ubuntu defaults baked into the shipped
 # file for this host, then install it only if it differs from what is there.
 # Returns 0 if the file changed, 1 if it was already up-to-date.
 render_install() {

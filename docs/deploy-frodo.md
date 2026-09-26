@@ -1,15 +1,14 @@
 # Deploying to frodo (HackNodes Proxmox)
 
 Runbook for hosting the scanner on **frodo**, the HackNodes Proxmox VE host
-on the lab LAN (`192.168.1.247`, Debian 13, web panel `:8006`), instead of
-the AWS EC2 described in [deploy-frontend.md](deploy-frontend.md). The
-application layout inside the container is the same as on EC2 — nginx on
-`:80` fronting FastAPI `:8000` and Next.js `:3000`, both managed by systemd —
-so everything in that document about services, smoke tests and
-troubleshooting still applies. What changes is *how the host is provisioned*
-(an unprivileged LXC) and *how code gets there*: GitHub Actions cannot reach
-a container on a home LAN, so deploys run on the host with
-`scripts/deploy.sh`.
+on the lab LAN (`192.168.1.247`, Debian 13, web panel `:8006`). Production
+lived on an AWS EC2 behind CloudFront until 2026-09-18 (decommissioned; see
+§7). The application layout is unchanged from that era — nginx on `:80`
+fronting FastAPI `:8000` and Next.js `:3000`, both managed by systemd. What
+changed is *how the host is provisioned* (an unprivileged LXC) and *how code
+gets there*: GitHub Actions cannot reach a container on a home LAN, so
+deploys run on the host with `scripts/deploy.sh` (there is no CI deploy
+workflow any more).
 
 > Not to be confused with **Gondor**, the Librería de Satoshi Proxmox in SFO.
 > HackNodes projects live on frodo.
@@ -118,9 +117,8 @@ bash scripts/bootstrap-host.sh
    dashboard, outside the git checkout).
 
 Overrides: `DEPLOY_USER`, `REPO_DIR`, `FRONTEND_RUNTIME_DIR`, `NODE_MAJOR`
-(see the script header). On the EC2 host (`ubuntu`, `/home/ubuntu`) the
-rendered files are byte-identical to the repo copies, so the same script
-keeps working there; `bootstrap-frontend-host.sh` is now a thin wrapper.
+(see the script header). The shipped unit/sudoers files default to `ubuntu`
+under `/home/ubuntu`; the script rewrites them for the actual deploy user.
 
 The systemd hardening (`ProtectSystem=strict`, `PrivateTmp`, `MemoryMax`)
 works as-is inside the unprivileged LXC; both units come up clean.
@@ -315,16 +313,29 @@ values was worth bringing over.
    container (`cf-ray` header present, `server: cloudflare`).
 4. ✅ `FRONTEND_ORIGIN` includes the public origin; `GET /` on the backend
    redirects there.
-5. Freeze the EC2 deploy: in `.github/workflows/deploy.yml` change `on:` to
-   `workflow_dispatch` (or delete the workflow) so a push to `main` no longer
-   touches the EC2.
+5. ✅ EC2 deploy frozen: `.github/workflows/deploy.yml` is `workflow_dispatch`
+   only (PR #21, merged 2026-09-18; the merge commit triggered no deploy run).
 6. ✅ DNS switched (zone moved to Cloudflare, tunnel record for `audit`).
    Delete the CloudFront distribution once traffic has moved.
-7. Keep the EC2 stopped (not terminated) for a week, then dismantle in the
-   AWS console: instance + EBS volume, Elastic IP `98.94.124.224`, security
-   group, key pair, the CloudFront distribution `d1vsfl24f8b7ew` (audit) and
-   its Namecheap CNAME, and the GitHub secrets `EC2_SSH_KEY` /
-   `WEB_API_KEY` once `deploy.yml` is gone.
+7. EC2 `i-0941fb6586b829044` (t3.micro): services disabled and OS shut down on
+   2026-09-18 14:38 UTC (instance state → stopped). Nothing regressed during
+   the week of quarantine.
+8. ✅ Repo side (2026-09-26): `deploy.yml`, `docs/deploy-frontend.md` and the
+   `bootstrap-frontend-host.sh` shim removed; the `deploy-frontend-ci` layout
+   (standalone Next.js + runtime dir outside the checkout) stays, now driven
+   by `scripts/deploy.sh`.
+9. AWS console + GitHub (manual, no CLI credentials on the dev VM):
+   - [ ] Terminate the instance and delete its EBS volume.
+   - [ ] Release Elastic IP `98.94.124.224`.
+   - [ ] Delete the security group and the key pair.
+   - [ ] Disable, then delete, CloudFront distribution `d1vsfl24f8b7ew`
+         (audit). Do NOT touch `d1nqm31up9h70w` — that is
+         `pesquisa.hacknodes.xyz`, another product.
+   - [ ] Delete the ACM certificate that backed it (and its `_…audit`
+         validation CNAME in the Cloudflare zone, if it was imported).
+   - [ ] Delete the GitHub repository secrets `EC2_SSH_KEY` and `WEB_API_KEY`
+         (`gh secret delete EC2_SSH_KEY && gh secret delete WEB_API_KEY`);
+         only the removed `deploy.yml` used them.
 
 ## 8. Operations
 
@@ -342,3 +353,17 @@ values was worth bringing over.
 
 Both units are `enabled` and the container has `onboot: 1`, so a reboot of
 the container or of frodo brings the app back without intervention.
+
+### Troubleshooting
+
+| Symptom | Where to look |
+| ------- | ------------- |
+| A unit is not starting | `journalctl -u bitcoin-scanner -n 200 --no-pager` (or `-u bitcoin-scanner-frontend`) |
+| 502 from nginx on `/` | frontend down → `systemctl status bitcoin-scanner-frontend` |
+| 502 from nginx on `/api/` | backend down → `systemctl status bitcoin-scanner` |
+| 502 / 530 from the public URL but the LAN works | tunnel → `journalctl -u cloudflared -n 100 --no-pager`, then `cloudflared tunnel info` on the Zero Trust dashboard |
+| nginx config rejected | `sudo nginx -t` shows the exact line |
+| `deploy.sh` fails in `pnpm build` | OOM in the 4 GB container is the usual cause; re-run with `--frontend-only` once memory is free, or bump the CT's RAM on frodo |
+| Frontend `next start` OOM at runtime | bump `MemoryMax=` in `scripts/systemd/bitcoin-scanner-frontend.service` and re-run `bootstrap-host.sh` |
+| CSRF cookie not round-tripping | check the `Set-Cookie` attributes in the browser; behind the tunnel the origin sees `X-Forwarded-Proto: https` from nginx, so `Secure` cookies work |
+| Frontend rollback in a pinch | `cp -a ~/bitcoin-scanner-frontend ~/bitcoin-scanner-frontend.bak` before a risky deploy, then `rsync -a --delete` it back and restart the unit |

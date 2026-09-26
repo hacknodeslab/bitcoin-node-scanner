@@ -2,10 +2,9 @@
 # On-host deploy for bitcoin-node-scanner: pull, install, migrate, build the
 # Next.js dashboard, activate it, restart both systemd units, smoke-test.
 #
-# This is the deploy path for hosts GitHub Actions cannot reach (the LXC on
-# frodo, the HackNodes Proxmox on the lab LAN). It mirrors what
-# .github/workflows/deploy.yml does for the EC2 host, but builds the frontend
-# on the host itself instead of in a CI runner.
+# This is the only deploy path: production is the LXC on frodo (the HackNodes
+# Proxmox on the lab LAN), which GitHub Actions cannot reach, so the frontend
+# is built on the host itself instead of in a CI runner.
 #
 # Usage (as the deploy user, after scripts/bootstrap-host.sh):
 #   bash scripts/deploy.sh                 # full deploy of origin/main
