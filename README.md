@@ -1,7 +1,7 @@
 # HackNodes Recon Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=hacknodeslab_bitcoin-node-scanner)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=hacknodeslab_bitcoin-node-scanner)
@@ -153,7 +153,7 @@ cd frontend && pnpm typecheck && pnpm test
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Node + pnpm (for the dashboard)
 - A Shodan API key for Bitcoin scanning ([shodan.io](https://account.shodan.io/)) —
   not needed for Nostr recon
