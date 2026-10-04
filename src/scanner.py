@@ -1149,8 +1149,6 @@ class OptimizedBitcoinScanner(BitcoinNodeScanner):
 
 def main():
     """Main function for optimized scanner"""
-    import argparse
-    
     parser = argparse.ArgumentParser(
         description='Optimized Bitcoin Node Scanner - Credit Efficient',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1162,15 +1160,18 @@ Credit-Saving Features:
   - Selective enrichment (only critical nodes)
   
 Usage examples:
-  
+
   # Quick scan with all optimizations
-  python optimized_scanner.py --quick
-  
+  python -m src.scanner --quick
+
   # Full scan without cache
-  python optimized_scanner.py --no-cache
-  
+  python -m src.scanner --no-cache
+
   # Scan with limited enrichment
-  python optimized_scanner.py --max-enrich 50
+  python -m src.scanner --max-enrich 50
+
+  # Credit-free host lookups from an IP list
+  python -m src.scanner --ips data/peers/peers.txt
         """
     )
     

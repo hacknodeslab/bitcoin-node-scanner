@@ -223,17 +223,40 @@ class JSONImporter:
         db_data["has_exposed_rpc"] = port == 8332
         db_data["is_dev_version"] = ".99." in node_data.get("version", "")
 
+        # Provenance marker: records produced by the --ips host-lookup mode carry
+        # a `query` of "ip-list:<file>". Tag those nodes "peer-observer" so they
+        # stay distinguishable from query-discovered nodes (the Node table has no
+        # dedicated source column). Tags are merged, never clobbered.
+        prov_tag = "peer-observer" if str(node_data.get("query", "")).startswith("ip-list:") else None
+
         if existing:
             # Update existing node, preserve first_seen
             for key, value in db_data.items():
                 if key not in ("id", "first_seen") and value is not None:
                     setattr(existing, key, value)
+            if prov_tag:
+                existing.tags_json = self._merge_tag(existing.tags_json, prov_tag)
             existing.last_seen = file_timestamp or datetime.utcnow()
             return "updated", db_data["risk_level"], db_data["is_vulnerable"]
         else:
             # Create new node
+            if prov_tag:
+                db_data["tags_json"] = json.dumps([prov_tag])
             node_repo.upsert(db_data)
             return "imported", db_data["risk_level"], db_data["is_vulnerable"]
+
+    @staticmethod
+    def _merge_tag(tags_json: str, tag: str) -> str:
+        """Return tags_json with `tag` added (idempotent, preserves existing)."""
+        try:
+            tags = json.loads(tags_json) if tags_json else []
+            if not isinstance(tags, list):
+                tags = []
+        except (ValueError, TypeError):
+            tags = []
+        if tag not in tags:
+            tags.append(tag)
+        return json.dumps(tags)
 
     def _analyze_risk_level(self, node_data: Dict) -> str:
         """Determine risk level for a node."""
