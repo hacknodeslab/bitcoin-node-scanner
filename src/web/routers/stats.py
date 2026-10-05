@@ -1,16 +1,21 @@
 """
 GET /api/v1/stats — aggregate scan statistics.
+
+`period_stats` mirrors the CLI `stats` output over the last `days` days; the
+computation is shared with the CLI via
+src/db/analysis.py:compute_summary_statistics.
 """
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Annotated, Dict, List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ..auth import require_api_key
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from ...db.analysis import compute_summary_statistics
 from ...db.repositories import NodeRepository, ScanRepository
 from .nodes import get_db
 
@@ -54,6 +59,29 @@ def _resolve_commit() -> Optional[str]:
 _COMMIT = _resolve_commit()
 
 
+class TopAsn(BaseModel):
+    asn: Optional[str]
+    count: int
+
+
+class PeriodStats(BaseModel):
+    """Period-scoped statistics, mirroring the CLI `db-stats` output."""
+
+    period: str
+    days: int
+    total_nodes: int
+    vulnerable_nodes: int
+    critical_nodes: int
+    new_nodes: int
+    exposed_rpc: int
+    dev_versions: int
+    unique_countries: int
+    vulnerability_rate: float
+    exposed_rpc_rate: float
+    dev_version_rate: float
+    top_asns: List[TopAsn]
+
+
 class StatsOut(BaseModel):
     total_nodes: int
     by_risk_level: Dict[str, int]
@@ -69,10 +97,24 @@ class StatsOut(BaseModel):
     stale_threshold_days: int
     last_scan_at: Optional[str]
     commit: Optional[str]
+    # CLI db-stats parity: period-scoped metrics over the last `days` days.
+    # Note the counts above (total_nodes, vulnerable_nodes_count, ...) are
+    # all-time; the same-named fields inside period_stats are period-scoped.
+    period_stats: PeriodStats
+
+
+def _compute_period_stats(db: Session, days: int) -> PeriodStats:
+    """Period-scoped stats via the shared compute_summary_statistics()."""
+    end_date = datetime.now(timezone.utc).replace(tzinfo=None)
+    start_date = end_date - timedelta(days=days)
+    return PeriodStats(days=days, **compute_summary_statistics(db, start_date, end_date))
 
 
 @router.get("/stats", response_model=StatsOut, dependencies=[Depends(require_api_key)])
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(
+    db: Annotated[Session, Depends(get_db)],
+    days: Annotated[int, Query(ge=1, le=3650, description="Period (days) for period_stats")] = 30,
+):
     node_repo = NodeRepository(db)
     scan_repo = ScanRepository(db)
 
@@ -112,4 +154,5 @@ def get_stats(db: Session = Depends(get_db)):
         stale_threshold_days=threshold_days,
         last_scan_at=last_scan_at,
         commit=_COMMIT,
+        period_stats=_compute_period_stats(db, days),
     )

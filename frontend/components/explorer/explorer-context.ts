@@ -14,6 +14,11 @@ export interface ExplorerCommands {
   setQuery: (q: string) => void;
   startScan: () => Promise<void>;
   setThemeMode: (mode: ThemeMode) => void;
+  /**
+   * Point the shared scan-job watcher at an existing job id so its status
+   * shows in the footer (used by `scan: status <job_id>`).
+   */
+  showScanStatus: (jobId: string) => void;
 }
 
 export const ExplorerCommandsContext = createContext<ExplorerCommands | null>(null);

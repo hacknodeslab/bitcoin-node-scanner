@@ -133,9 +133,10 @@ Links nodes to detected vulnerabilities.
 
 ### Database Statistics
 ```bash
-python -m src.db db-stats
-python -m src.db db-stats --days 7
+python -m src.db stats
+python -m src.db stats --days 7
 ```
+(`db-stats` remains as a deprecated alias and will be removed in the next release.)
 
 ### Vulnerability Trends
 ```bash

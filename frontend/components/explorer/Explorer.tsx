@@ -50,11 +50,23 @@ export function Explorer() {
     await scanJob.start();
   }, [scanJob]);
 
+  const showScanStatus = useCallback(
+    (jobId: string) => {
+      scanJob.watch(jobId);
+    },
+    [scanJob],
+  );
+
   const { setMode } = useTheme();
 
   const commands: ExplorerCommands = useMemo(
-    () => ({ setQuery: setAppliedQuery, startScan, setThemeMode: setMode }),
-    [startScan, setMode],
+    () => ({
+      setQuery: setAppliedQuery,
+      startScan,
+      setThemeMode: setMode,
+      showScanStatus,
+    }),
+    [startScan, setMode, showScanStatus],
   );
 
   // Stable sliver feed — top 20 by last_seen, independent of the table's

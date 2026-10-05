@@ -8,6 +8,8 @@ import asyncio
 import logging
 from typing import Callable, Optional
 
+from sqlalchemy.orm import Session
+
 from ..db.connection import get_session_factory
 from ..db.repositories import ScanJobRepository
 
@@ -96,16 +98,14 @@ async def run_scan_job(job_id: str) -> None:
     await _run_job(job_id, "scan", _execute_scan)
 
 
-def _execute_enrichment(limit: int, source: Optional[str]) -> dict:
-    """Run one bounded IP-reputation enrichment batch in its own session."""
-    from ..enrichers.service import run_enrichment
-
+def _run_with_session(work: Callable[[Session], dict]) -> dict:
+    """Open a session, run ``work`` in it, commit on success, roll back on error."""
     factory = get_session_factory()
     session = factory()
     try:
-        stats = run_enrichment(session, limit=limit, source=source)
+        result = work(session)
         session.commit()
-        return stats
+        return result
     except Exception:
         session.rollback()
         raise
@@ -113,6 +113,45 @@ def _execute_enrichment(limit: int, source: Optional[str]) -> dict:
         session.close()
 
 
+def _execute_enrichment(limit: int, source: Optional[str]) -> dict:
+    """Run one bounded IP-reputation enrichment batch in its own session."""
+    from ..enrichers.service import run_enrichment
+
+    return _run_with_session(lambda session: run_enrichment(session, limit=limit, source=source))
+
+
 async def run_enrichment_job(job_id: str, limit: int, source: Optional[str] = None) -> None:
     """FastAPI BackgroundTask entry point for `POST /api/v1/enrichment/run`."""
     await _run_job(job_id, "enrichment", lambda: _execute_enrichment(limit, source))
+
+
+def _execute_geo_enrichment() -> dict:
+    """Retroactive MaxMind geo enrichment over all nodes (mirrors CLI `enrich-geo`)."""
+    import os
+
+    from ..db.geo_enrichment import enrich_nodes_geo
+    from ..geoip import GeoIPService
+
+    db_dir = os.getenv("GEOIP_DB_DIR", "./geoip_dbs")
+    geoip = GeoIPService(db_dir=db_dir)
+    try:
+        # Trigger lazy init up front so a missing .mmdb fails the job fast
+        # instead of iterating the whole node table for nothing.
+        geoip._init_readers()
+        if not geoip._available:
+            raise RuntimeError(
+                f"MaxMind GeoLite2 databases not found in '{db_dir}'. "
+                "Run scripts/download_geoip_dbs.sh to download them."
+            )
+
+        # Batch loop + gap-filling precedence shared with the CLI — see
+        # src/db/geo_enrichment.py.
+        summary = _run_with_session(lambda session: enrich_nodes_geo(session, geoip))
+        return {"kind": "geo", **summary}
+    finally:
+        geoip.close()
+
+
+async def run_geo_enrichment_job(job_id: str) -> None:
+    """FastAPI BackgroundTask entry point for `POST /api/v1/enrich-geo`."""
+    await _run_job(job_id, "geo-enrichment", _execute_geo_enrichment)

@@ -18,6 +18,172 @@ from .connection import get_db_session
 logger = logging.getLogger(__name__)
 
 
+def compute_vulnerability_trends(
+    session: Session,
+    start_date: datetime,
+    end_date: Optional[datetime] = None,
+    granularity: str = "day"
+) -> Dict[str, Any]:
+    """
+    Analyze vulnerability trends over time using the given session.
+
+    Shared by HistoricalAnalyzer (CLI) and the REST trends endpoint.
+
+    Args:
+        session: Open database session (read-only use).
+        start_date: Start of analysis period
+        end_date: End of analysis period (defaults to now)
+        granularity: Time grouping - 'day', 'week', or 'month'
+
+    Returns:
+        Dictionary with trend data including counts by period
+    """
+    if end_date is None:
+        end_date = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Get nodes seen in period with vulnerability status
+    nodes_in_period = session.query(Node).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date
+        )
+    ).all()
+
+    # Group by date
+    trends = defaultdict(lambda: {"total": 0, "vulnerable": 0, "critical": 0, "high": 0})
+
+    for node in nodes_in_period:
+        # Determine grouping key
+        if granularity == "week":
+            key = node.last_seen.strftime("%Y-W%W")
+        elif granularity == "month":
+            key = node.last_seen.strftime("%Y-%m")
+        else:  # day
+            key = node.last_seen.strftime("%Y-%m-%d")
+
+        trends[key]["total"] += 1
+        if node.is_vulnerable:
+            trends[key]["vulnerable"] += 1
+        if node.risk_level == "CRITICAL":
+            trends[key]["critical"] += 1
+        elif node.risk_level == "HIGH":
+            trends[key]["high"] += 1
+
+    # Calculate rates
+    return {
+        "period": f"{start_date.date()} to {end_date.date()}",
+        "granularity": granularity,
+        "data": dict(trends),
+        "summary": {
+            "total_nodes": len(nodes_in_period),
+            "total_vulnerable": sum(1 for n in nodes_in_period if n.is_vulnerable),
+            "vulnerability_rate": (
+                sum(1 for n in nodes_in_period if n.is_vulnerable) / len(nodes_in_period) * 100
+                if nodes_in_period else 0
+            ),
+        }
+    }
+
+
+def compute_summary_statistics(
+    session: Session,
+    start_date: datetime,
+    end_date: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """
+    Compute comprehensive summary statistics for a period using the given session.
+
+    Shared by HistoricalAnalyzer (CLI `stats`) and the REST stats endpoint.
+
+    Args:
+        session: Open database session (read-only use).
+        start_date: Start of analysis period
+        end_date: End of analysis period (defaults to now)
+
+    Returns:
+        Dictionary with all key metrics for dashboards
+    """
+    if end_date is None:
+        end_date = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    # Basic counts
+    total_nodes = session.query(Node).filter(
+        and_(Node.last_seen >= start_date, Node.last_seen <= end_date)
+    ).count()
+
+    vulnerable_nodes = session.query(Node).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date,
+            Node.is_vulnerable == True
+        )
+    ).count()
+
+    critical_nodes = session.query(Node).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date,
+            Node.risk_level == "CRITICAL"
+        )
+    ).count()
+
+    exposed_rpc = session.query(Node).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date,
+            Node.has_exposed_rpc == True
+        )
+    ).count()
+
+    dev_versions = session.query(Node).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date,
+            Node.is_dev_version == True
+        )
+    ).count()
+
+    new_nodes = session.query(Node).filter(
+        and_(
+            Node.first_seen >= start_date,
+            Node.first_seen <= end_date
+        )
+    ).count()
+
+    countries = session.query(func.count(func.distinct(Node.country_code))).filter(
+        and_(Node.last_seen >= start_date, Node.last_seen <= end_date)
+    ).scalar()
+
+    # Top ASNs
+    top_asns = session.query(
+        Node.asn,
+        func.count(Node.id)
+    ).filter(
+        and_(
+            Node.last_seen >= start_date,
+            Node.last_seen <= end_date,
+            Node.asn.isnot(None)
+        )
+    ).group_by(Node.asn).order_by(
+        func.count(Node.id).desc()
+    ).limit(5).all()
+
+    return {
+        "period": f"{start_date.date()} to {end_date.date()}",
+        "total_nodes": total_nodes,
+        "vulnerable_nodes": vulnerable_nodes,
+        "critical_nodes": critical_nodes,
+        "new_nodes": new_nodes,
+        "exposed_rpc": exposed_rpc,
+        "dev_versions": dev_versions,
+        "unique_countries": countries,
+        "vulnerability_rate": (vulnerable_nodes / total_nodes * 100) if total_nodes > 0 else 0,
+        "exposed_rpc_rate": (exposed_rpc / total_nodes * 100) if total_nodes > 0 else 0,
+        "dev_version_rate": (dev_versions / total_nodes * 100) if total_nodes > 0 else 0,
+        "top_asns": [{"asn": asn, "count": count} for asn, count in top_asns],
+    }
+
+
 class HistoricalAnalyzer:
     """
     Analyzer for historical data and trend detection.
@@ -57,57 +223,10 @@ class HistoricalAnalyzer:
         Returns:
             Dictionary with trend data including counts by period
         """
-        if end_date is None:
-            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
-
         with get_db_session() as session:
             if session is None:
                 return {"error": "Database not configured"}
-
-            # Get nodes seen in period with vulnerability status
-            nodes_in_period = session.query(Node).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date
-                )
-            ).all()
-
-            # Group by date
-            trends = defaultdict(lambda: {"total": 0, "vulnerable": 0, "critical": 0, "high": 0})
-
-            for node in nodes_in_period:
-                # Determine grouping key
-                if granularity == "week":
-                    key = node.last_seen.strftime("%Y-W%W")
-                elif granularity == "month":
-                    key = node.last_seen.strftime("%Y-%m")
-                else:  # day
-                    key = node.last_seen.strftime("%Y-%m-%d")
-
-                trends[key]["total"] += 1
-                if node.is_vulnerable:
-                    trends[key]["vulnerable"] += 1
-                if node.risk_level == "CRITICAL":
-                    trends[key]["critical"] += 1
-                elif node.risk_level == "HIGH":
-                    trends[key]["high"] += 1
-
-            # Calculate rates
-            result = {
-                "period": f"{start_date.date()} to {end_date.date()}",
-                "granularity": granularity,
-                "data": dict(trends),
-                "summary": {
-                    "total_nodes": len(nodes_in_period),
-                    "total_vulnerable": sum(1 for n in nodes_in_period if n.is_vulnerable),
-                    "vulnerability_rate": (
-                        sum(1 for n in nodes_in_period if n.is_vulnerable) / len(nodes_in_period) * 100
-                        if nodes_in_period else 0
-                    ),
-                }
-            }
-
-            return result
+            return compute_vulnerability_trends(session, start_date, end_date, granularity)
 
     def compare_periods(
         self,
@@ -617,79 +736,4 @@ class HistoricalAnalyzer:
             if session is None:
                 return {}
 
-            # Basic counts
-            total_nodes = session.query(Node).filter(
-                and_(Node.last_seen >= start_date, Node.last_seen <= end_date)
-            ).count()
-
-            vulnerable_nodes = session.query(Node).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date,
-                    Node.is_vulnerable == True
-                )
-            ).count()
-
-            critical_nodes = session.query(Node).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date,
-                    Node.risk_level == "CRITICAL"
-                )
-            ).count()
-
-            exposed_rpc = session.query(Node).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date,
-                    Node.has_exposed_rpc == True
-                )
-            ).count()
-
-            dev_versions = session.query(Node).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date,
-                    Node.is_dev_version == True
-                )
-            ).count()
-
-            new_nodes = session.query(Node).filter(
-                and_(
-                    Node.first_seen >= start_date,
-                    Node.first_seen <= end_date
-                )
-            ).count()
-
-            countries = session.query(func.count(func.distinct(Node.country_code))).filter(
-                and_(Node.last_seen >= start_date, Node.last_seen <= end_date)
-            ).scalar()
-
-            # Top ASNs
-            top_asns = session.query(
-                Node.asn,
-                func.count(Node.id)
-            ).filter(
-                and_(
-                    Node.last_seen >= start_date,
-                    Node.last_seen <= end_date,
-                    Node.asn.isnot(None)
-                )
-            ).group_by(Node.asn).order_by(
-                func.count(Node.id).desc()
-            ).limit(5).all()
-
-            return {
-                "period": f"{start_date.date()} to {end_date.date()}",
-                "total_nodes": total_nodes,
-                "vulnerable_nodes": vulnerable_nodes,
-                "critical_nodes": critical_nodes,
-                "new_nodes": new_nodes,
-                "exposed_rpc": exposed_rpc,
-                "dev_versions": dev_versions,
-                "unique_countries": countries,
-                "vulnerability_rate": (vulnerable_nodes / total_nodes * 100) if total_nodes > 0 else 0,
-                "exposed_rpc_rate": (exposed_rpc / total_nodes * 100) if total_nodes > 0 else 0,
-                "dev_version_rate": (dev_versions / total_nodes * 100) if total_nodes > 0 else 0,
-                "top_asns": [{"asn": asn, "count": count} for asn, count in top_asns],
-            }
+            return compute_summary_statistics(session, start_date, end_date)

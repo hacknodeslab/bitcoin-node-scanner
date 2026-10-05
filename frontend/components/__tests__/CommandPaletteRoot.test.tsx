@@ -16,10 +16,12 @@ function renderRoot(overrides?: Partial<ExplorerCommands>) {
   const setQuery = vi.fn();
   const startScan = vi.fn().mockResolvedValue(undefined);
   const setThemeMode = vi.fn();
+  const showScanStatus = vi.fn();
   const value: ExplorerCommands = {
     setQuery,
     startScan,
     setThemeMode,
+    showScanStatus,
     ...overrides,
   };
   const utils = render(
@@ -27,7 +29,7 @@ function renderRoot(overrides?: Partial<ExplorerCommands>) {
       <CommandPaletteRoot />
     </ExplorerCommandsContext.Provider>,
   );
-  return { ...utils, setQuery, startScan, setThemeMode };
+  return { ...utils, setQuery, startScan, setThemeMode, showScanStatus };
 }
 
 function openPalette() {
@@ -120,5 +122,54 @@ describe("CommandPaletteRoot", () => {
     // Palette closes; nothing was clicked.
     expect(setQuery).not.toHaveBeenCalled();
     expect(startScan).not.toHaveBeenCalled();
+  });
+
+  it("selecting a requiresArg command transitions to the argument-input row", () => {
+    renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("node: filter country <code>"));
+    // Arg row shows the command name + input; the command list is hidden.
+    expect(screen.getByPlaceholderText("country code (e.g. US)…")).toBeTruthy();
+    expect(screen.queryByText("scan: start")).toBeNull();
+  });
+
+  it("Enter in the argument-input row executes with the entered argument", () => {
+    const { setQuery } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("node: filter country <code>"));
+    const input = screen.getByPlaceholderText("country code (e.g. US)…");
+    fireEvent.change(input, { target: { value: "DE" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(setQuery).toHaveBeenCalledWith("country=DE");
+  });
+
+  it("Esc in the argument-input row returns to the command list without executing", () => {
+    const { setQuery } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("node: filter country <code>"));
+    const input = screen.getByPlaceholderText("country code (e.g. US)…");
+    fireEvent.change(input, { target: { value: "DE" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+    // Back to the list view; the palette stays open and nothing ran.
+    expect(screen.getByText("scan: start")).toBeTruthy();
+    expect(setQuery).not.toHaveBeenCalled();
+  });
+
+  it("'scan: status <job_id>' routes the job id to showScanStatus", () => {
+    const { showScanStatus } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("scan: status <job_id>"));
+    const input = screen.getByPlaceholderText("job id…");
+    fireEvent.change(input, { target: { value: "job-42" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(showScanStatus).toHaveBeenCalledWith("job-42");
+  });
+
+  it("Enter with an empty argument does not execute", () => {
+    const { setQuery } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("node: filter country <code>"));
+    fireEvent.keyDown(document.activeElement!, { key: "Enter" });
+    expect(setQuery).not.toHaveBeenCalled();
   });
 });

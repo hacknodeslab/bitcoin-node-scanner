@@ -3,11 +3,12 @@ Integration tests for /api/v1/nodes, /api/v1/stats, /api/v1/scans.
 
 Uses FastAPI TestClient with an in-memory SQLite database.
 """
+import asyncio
 import json
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -859,12 +860,13 @@ class TestJobAdmissionRace:
     @pytest.mark.parametrize("path,runner", [
         ("/api/v1/enrichment/run", "run_enrichment_job"),
         ("/api/v1/scans", "run_scan_job"),
+        ("/api/v1/enrich-geo", "run_geo_enrichment_job"),
     ])
     def test_db_guard_returns_409_when_check_is_raced(self, client, db_session, path, runner):
         # Simulate the race: an active job exists but the pre-check missed it.
-        job_type = "enrichment" if "enrichment" in path else "scan"
+        job_type = "scan" if path == "/api/v1/scans" else "enrichment"
         db_session.add(ScanJob(id=str(uuid.uuid4()), job_type=job_type, status="pending",
-                               created_at=datetime.utcnow()))
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         db_session.commit()
         headers = _csrf_headers(client)
         with patch("src.db.repositories.scan_job_repository.ScanJobRepository.get_active_job",
@@ -875,3 +877,625 @@ class TestJobAdmissionRace:
         run.assert_not_called()
         assert db_session.query(ScanJob).filter_by(job_type=job_type).count() == 1
 
+
+class TestTrendsEndpoint:
+    def test_returns_buckets_and_summary(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", risk_level="CRITICAL"))
+        node = _make_node("2.2.2.2", risk_level="HIGH")
+        node.is_vulnerable = True
+        db_session.add(node)
+        db_session.commit()
+
+        r = client.get("/api/v1/trends?days=30&granularity=day", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["granularity"] == "day"
+        assert d["days"] == 30
+        assert d["summary"]["total_nodes"] == 2
+        assert d["summary"]["total_vulnerable"] == 1
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert d["data"][today] == {"total": 2, "vulnerable": 1, "critical": 1, "high": 1}
+
+    def test_defaults(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1"))
+        db_session.commit()
+        r = client.get("/api/v1/trends", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["granularity"] == "day"
+
+    def test_week_and_month_granularity(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1"))
+        db_session.commit()
+        for gran, fmt in (("week", "%Y-W%W"), ("month", "%Y-%m")):
+            r = client.get(f"/api/v1/trends?granularity={gran}", headers=HEADERS)
+            assert r.status_code == 200
+            assert datetime.now(timezone.utc).strftime(fmt) in r.json()["data"]
+
+    def test_old_nodes_outside_window_excluded(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("1.1.1.1", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/trends?days=30", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["summary"]["total_nodes"] == 0
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/trends")
+        assert r.status_code == 401
+
+    def test_invalid_granularity_returns_422(self, client):
+        r = client.get("/api/v1/trends?granularity=hourly", headers=HEADERS)
+        assert r.status_code == 422
+
+    def test_invalid_days_returns_422(self, client):
+        assert client.get("/api/v1/trends?days=0", headers=HEADERS).status_code == 422
+        assert client.get("/api/v1/trends?days=abc", headers=HEADERS).status_code == 422
+
+
+class TestCreditsEndpoint:
+    def _write_log(self, tmp_path, entries):
+        log_file = tmp_path / "credit_usage.json"
+        log_file.write_text(json.dumps(entries))
+        return log_file
+
+    def test_returns_local_usage(self, client, tmp_path, monkeypatch):
+        now = datetime.now()
+        entries = [
+            {"timestamp": now.isoformat(), "query_credits_used": 5,
+             "scan_credits_used": 2, "scan_type": "quick", "notes": ""},
+            {"timestamp": now.isoformat(), "query_credits_used": 3,
+             "scan_credits_used": 0, "scan_type": "full", "notes": ""},
+        ]
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(self._write_log(tmp_path, entries)))
+
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["source"] == "local"
+        assert d["tracked_entries"] == 2
+        assert d["today"]["query_credits_used"] == 8
+        assert d["today"]["scan_credits_used"] == 2
+        assert d["month"]["query_credits_used"] == 8
+        assert d["month"]["total_scans"] == 2
+        assert d["month"]["scan_type_breakdown"] == {"quick": 1, "full": 1}
+        # Default plan limit 100, remaining derived locally (no Shodan call)
+        assert d["query_credits"]["remaining"] == 92
+        assert d["query_credits"]["limit"] == 100
+        assert d["scan_credits"]["remaining"] == 98
+        assert d["last_entry_at"] == entries[-1]["timestamp"]
+
+    def test_missing_log_returns_zeros(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(tmp_path / "nonexistent.json"))
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["tracked_entries"] == 0
+        assert d["today"]["query_credits_used"] == 0
+        assert d["query_credits"]["remaining"] == 100
+        assert d["last_entry_at"] is None
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/credits")
+        assert r.status_code == 401
+
+
+class TestExportEndpoint:
+    def test_export_shape_matches_cli(self, client, db_session):
+        db_session.add(_make_node("9.9.9.9", risk_level="LOW"))
+        db_session.commit()
+
+        r = client.get("/api/v1/export", headers=HEADERS)
+        assert r.status_code == 200
+        assert "attachment" in r.headers.get("content-disposition", "")
+        d = r.json()
+        assert set(d.keys()) == {"export_date", "period", "summary", "nodes", "scans"}
+        assert set(d["period"].keys()) == {"start", "end"}
+        assert d["summary"] == {"total_nodes": 1, "total_scans": 0}
+        node = d["nodes"][0]
+        assert set(node.keys()) == {
+            "ip", "port", "country_code", "country_name", "city", "asn", "asn_name",
+            "version", "risk_level", "is_vulnerable", "has_exposed_rpc",
+            "first_seen", "last_seen",
+        }
+        assert node["ip"] == "9.9.9.9"
+
+    def test_days_param_limits_window(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("9.9.9.9", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/export?days=30", headers=HEADERS)
+        assert r.json()["summary"]["total_nodes"] == 0
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/export")
+        assert r.status_code == 401
+
+
+class TestImportEndpoint:
+    def _dump(self, *ips):
+        return {
+            "export_date": datetime.now(timezone.utc).isoformat(),
+            "period": {"start": "2026-01-01", "end": "2026-01-02"},
+            "summary": {"total_nodes": len(ips), "total_scans": 0},
+            "nodes": [
+                {"ip": ip, "port": 8333, "country_name": "Germany",
+                 "asn_name": "Example Corp", "version": "/Satoshi:30.0.0/"}
+                for ip in ips
+            ],
+            "scans": [],
+        }
+
+    def test_imports_export_shaped_dump(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json=self._dump("8.8.8.8", "8.8.4.4"))
+        assert r.status_code == 200
+        d = r.json()
+        assert d == {"imported": 2, "updated": 0, "skipped": 0, "errors": 0}
+        # Export-shape field names (country_name/asn_name) are honoured.
+        from src.db.repositories import NodeRepository
+        node = NodeRepository(db_session).find_by_ip_port("8.8.8.8", 8333)
+        assert node.country_name == "Germany"
+        assert node.asn_name == "Example Corp"
+
+    def test_reimport_updates_existing(self, client, db_session):
+        headers = _csrf_headers(client)
+        client.post("/api/v1/import", headers=headers, json=self._dump("8.8.8.8"))
+        r = client.post("/api/v1/import", headers=headers, json=self._dump("8.8.8.8"))
+        assert r.status_code == 200
+        assert r.json()["updated"] == 1
+        assert r.json()["imported"] == 0
+
+    def test_records_provenance_scan_row(self, client, db_session):
+        from src.db.models import Scan
+        client.post("/api/v1/import", headers=_csrf_headers(client), json=self._dump("8.8.8.8"))
+        scans = db_session.query(Scan).all()
+        assert len(scans) == 1
+        assert scans[0].queries_executed == "json-import:api-import"
+        assert scans[0].status == "completed"
+
+    def test_bare_list_body_accepted(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json=[{"ip": "7.7.7.7", "port": 8333}])
+        assert r.status_code == 200
+        assert r.json()["imported"] == 1
+
+    def test_scalar_body_returns_400(self, client):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client), json=42)
+        assert r.status_code == 400
+
+    def test_requires_api_key(self, client):
+        r = client.post("/api/v1/import", json=self._dump("8.8.8.8"))
+        assert r.status_code == 401
+
+    def test_requires_csrf(self, client, db_session):
+        r = client.post("/api/v1/import", headers=HEADERS, json=self._dump("8.8.8.8"))
+        assert r.status_code == 403
+        assert db_session.query(Node).count() == 0
+
+
+class TestStatsPeriodStats:
+    def test_period_stats_fields_present(self, client, db_session):
+        node = _make_node("1.1.1.1", risk_level="CRITICAL", has_exposed_rpc=True)
+        node.asn = "AS12345"
+        db_session.add(node)
+        db_session.commit()
+
+        r = client.get("/api/v1/stats", headers=HEADERS)
+        assert r.status_code == 200
+        ps = r.json()["period_stats"]
+        assert ps["days"] == 30
+        assert ps["total_nodes"] == 1
+        assert ps["critical_nodes"] == 1
+        assert ps["exposed_rpc"] == 1
+        assert ps["new_nodes"] == 1
+        assert ps["top_asns"] == [{"asn": "AS12345", "count": 1}]
+        for field in ("period", "vulnerable_nodes", "dev_versions", "unique_countries",
+                      "vulnerability_rate", "exposed_rpc_rate", "dev_version_rate"):
+            assert field in ps
+
+    def test_period_stats_zero_on_empty_db(self, client):
+        r = client.get("/api/v1/stats", headers=HEADERS)
+        assert r.status_code == 200
+        ps = r.json()["period_stats"]
+        assert ps["total_nodes"] == 0
+        assert ps["top_asns"] == []
+
+    def test_days_param(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("1.1.1.1", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/stats?days=90", headers=HEADERS)
+        assert r.json()["period_stats"]["total_nodes"] == 1
+        r = client.get("/api/v1/stats?days=30", headers=HEADERS)
+        assert r.json()["period_stats"]["total_nodes"] == 0
+
+    def test_invalid_days_returns_422(self, client):
+        assert client.get("/api/v1/stats?days=0", headers=HEADERS).status_code == 422
+
+
+class TestEnrichGeoEndpoint:
+    def test_trigger_returns_202_with_job_id(self, client):
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock) as run:
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 202
+        d = r.json()
+        assert d["status"] == "pending"
+        assert d["job_type"] == "enrichment"
+        assert "job_id" in d
+        run.assert_awaited_once()
+
+    def test_409_when_enrichment_job_active(self, client, db_session):
+        # Shared single-flight with /enrichment/run: any active 'enrichment'
+        # job (reputation or geo) blocks a new geo run.
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="enrichment", status="running",
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 409
+
+    def test_running_scan_does_not_block_geo_enrichment(self, client, db_session):
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="scan", status="running",
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 202
+
+    def test_requires_api_key(self, client):
+        r = client.post("/api/v1/enrich-geo")
+        assert r.status_code == 401
+
+    def test_requires_csrf(self, client, db_session):
+        r = client.post("/api/v1/enrich-geo", headers=HEADERS)
+        assert r.status_code == 403
+        assert db_session.query(ScanJob).count() == 0
+
+
+class TestEnrichmentRunValidSource:
+    def test_known_source_accepted_and_forwarded(self, client):
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_enrichment_job", new_callable=AsyncMock) as run:
+            r = client.post("/api/v1/enrichment/run", headers=headers, json={"source": "blocklists"})
+        assert r.status_code == 202
+        assert run.await_args.args[1:] == (100, "blocklists")
+
+
+class TestCreditsEndpointConfig:
+    def test_invalid_plan_limit_env_falls_back_to_100(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("SHODAN_PLAN_LIMIT", "not-a-number")
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(tmp_path / "missing.json"))
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["plan_limit"] == 100
+        assert d["query_credits"]["limit"] == 100
+
+    def test_custom_plan_limit_env(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("SHODAN_PLAN_LIMIT", "250")
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(tmp_path / "missing.json"))
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["plan_limit"] == 250
+        assert d["query_credits"]["remaining"] == 250
+
+    def test_default_relative_log_path_resolves(self, client, monkeypatch):
+        # Without CREDIT_USAGE_LOG the default relative path is resolved
+        # against the project root (repo ships output/logs/credit_usage.json,
+        # so only structural assertions are safe here).
+        monkeypatch.delenv("CREDIT_USAGE_LOG", raising=False)
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["source"] == "local"
+        assert isinstance(d["tracked_entries"], int)
+
+
+class TestImportBodyShapes:
+    def test_single_node_object_body(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json={"ip": "6.6.6.6", "port": 8333})
+        assert r.status_code == 200
+        assert r.json()["imported"] == 1
+
+    def test_arbitrary_key_mapping_body(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json={"a": {"ip": "6.6.6.7"}, "b": {"ip": "6.6.6.8"}})
+        assert r.status_code == 200
+        assert r.json()["imported"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Background job executor (src/web/background.py) — the coroutines are driven
+# directly with asyncio.run against the same in-memory SQLite engine, with
+# get_session_factory patched to the test session factory.
+# ---------------------------------------------------------------------------
+
+def _patch_session_factory(monkeypatch, db_engine):
+    factory = sessionmaker(bind=db_engine)
+    monkeypatch.setattr("src.web.background.get_session_factory", lambda: factory)
+    return factory
+
+
+def _make_fake_geoip(records, available=True):
+    from src.geoip import GeoIPService
+
+    class FakeGeoIPService(GeoIPService):
+        def __init__(self, db_dir=None):
+            super().__init__(db_dir=db_dir)
+            self._availability = available
+
+        def _init_readers(self):
+            self._initialized = True
+            self._available = self._availability
+
+        def lookup(self, ip):
+            record = records.get(ip)
+            if isinstance(record, Exception):
+                raise record
+            return record
+
+        def close(self):
+            self._available = False
+            self._initialized = False
+
+    return FakeGeoIPService
+
+
+def _full_geo_record():
+    from src.geoip import GeoRecord
+    return GeoRecord(
+        country_code="DE", country_name="Germany", city="Berlin",
+        subdivision="Bavaria", latitude=48.1, longitude=11.6,
+        asn="AS123", asn_name="MaxMind Org",
+    )
+
+
+def _empty_geo_record():
+    from src.geoip import GeoRecord
+    return GeoRecord(
+        country_code=None, country_name=None, city=None, subdivision=None,
+        latitude=None, longitude=None, asn=None, asn_name=None,
+    )
+
+
+def _add_job(db_session, job_type):
+    job = ScanJob(id=str(uuid.uuid4()), job_type=job_type, status="pending",
+                  created_at=datetime.now(timezone.utc).replace(tzinfo=None))
+    db_session.add(job)
+    db_session.commit()
+    return job.id
+
+
+def _fetch_job(factory, job_id):
+    session = factory()
+    try:
+        return session.get(ScanJob, job_id)
+    finally:
+        session.close()
+
+
+class TestBackgroundGeoEnrichmentJob:
+    def test_happy_path_gap_filling_precedence_and_status(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_geo_enrichment_job
+
+        # A: no geo at all → fully filled from MaxMind
+        node_a = _make_node("10.0.0.1")
+        # B: Shodan-provided values present → preserved; MaxMind-only fields set
+        node_b = _make_node("10.0.0.2")
+        node_b.country_code = "US"
+        node_b.country_name = "United States"
+        node_b.city = "New York"
+        node_b.asn = "AS1"
+        node_b.asn_name = "Shodan Org"
+        # C: lookup returns None → no_match
+        node_c = _make_node("10.0.0.3")
+        # D: lookup returns an all-empty record → nothing to change → skipped
+        node_d = _make_node("10.0.0.4")
+        db_session.add_all([node_a, node_b, node_c, node_d])
+        job_id = _add_job(db_session, "enrichment")
+
+        records = {
+            "10.0.0.1": _full_geo_record(),
+            "10.0.0.2": _full_geo_record(),
+            "10.0.0.4": _empty_geo_record(),
+        }
+        monkeypatch.setattr("src.geoip.GeoIPService", _make_fake_geoip(records))
+        factory = _patch_session_factory(monkeypatch, db_engine)
+
+        asyncio.run(run_geo_enrichment_job(job_id))
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "completed"
+        assert job.started_at is not None
+        assert job.finished_at is not None
+        summary = json.loads(job.result_summary)
+        assert summary == {"kind": "geo", "total": 4, "updated": 2, "skipped": 1, "no_match": 1}
+
+        session = factory()
+        try:
+            a = session.query(Node).filter_by(ip="10.0.0.1").one()
+            assert a.country_code == "DE"
+            assert a.city == "Berlin"
+            assert a.asn == "AS123"
+            assert a.subdivision == "Bavaria"
+            assert a.latitude == pytest.approx(48.1)
+            assert a.longitude == pytest.approx(11.6)
+            assert a.geo_country_code == "DE"
+            assert a.geo_country_name == "Germany"
+
+            b = session.query(Node).filter_by(ip="10.0.0.2").one()
+            # Shodan-provided values win
+            assert b.country_code == "US"
+            assert b.country_name == "United States"
+            assert b.city == "New York"
+            assert b.asn == "AS1"
+            assert b.asn_name == "Shodan Org"
+            # MaxMind-only fields are always set
+            assert b.subdivision == "Bavaria"
+            assert b.latitude == pytest.approx(48.1)
+            assert b.geo_country_code == "DE"
+        finally:
+            session.close()
+
+    def test_missing_mmdb_fails_job_fast(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_geo_enrichment_job
+
+        db_session.add(_make_node("10.0.1.1"))
+        job_id = _add_job(db_session, "enrichment")
+
+        monkeypatch.setattr("src.geoip.GeoIPService", _make_fake_geoip({}, available=False))
+        factory = _patch_session_factory(monkeypatch, db_engine)
+
+        asyncio.run(run_geo_enrichment_job(job_id))
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "failed"
+        assert "MaxMind" in json.loads(job.result_summary)["error"]
+
+    def test_lookup_exception_marks_job_failed(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_geo_enrichment_job
+
+        db_session.add(_make_node("10.0.2.1"))
+        job_id = _add_job(db_session, "enrichment")
+
+        records = {"10.0.2.1": RuntimeError("lookup exploded")}
+        monkeypatch.setattr("src.geoip.GeoIPService", _make_fake_geoip(records))
+        factory = _patch_session_factory(monkeypatch, db_engine)
+
+        asyncio.run(run_geo_enrichment_job(job_id))
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "failed"
+        assert "lookup exploded" in json.loads(job.result_summary)["error"]
+
+    def test_no_session_factory_leaves_job_pending(self, db_session, monkeypatch, caplog):
+        from src.web.background import run_geo_enrichment_job
+
+        job_id = _add_job(db_session, "enrichment")
+        monkeypatch.setattr("src.web.background.get_session_factory", lambda: None)
+
+        asyncio.run(run_geo_enrichment_job(job_id))
+
+        db_session.expire_all()
+        assert db_session.get(ScanJob, job_id).status == "pending"
+
+    def test_progress_callback_invoked_per_batch(self, db_session):
+        from src.db.geo_enrichment import enrich_nodes_geo
+
+        db_session.add(_make_node("10.0.5.1"))
+        db_session.commit()
+
+        calls = []
+        fake_geoip = _make_fake_geoip({"10.0.5.1": _full_geo_record()})()
+        result = enrich_nodes_geo(
+            db_session, fake_geoip, progress=lambda done, total: calls.append((done, total))
+        )
+
+        assert result == {"total": 1, "updated": 1, "skipped": 0, "no_match": 0}
+        assert calls == [(1, 1)]
+
+
+class TestBackgroundScanJob:
+    def test_run_scan_job_maps_statistics_into_summary(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_scan_job
+
+        scanner = MagicMock()
+        scanner.generate_statistics.return_value = {
+            "total_results": 5,
+            "risk_distribution": {"CRITICAL": 1, "HIGH": 2, "MEDIUM": 1},
+            "vulnerable_nodes": 3,
+        }
+        create = MagicMock(return_value=scanner)
+        monkeypatch.setattr("src.db.scanner_integration.create_db_scanner", create)
+        factory = _patch_session_factory(monkeypatch, db_engine)
+        job_id = _add_job(db_session, "scan")
+
+        asyncio.run(run_scan_job(job_id))
+
+        create.assert_called_once_with(use_optimized=False)
+        scanner.run_full_scan.assert_called_once_with()
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "completed"
+        assert json.loads(job.result_summary) == {
+            "total_nodes": 5, "critical": 1, "high": 2, "medium": 1, "low": 0, "vulnerable": 3,
+        }
+
+    def test_run_scan_job_failure_marks_failed(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_scan_job
+
+        scanner = MagicMock()
+        scanner.run_full_scan.side_effect = RuntimeError("shodan down")
+        monkeypatch.setattr("src.db.scanner_integration.create_db_scanner", MagicMock(return_value=scanner))
+        factory = _patch_session_factory(monkeypatch, db_engine)
+        job_id = _add_job(db_session, "scan")
+
+        asyncio.run(run_scan_job(job_id))
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "failed"
+        assert "shodan down" in json.loads(job.result_summary)["error"]
+
+
+class TestBackgroundEnrichmentJob:
+    def test_run_enrichment_job_commits_stats(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_enrichment_job
+
+        stats = {"candidates": 2, "ips_processed": 2, "sources": {"blocklists": {"ok": 2, "error": 0, "unavailable": False}}}
+        run = MagicMock(return_value=stats)
+        monkeypatch.setattr("src.enrichers.service.run_enrichment", run)
+        factory = _patch_session_factory(monkeypatch, db_engine)
+        job_id = _add_job(db_session, "enrichment")
+
+        asyncio.run(run_enrichment_job(job_id, 10, "blocklists"))
+
+        assert run.call_args.kwargs == {"limit": 10, "source": "blocklists"}
+        job = _fetch_job(factory, job_id)
+        assert job.status == "completed"
+        assert json.loads(job.result_summary) == stats
+
+    def test_run_enrichment_job_error_marks_failed(self, db_engine, db_session, monkeypatch):
+        from src.web.background import run_enrichment_job
+
+        run = MagicMock(side_effect=ValueError("quota exhausted"))
+        monkeypatch.setattr("src.enrichers.service.run_enrichment", run)
+        factory = _patch_session_factory(monkeypatch, db_engine)
+        job_id = _add_job(db_session, "enrichment")
+
+        asyncio.run(run_enrichment_job(job_id, 10))
+
+        job = _fetch_job(factory, job_id)
+        assert job.status == "failed"
+        assert "quota exhausted" in json.loads(job.result_summary)["error"]
+
+
+class TestUpdateJobStatus:
+    def test_no_factory_returns_silently(self, monkeypatch):
+        from src.web.background import _update_job_status
+
+        monkeypatch.setattr("src.web.background.get_session_factory", lambda: None)
+        _update_job_status("nonexistent", "running", None)  # must not raise
+
+    def test_unknown_job_is_a_noop(self, db_engine, monkeypatch):
+        from src.web.background import _update_job_status
+
+        _patch_session_factory(monkeypatch, db_engine)
+        _update_job_status("nonexistent", "running", None)  # must not raise
+
+    def test_commit_failure_rolls_back_and_raises(self, monkeypatch):
+        from src.web.background import _update_job_status
+
+        session = MagicMock()
+        session.get.return_value = MagicMock()  # a "job"
+        session.commit.side_effect = RuntimeError("db gone")
+        monkeypatch.setattr("src.web.background.get_session_factory", lambda: lambda: session)
+
+        with pytest.raises(RuntimeError, match="db gone"):
+            _update_job_status("job-1", "running", None)
+        session.rollback.assert_called_once_with()
+        session.close.assert_called_once_with()
