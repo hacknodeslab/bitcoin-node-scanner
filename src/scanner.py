@@ -18,6 +18,8 @@ from typing import List, Dict, Set, Optional
 import yaml
 from dotenv import load_dotenv, find_dotenv
 
+from src.safe_paths import UnsafePathError
+
 # Load environment variables from .env file
 load_dotenv(find_dotenv(), override=True)
 
@@ -1258,7 +1260,11 @@ Usage examples:
             )
         
         return 0
-        
+
+    except (UnsafePathError, FileNotFoundError) as e:
+        # Bad --ips path: a clear one-line message, no traceback.
+        print(f"ERROR: {e}")
+        return 1
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback

@@ -32,7 +32,7 @@ credits**:
 python -m src.scanner --ips data/peers/peers.txt
 
 # Cap the number of lookups and tune the request rate (seconds between calls)
-python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
+python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
 ```
 
 Accepted formats: one `host:port` per line, `[ipv6]:port`, or CSV.

@@ -12,11 +12,16 @@ from __future__ import annotations
 import sys
 from typing import List
 
+from ..safe_paths import safe_input_file, safe_input_write
+
 
 def extract(src: str, dst: str, only_online: bool = False, only_clearnet: bool = False) -> int:
-    from openpyxl import load_workbook  # imported lazily so the dep stays optional
+    # Both paths come from the CLI: read and write only under INPUT_DIR.
+    src_path = safe_input_file(src)
+    dst_path = safe_input_write(dst)
 
-    wb = load_workbook(src, read_only=True)
+    from openpyxl import load_workbook  # imported lazily so the dep stays optional
+    wb = load_workbook(src_path, read_only=True)
     ws = wb.active
     rows = ws.iter_rows(values_only=True)
     header = list(next(rows))
@@ -27,7 +32,7 @@ def extract(src: str, dst: str, only_online: bool = False, only_clearnet: bool =
     net_idx = header.index("network") if only_clearnet else None
 
     seen = set()
-    with open(dst, "w") as f:
+    with open(dst_path, "w") as f:
         for row in rows:
             url = row[url_idx]
             if not url:

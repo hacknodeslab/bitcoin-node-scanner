@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import ipaddress
 import re
+
+from .safe_paths import safe_input_file
 from typing import Dict, List, Optional, Tuple
 
 _BRACKETED = re.compile(r"^\[([0-9A-Fa-f:]+)\](?::(\d+))?$")
@@ -107,7 +109,8 @@ def read_ip_list(path: str) -> Tuple[List[Tuple[str, List[int]]], Dict[str, int]
     raw = 0
     invalid = 0
 
-    with open(path, encoding="utf-8") as f:
+    # Confined to INPUT_DIR: the path comes straight from `--ips`.
+    with open(safe_input_file(path), encoding="utf-8") as f:
         for line in f:
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):

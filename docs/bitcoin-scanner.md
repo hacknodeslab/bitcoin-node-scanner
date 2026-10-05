@@ -68,7 +68,7 @@ or `bitcoin-cli getnodeaddresses 0` — and look each one up in Shodan:
 
 ```bash
 python -m src.scanner --ips data/peers/peers.txt
-python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
+python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
 ```
 
 Input is tolerant: peer-observer's `host:port` (IPv4 `1.2.3.4:8333`, IPv6
@@ -82,16 +82,23 @@ every row is rejected. Convert it first, keeping only clearnet addresses
 ```bash
 bitcoin-cli getnodeaddresses 0 | jq -r '.[]
   | select(.network == "ipv4" or .network == "ipv6")
-  | if .network == "ipv6" then "[\(.address)]:\(.port)" else "\(.address):\(.port)" end' > peers.txt
+  | if .network == "ipv6" then "[\(.address)]:\(.port)" else "\(.address):\(.port)" end' > data/peers/peers.txt
 ```
+
+**Where the list must live.** The `--ips` path must be inside `INPUT_DIR` (default
+`data/`, e.g. `data/peers/peers.txt`); anything outside — absolute paths, `../`,
+symlinks pointing elsewhere — is refused, so an automated agent can't be steered
+into reading arbitrary files. Likewise `db-import` only reads dumps under
+`OUTPUT_DIR` (default `output/`). Set either variable in `.env` to use another
+directory.
 
 **Provenance tag.** `db-import` adds a tag to every node from an `--ips` run so they
 stay distinguishable from query-discovered nodes. It defaults to the neutral
 `ip-list`; name the source with `--source-tag` (lowercase, `[a-z0-9_-]`, ≤ 40 chars):
 
 ```bash
-python -m src.scanner --ips peers.txt --source-tag peer-observer
-python -m src.scanner --ips peers.txt --source-tag getnodeaddresses
+python -m src.scanner --ips data/peers/peers.txt --source-tag peer-observer
+python -m src.scanner --ips data/peers/peers.txt --source-tag getnodeaddresses
 ```
 
 Nodes imported before this flag existed keep their existing `peer-observer` tag.

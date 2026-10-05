@@ -10,6 +10,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 
+@pytest.fixture(autouse=True)
+def _confine_cli_paths_to_tmp(tmp_path, monkeypatch):
+    """CLI file paths are confined to INPUT_DIR / OUTPUT_DIR (src/safe_paths.py).
+
+    Tests build their fixture files under tmp_path, so make it both roots.
+    """
+    monkeypatch.setenv("INPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
+
+
 # Database fixtures for DB tests
 @pytest.fixture(scope="function")
 def db_engine():

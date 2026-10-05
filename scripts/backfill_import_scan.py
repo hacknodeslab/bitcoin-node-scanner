@@ -27,6 +27,7 @@ from src.db.connection import get_db_session, is_database_configured, init_db
 from src.db.repositories import ScanRepository
 from src.db.models import Scan
 from import_json_to_db import JSONImporter
+from src.safe_paths import UnsafePathError, safe_output_file
 
 
 def main():
@@ -38,6 +39,11 @@ def main():
     if not os.path.exists(file_path):
         print(f"File not found: {file_path}")
         return 1
+    try:
+        safe_path = safe_output_file(file_path)  # CLI-supplied: OUTPUT_DIR only
+    except UnsafePathError as e:
+        print(f"Error: {e}")
+        return 1
 
     if not is_database_configured() or not init_db():
         print("Error: database not configured")
@@ -47,7 +53,7 @@ def main():
     importer = JSONImporter(verbose=False)
     file_timestamp = importer._extract_timestamp(filename)
 
-    with open(file_path) as f:
+    with open(safe_path) as f:
         data = json.load(f)
     nodes = data if isinstance(data, list) else data.get("nodes", [])
     nodes = [n for n in nodes if n.get("ip")]

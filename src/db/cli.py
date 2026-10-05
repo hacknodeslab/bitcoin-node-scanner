@@ -223,9 +223,15 @@ def cmd_import_nostr(args):
 
     init_db()
 
+    from src.safe_paths import UnsafePathError, safe_output_file
+
     try:
-        with open(args.file, encoding="utf-8") as f:
+        # The dump path is CLI-supplied: only read from under OUTPUT_DIR.
+        with open(safe_output_file(args.file), encoding="utf-8") as f:
             dump = json.load(f)
+    except UnsafePathError as exc:
+        print(f"Error: {exc}")
+        return 1
     except (OSError, json.JSONDecodeError) as exc:
         print(f"Error: failed to read JSON dump: {exc}")
         return 1

@@ -22,6 +22,7 @@ from typing import Dict, List, Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.db.connection import get_db_session, is_database_configured, init_db
+from src.safe_paths import UnsafePathError, safe_output_dir, safe_output_file
 from src.db.repositories import NodeRepository, ScanRepository
 
 
@@ -84,11 +85,19 @@ class JSONImporter:
         if not os.path.exists(file_path):
             self.log(f"File not found: {file_path}")
             return file_stats
+        # Dumps are only read from under OUTPUT_DIR (the path is CLI-supplied).
+        try:
+            safe_path = safe_output_file(file_path)
+        except (UnsafePathError, OSError) as e:
+            self.log(f"Refusing to import {file_path}: {e}")
+            file_stats["errors"] += 1
+            self.stats["errors"] += 1
+            return file_stats
 
         self.log(f"\nImporting: {file_path}")
 
         try:
-            with open(file_path, "r") as f:
+            with open(safe_path, "r") as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             self.log(f"Error parsing JSON: {e}")
@@ -329,9 +338,14 @@ class JSONImporter:
         Returns:
             Aggregated statistics
         """
-        path = Path(dir_path)
-        if not path.exists():
+        if not Path(dir_path).exists():
             self.log(f"Directory not found: {dir_path}")
+            return self.stats
+        try:
+            path = safe_output_dir(dir_path)
+        except UnsafePathError as e:
+            self.log(f"Refusing to import from {dir_path}: {e}")
+            self.stats["errors"] += 1
             return self.stats
 
         files = list(path.glob(pattern))

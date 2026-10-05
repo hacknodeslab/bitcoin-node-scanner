@@ -28,9 +28,9 @@ python -m src.web.main
 python -m src.scanner
 python -m src.scanner --quick            # Cache + limited enrichment
 python -m src.scanner --check-credits    # Check Shodan API credits
-python -m src.scanner --ips peers.txt    # Scan a provided IP list via host lookups (not search)
-python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
-python -m src.scanner --ips peers.txt --source-tag peer-observer  # tag added on db-import (default: ip-list)
+python -m src.scanner --ips data/peers/peers.txt    # Scan a provided IP list via host lookups (not search)
+python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
+python -m src.scanner --ips data/peers/peers.txt --source-tag peer-observer  # tag added on db-import (default: ip-list)
 # NOTE: scanner runs write JSON/CSV to output/ only — they do NOT persist to
 # the database. Load the results with `db-import` (see below).
 # --ips mode: looks each IP up with api.host() (host:port / [ipv6]:port / CSV /
@@ -42,9 +42,9 @@ python -m src.scanner --ips peers.txt --source-tag peer-observer  # tag added on
 # nothing matched) → load with db-import, which tags the nodes with --source-tag.
 
 # Run the Nostr relay CDN-recon scanner (phase 0 — measures % of relays behind a CDN)
-python -m src.nostr.scanner relays.txt           # writes output/nostr_relays_<ts>.json
-python -m src.nostr.scanner relays.txt --workers 100 --timeout 4
-python -m src.nostr.extract_relays nw-relays.xlsx relays.txt --online --clearnet  # nostr.watch xlsx → host list
+python -m src.nostr.scanner data/relays.txt           # writes output/nostr_relays_<ts>.json
+python -m src.nostr.scanner data/relays.txt --workers 100 --timeout 4
+python -m src.nostr.extract_relays data/nw-relays.xlsx data/relays.txt --online --clearnet  # nostr.watch xlsx → host list
 # NOTE: like the Bitcoin scanner, the Nostr scanner writes JSON only and does
 # NOT persist — load the dump with `db-import-nostr` (see below). No Shodan
 # credits used (pure DNS + CDN CIDR matching). Phase 2 (origin unmasking) is
@@ -75,7 +75,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`), `NOSTR_CDN_CACHE_DIR` (where the Nostr scanner caches CDN IP-range lists, default `.cdn_cache`; refreshed every 7 days), `ABUSEIPDB_API_KEY` (enables the AbuseIPDB reputation source; each lookup discloses the node IP to AbuseIPDB), `ABUSEIPDB_DAILY_QUOTA` (default `1000`, tracked per UTC day in the DB), `ABUSEIPDB_MIN_INTERVAL` (seconds between requests, default `1`), `REPUTATION_STALE_DAYS` (re-enrich after N days, default `7`), `BLOCKLISTS` (comma-separated ids, default `firehol_level1,spamhaus_drop,feodo,tor_exit`), `BLOCKLIST_CACHE_DIR` (default `.blocklist_cache`, refreshed every 24h). Copy `.env.example` to `.env` to start.
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR` (also the root that `db-import`, `db-import-nostr` and the Nostr scanner's `--json` may read/write — default `output`), `INPUT_DIR` (root that `--ips`, the Nostr relay list and `extract_relays` may read/write — default `data`; see `src/safe_paths.py`), `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`), `NOSTR_CDN_CACHE_DIR` (where the Nostr scanner caches CDN IP-range lists, default `.cdn_cache`; refreshed every 7 days), `ABUSEIPDB_API_KEY` (enables the AbuseIPDB reputation source; each lookup discloses the node IP to AbuseIPDB), `ABUSEIPDB_DAILY_QUOTA` (default `1000`, tracked per UTC day in the DB), `ABUSEIPDB_MIN_INTERVAL` (seconds between requests, default `1`), `REPUTATION_STALE_DAYS` (re-enrich after N days, default `7`), `BLOCKLISTS` (comma-separated ids, default `firehol_level1,spamhaus_drop,feodo,tor_exit`), `BLOCKLIST_CACHE_DIR` (default `.blocklist_cache`, refreshed every 24h). Copy `.env.example` to `.env` to start.
 
 ## Architecture
 
@@ -143,6 +143,8 @@ Tokens are sourced from `/DESIGN.md`'s YAML front matter. The `themes:` map defi
 The active mode (`dark` / `light` / `system`) lives in `localStorage['bns:theme']`. An inline pre-hydration script in `app/layout.tsx` (`THEME_INIT_SCRIPT` from `lib/theme.ts`) reads it before React mounts to avoid a flash of wrong theme. `ThemeProvider` (`components/providers/ThemeProvider.tsx`) owns the runtime state and tracks `prefers-color-scheme` only while in `system` mode.
 
 ## Important Conventions
+
+- **CLI file paths are confined**: any file path taken from a command line goes through `src/safe_paths.py` (`safe_input_file` / `safe_output_file` / `*_write`), which resolves it and requires it under `INPUT_DIR` (default `data/`) or `OUTPUT_DIR` (default `output/`). This blocks `../`, absolute paths and symlink escapes when a command is driven by an automated agent. New CLI commands that open a user-named file must use it too.
 
 - **Shodan credit efficiency**: The `OptimizedBitcoinScanner` and `CachedNodeManager` exist specifically to minimize API credit usage — avoid adding code paths that bypass this.
 - **Dual geo sources**: Nodes have both Shodan-provided geo fields (`country_code`, `city`) and MaxMind fields (`geo_country_code`, `geo_subdivision`, `asn`). Don't conflate them.
