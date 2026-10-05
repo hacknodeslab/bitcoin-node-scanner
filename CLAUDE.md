@@ -31,6 +31,8 @@ python -m src.scanner --check-credits    # Check Shodan API credits
 python -m src.scanner --ips data/peers/peers.txt    # Scan a provided IP list via host lookups (not search)
 python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
 python -m src.scanner --ips data/peers/peers.txt --source-tag peer-observer  # tag added on db-import (default: ip-list)
+python -m src.peers.fetch alt-bitnodes  # 8-day union of our alt-bitnodes crawler → data/peers/alt-bitnodes.txt (incremental cache; run daily)
+python -m src.scanner --ips data/peers/alt-bitnodes.txt --source-tag alt-bitnodes
 # NOTE: scanner runs write JSON/CSV to output/ only — they do NOT persist to
 # the database. Load the results with `db-import` (see below).
 # --ips mode: looks each IP up with api.host() (host:port / [ipv6]:port / CSV /
@@ -104,6 +106,7 @@ The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and N
 - **geoip.py** — MaxMind GeoIP enrichment (separate from Shodan geo fields).
 - **credit_tracker.py** — Monitors Shodan API credit consumption.
 - **enrichers/** — Passive IP-reputation enrichment behind an `Enricher` protocol + `REGISTRY` (a new source = one module + one registry entry + its `<name>_checked_at` column): `abuseipdb.py` (per-IP `check` API, opt-in), `blocklists.py` (FireHOL level1 / Spamhaus DROP / Feodo / Tor exits, downloaded + cached + CIDR-matched locally), `quota.py` (DB-persisted per-source daily quota, atomic increments; 429 exhausts the day, 401/403 only disables the source for the run), `service.py` (candidate selection CRITICAL→LOW with per-source staleness — each source is only called for IPs it still owes —, example-IP exclusion, per-source failure isolation). Never sends traffic to the nodes. GreyNoise (50 lookups/week) and ipinfo (redundant ASN source) were evaluated and rejected.
+- **peers/** — Peer-list sources that write `--ips`-ready files under `INPUT_DIR`. `alt_bitnodes.py` pulls snapshots from our alt-bitnodes crawler (`ALT_BITNODES_URL`, default https://pesquisa.hacknodes.xyz), unions the last `ALT_BITNODES_WINDOW_DAYS` (8) with a per-snapshot cache under `data/peers/alt-bitnodes/cache/`, and brackets IPv6 — its keys are unbracketed `ip:port`, which the generic `--ips` reader would misread. Skips onion/I2P/CJDNS/non-global. CLI: `python -m src.peers.fetch alt-bitnodes`. Uses `requests` with an explicit UA (CloudFront 403s `Python-urllib`).
 - **nostr/** — Nostr relay CDN-recon (phase 0): `classifier.py` (normalize → resolve A/AAAA → CDN CIDR match → verdict), `cdn_ranges.py` (cached Cloudflare/CloudFront/Fastly ranges + hardcoded Cloudflare fallback), `scanner.py` (runnable; writes a JSON dump to `output/`), `extract_relays.py` (nostr.watch xlsx → host list). No Shodan credits; pure DNS. Loaded into the DB via `db-import-nostr`. Phase 2 (origin unmasking) is out of scope.
 
 ### Database Layer (`src/db/`)
