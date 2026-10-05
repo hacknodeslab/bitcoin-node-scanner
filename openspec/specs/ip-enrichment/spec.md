@@ -137,3 +137,10 @@ The system SHALL provide `python -m src.db.cli db-enrich-ips` with options `--li
 #### Scenario: No keys configured
 - **WHEN** no `ABUSEIPDB_API_KEY` is set and the command runs
 - **THEN** it SHALL log `enricher unavailable: abuseipdb`, run the blocklist source, and exit with status 0
+
+### Requirement: Partial source results stay due
+A source MAY mark a successful result as partial (e.g. the blocklist source when some configured lists failed with no usable cache). A partial result's fields SHALL be persisted and recorded with status `partial` in `sources_json`, but its `<source>_checked_at` SHALL NOT be set, so the IP is retried on the next run.
+
+#### Scenario: One blocklist unavailable
+- **WHEN** `feodo` fails with no cache and the other lists load
+- **THEN** the IP's matches from the loaded lists SHALL be stored and `blocklists_checked_at` SHALL remain unchanged

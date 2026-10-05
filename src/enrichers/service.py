@@ -104,8 +104,13 @@ def _enrich(
                 if status == "ok":
                     any_ok = True
                     fields.update(result.get("fields") or {})
-                    # Per-source success marker; an errored source stays due.
-                    fields[f"{name}_checked_at"] = now
+                    if result.get("partial"):
+                        # Usable but incomplete (e.g. one list unavailable):
+                        # keep the data, leave the source due for a retry.
+                        entry["status"] = "partial"
+                    else:
+                        # Per-source success marker; errored/partial stay due.
+                        fields[f"{name}_checked_at"] = now
                     stats["sources"][name]["ok"] += 1
                 else:
                     entry["error"] = result.get("error")

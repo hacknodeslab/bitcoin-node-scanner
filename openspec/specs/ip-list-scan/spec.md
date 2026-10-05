@@ -22,7 +22,7 @@ The scanner SHALL accept a `--ips <file>` mode that reads a list of node IPs fro
 
 ### Requirement: Tolerant input parsing
 
-The scanner SHALL parse each input line into an IP and an optional port, accepting peer-observer's `host:port` format — IPv4 as `ip:port` and IPv6 bracketed as `[ipv6]:port` — as well as a CSV `ip,port` and a bare IP (v4 or v6) with no port. It SHALL ignore blank lines and lines beginning with `#`, validate IPs, and deduplicate by IP.
+The scanner SHALL parse each input line into an IP and an optional port, accepting peer-observer's `host:port` format — IPv4 as `ip:port` and IPv6 bracketed as `[ipv6]:port` — as well as a CSV `ip,port` and a bare IP (v4 or v6) with no port. It SHALL ignore blank lines and lines beginning with `#`, validate IPs, normalize them to their canonical spelling (so equivalent IPv6 forms are one IP), and deduplicate by IP.
 
 #### Scenario: IPv4 host:port (peer-observer)
 
@@ -129,3 +129,22 @@ The scanner SHALL write the gathered results as a JSON dump to the output direct
 
 - **WHEN** an IP-list run completes
 - **THEN** the scanner prints the total IPs read, unique IPs, IPs found in Shodan, IPs skipped (not found), lookups performed, and elapsed time (noting if a run cap stopped it)
+
+### Requirement: Operator-supplied provenance tag
+The scanner SHALL accept `--source-tag <tag>` (matching `[a-z0-9][a-z0-9_-]{0,39}`, default `ip-list`) and SHALL store it as `source_tag` on every record of an `--ips` run. `db-import` SHALL add that tag to the node's tags (merged, never replacing existing tags); records with an `ip-list:` query but no `source_tag` SHALL be tagged `ip-list`.
+
+#### Scenario: Named source
+- **WHEN** `--ips peers.txt --source-tag peer-observer` runs and the dump is imported
+- **THEN** every imported node SHALL carry the tag `peer-observer`
+
+#### Scenario: Default tag
+- **WHEN** `--ips peers.txt` runs without `--source-tag` and the dump is imported
+- **THEN** the imported nodes SHALL carry the tag `ip-list`, not `peer-observer`
+
+#### Scenario: Invalid tag
+- **WHEN** `--source-tag "Peer Observer"` is given
+- **THEN** the run SHALL fail before any lookup
+
+#### Scenario: Empty run still writes a dump
+- **WHEN** no IP in the list yields a Bitcoin service
+- **THEN** the run SHALL write a JSON dump containing an empty list

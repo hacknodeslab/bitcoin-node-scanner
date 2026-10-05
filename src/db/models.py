@@ -306,6 +306,13 @@ class ScanJob(Base):
 
     __table_args__ = (
         Index('idx_scan_jobs_status', 'status'),
+        # At most one active job per type, enforced by the DB so two concurrent
+        # POSTs can't both pass the get_active_job() check (the loser gets 409).
+        Index(
+            'uq_scan_jobs_active_per_type', 'job_type', unique=True,
+            sqlite_where=sa.text("status IN ('pending', 'running')"),
+            postgresql_where=sa.text("status IN ('pending', 'running')"),
+        ),
     )
 
     def __repr__(self) -> str:

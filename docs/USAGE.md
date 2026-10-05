@@ -36,6 +36,10 @@ python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
 ```
 
 Accepted formats: one `host:port` per line, `[ipv6]:port`, or CSV.
+`bitcoin-cli getnodeaddresses 0` outputs JSON — convert it first (recipe in
+[bitcoin-scanner.md](bitcoin-scanner.md#scan-from-a-provided-ip-list---ips)).
+Add `--source-tag <name>` (e.g. `peer-observer`) to tag the imported nodes with
+their source; the default tag is `ip-list`.
 
 ### Limit Host Enrichment
 ```bash

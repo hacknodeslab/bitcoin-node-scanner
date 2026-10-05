@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 # Per-IP result of one source:
 #   {"status": "ok" | "error",
 #    "fields": {typed ip_reputation columns to set},   # only when ok
+#    "partial": bool,  # ok but incomplete: fields saved, source stays due
 #    "data":   {raw/summary payload kept in sources_json},
 #    "error":  "message"}                               # only when error
 # IPs a source did not attempt (e.g. quota ran out) are simply absent.

@@ -309,7 +309,9 @@ def list_nodes(
     if blocklist is not None and blocklist not in BLOCKLISTS:
         # Closed set: also keeps the LIKE pattern below free of user wildcards.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            # Numeric: HTTP_422_UNPROCESSABLE_CONTENT needs Starlette >= 0.48,
+            # newer than the declared fastapi floor allows.
+            status_code=422,
             detail=f"Unknown blocklist '{blocklist}'. Expected one of: {', '.join(BLOCKLISTS)}.",
         )
 

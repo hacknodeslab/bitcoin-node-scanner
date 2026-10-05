@@ -73,7 +73,28 @@ python -m src.scanner --ips peers.txt --max-ips 500 --rate 1
 
 Input is tolerant: peer-observer's `host:port` (IPv4 `1.2.3.4:8333`, IPv6
 `[2001:db8::1]:8333`), a plain IP per line, or CSV `ip,port`; blank lines and
-`#` comments are ignored and IPs deduped.
+`#` comments are ignored and IPs deduped (IPv6 spellings are normalized first).
+
+`bitcoin-cli getnodeaddresses 0` returns **JSON**, not that line format — saved as-is,
+every row is rejected. Convert it first, keeping only clearnet addresses
+(onion/i2p/cjdns can't be looked up in Shodan):
+
+```bash
+bitcoin-cli getnodeaddresses 0 | jq -r '.[]
+  | select(.network == "ipv4" or .network == "ipv6")
+  | if .network == "ipv6" then "[\(.address)]:\(.port)" else "\(.address):\(.port)" end' > peers.txt
+```
+
+**Provenance tag.** `db-import` adds a tag to every node from an `--ips` run so they
+stay distinguishable from query-discovered nodes. It defaults to the neutral
+`ip-list`; name the source with `--source-tag` (lowercase, `[a-z0-9_-]`, ≤ 40 chars):
+
+```bash
+python -m src.scanner --ips peers.txt --source-tag peer-observer
+python -m src.scanner --ips peers.txt --source-tag getnodeaddresses
+```
+
+Nodes imported before this flag existed keep their existing `peer-observer` tag.
 
 - **Cost: none.** Shodan host lookups (`/shodan/host/{ip}`) consume **no query
   credits and no scan credits** — so this works even on the one-time Membership
@@ -81,8 +102,8 @@ Input is tolerant: peer-observer's `host:port` (IPv4 `1.2.3.4:8333`, IPv6
   `--max-ips` caps a run; `--rate` tunes the pacing.
 - **IPs not in Shodan are skipped** (no on-demand scanning) and counted in the
   summary alongside IPs found and IPs with no Bitcoin service.
-- Like the query-based scan, this **writes a JSON dump to `output/`** and does
-  not persist; load it with `db-import`.
+- Like the query-based scan, this **writes a JSON dump to `output/`** (an empty
+  list when nothing matched) and does not persist; load it with `db-import`.
 
 ```bash
 python -m src.db.cli db-import output/raw_data/nodes_<ts>.json

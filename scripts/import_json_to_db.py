@@ -223,11 +223,15 @@ class JSONImporter:
         db_data["has_exposed_rpc"] = port == 8332
         db_data["is_dev_version"] = ".99." in node_data.get("version", "")
 
-        # Provenance marker: records produced by the --ips host-lookup mode carry
-        # a `query` of "ip-list:<file>". Tag those nodes "peer-observer" so they
-        # stay distinguishable from query-discovered nodes (the Node table has no
-        # dedicated source column). Tags are merged, never clobbered.
-        prov_tag = "peer-observer" if str(node_data.get("query", "")).startswith("ip-list:") else None
+        # Provenance marker: records from the --ips host-lookup mode carry a
+        # `query` of "ip-list:<file>" and the operator-supplied `source_tag`
+        # (`--source-tag`, e.g. "peer-observer"). Add that tag so these nodes stay
+        # distinguishable from query-discovered ones (the Node table has no
+        # dedicated source column). Dumps written before `source_tag` existed
+        # fall back to the neutral "ip-list". Tags are merged, never clobbered.
+        prov_tag = None
+        if str(node_data.get("query", "")).startswith("ip-list:"):
+            prov_tag = str(node_data.get("source_tag") or "ip-list")
 
         if existing:
             # Update existing node, preserve first_seen

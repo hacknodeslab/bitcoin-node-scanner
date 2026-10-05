@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...db.repositories import ScanJobRepository
@@ -44,8 +45,16 @@ def trigger_scan(
             detail=f"A scan is already {active.status} (job_id={active.id}). Wait for it to finish.",
         )
 
-    job = repo.create(job_type="scan")
-    db.commit()
+    try:
+        job = repo.create(job_type="scan")
+        db.commit()
+    except IntegrityError:
+        # Lost a race with a concurrent request (uq_scan_jobs_active_per_type).
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A scan is already pending or running.",
+        )
     job_id = job.id
 
     # Import here to avoid circular imports at module load time

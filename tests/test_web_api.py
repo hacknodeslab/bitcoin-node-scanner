@@ -853,3 +853,25 @@ class TestNodeAbuseFilters:
         db_session.commit()
         r = client.get("/api/v1/nodes?ip=10.3.1.1", headers=HEADERS)
         assert sorted(n["port"] for n in r.json()) == [8332, 8333]
+
+
+class TestJobAdmissionRace:
+    @pytest.mark.parametrize("path,runner", [
+        ("/api/v1/enrichment/run", "run_enrichment_job"),
+        ("/api/v1/scans", "run_scan_job"),
+    ])
+    def test_db_guard_returns_409_when_check_is_raced(self, client, db_session, path, runner):
+        # Simulate the race: an active job exists but the pre-check missed it.
+        job_type = "enrichment" if "enrichment" in path else "scan"
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type=job_type, status="pending",
+                               created_at=datetime.utcnow()))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.db.repositories.scan_job_repository.ScanJobRepository.get_active_job",
+                   return_value=None), \
+             patch(f"src.web.background.{runner}", new_callable=AsyncMock) as run:
+            r = client.post(path, headers=headers)
+        assert r.status_code == 409
+        run.assert_not_called()
+        assert db_session.query(ScanJob).filter_by(job_type=job_type).count() == 1
+

@@ -135,6 +135,26 @@ class TestCandidates:
 
 
 class TestScanJobTypes:
+    def test_db_rejects_second_active_job_of_same_type(self, db_session):
+        from sqlalchemy.exc import IntegrityError
+        repo = ScanJobRepository(db_session)
+        repo.create(job_type="enrichment")
+        db_session.commit()
+        repo.create(job_type="scan")  # other type is fine
+        db_session.commit()
+        with pytest.raises(IntegrityError):
+            repo.create(job_type="enrichment")
+            db_session.commit()
+        db_session.rollback()
+
+    def test_finished_jobs_do_not_count(self, db_session):
+        repo = ScanJobRepository(db_session)
+        job = repo.create(job_type="scan")
+        repo.update_status(job, "completed")
+        db_session.commit()
+        repo.create(job_type="scan")
+        db_session.commit()
+
     def test_active_job_is_per_type(self, db_session):
         repo = ScanJobRepository(db_session)
         repo.create(job_type="enrichment")
@@ -182,6 +202,7 @@ class TestMigration009:
         self._run(conn, "upgrade")
         insp = sa.inspect(conn)
         assert {"ip_reputation", "enrichment_quota"} <= set(insp.get_table_names())
+        assert "uq_scan_jobs_active_per_type" in {i["name"] for i in insp.get_indexes("scan_jobs")}
         assert conn.execute(sa.text("SELECT job_type FROM scan_jobs")).scalar() == "scan"
         assert conn.execute(sa.text("SELECT count(*) FROM nodes")).scalar() == 1
         assert conn.execute(sa.text("SELECT count(*) FROM ip_reputation")).scalar() == 0

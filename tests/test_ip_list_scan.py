@@ -110,3 +110,52 @@ class TestScanFromIpList:
         with pytest.raises(ValueError):
             scanner.scan_from_ip_list(path, max_ips=-5)
         scanner.api.host.assert_not_called()  # failed fast, before any lookup
+
+
+class TestIpListReviewFixes:
+    def test_records_carry_source_tag(self, scanner, tmp_path):
+        scanner.api.host.side_effect = _host_side_effect
+        path = _write(tmp_path, ["1.1.1.1:8333"])
+        scanner.scan_from_ip_list(path, rate=0, source_tag="peer-observer")
+        assert scanner.results[0]["source_tag"] == "peer-observer"
+        assert scanner.results[0]["query"] == "ip-list:peers.txt"
+
+    def test_default_source_tag_is_neutral(self, scanner, tmp_path):
+        scanner.api.host.side_effect = _host_side_effect
+        scanner.scan_from_ip_list(_write(tmp_path, ["1.1.1.1"]), rate=0)
+        assert scanner.results[0]["source_tag"] == "ip-list"
+
+    @pytest.mark.parametrize("tag", ["Peer", "", "a b", "x" * 41, "-lead"])
+    def test_invalid_source_tag_rejected(self, scanner, tmp_path, tag):
+        with pytest.raises(ValueError):
+            scanner.scan_from_ip_list(_write(tmp_path, ["1.1.1.1"]), rate=0, source_tag=tag)
+
+    def test_empty_run_still_writes_json_dump(self, scanner, tmp_path):
+        import json
+        import os
+        scanner.api.host.side_effect = _host_side_effect
+        scanner.api.info.return_value = {"query_credits": 1, "scan_credits": 1, "plan": "dev"}
+        scanner.run_ip_list_scan(_write(tmp_path, ["2.2.2.2", "3.3.3.3"]), rate=0)
+        dumps = [f for f in os.listdir(Config.RAW_DATA_DIR) if f.endswith(".json")]
+        assert len(dumps) == 1
+        with open(os.path.join(Config.RAW_DATA_DIR, dumps[0])) as f:
+            assert json.load(f) == []
+
+
+def test_quick_mode_honors_no_enrich(monkeypatch):
+    import sys
+    import src.scanner as scanner_mod
+    calls = {}
+
+    class FakeScanner:
+        def __init__(self, **kw):
+            pass
+
+        def run_optimized_scan(self, **kw):
+            calls.update(kw)
+
+    monkeypatch.setattr(scanner_mod, "OptimizedBitcoinScanner", FakeScanner)
+    monkeypatch.setattr(sys, "argv", ["scanner", "--quick", "--no-enrich"])
+    scanner_mod.main()
+    assert calls["enrich"] is False
+    assert calls["max_enrichments"] == 50

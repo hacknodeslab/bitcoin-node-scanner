@@ -27,7 +27,9 @@ _BRACKETED = re.compile(r"^\[([0-9A-Fa-f:]+)\](?::(\d+))?$")
 
 def _validate(ip: str, port: Optional[str]) -> Optional[Tuple[str, Optional[int]]]:
     try:
-        ipaddress.ip_address(ip)
+        # Canonical spelling, so `2001:db8::1` and `2001:0db8:0:0:0:0:0:1`
+        # collapse to one entry when deduplicating.
+        ip = str(ipaddress.ip_address(ip))
     except ValueError:
         return None
     if port is None or port == "":

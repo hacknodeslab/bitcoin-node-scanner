@@ -64,3 +64,10 @@ Enrichment jobs SHALL run in the same background thread-pool mechanism as scans 
 #### Scenario: Enrichment failure recorded
 - **WHEN** the enrichment run raises an unhandled exception
 - **THEN** the job status SHALL be `failed` with the error message in `result_summary`
+
+### Requirement: Active-job uniqueness enforced by the database
+The `scan_jobs` table SHALL have a unique partial index on `job_type` for rows whose status is `pending` or `running`. When creating a job violates it (a concurrent request won the race), the endpoint SHALL roll back and return HTTP 409 without queueing a background task.
+
+#### Scenario: Raced admission
+- **WHEN** two `POST /api/v1/enrichment/run` requests both pass the active-job check
+- **THEN** exactly one job SHALL be created and the other request SHALL receive HTTP 409

@@ -91,3 +91,13 @@ class TestReadIpList:
         p.write_text("9.9.9.9\n1.1.1.1\n5.5.5.5\n")
         entries, _ = read_ip_list(str(p))
         assert [ip for ip, _ in entries] == ["9.9.9.9", "1.1.1.1", "5.5.5.5"]
+
+
+def test_ipv6_spellings_normalized_and_deduplicated(tmp_path):
+    from src.ip_list import read_ip_list
+    p = tmp_path / "peers.txt"
+    p.write_text("[2001:db8::1]:8333\n[2001:0db8:0:0:0:0:0:1]:9333\n")
+    entries, counts = read_ip_list(str(p))
+    assert [ip for ip, _ in entries] == ["2001:db8::1"]
+    assert sorted(entries[0][1]) == [8333, 9333]
+    assert counts["unique"] == 1

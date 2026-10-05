@@ -215,6 +215,10 @@ def _migrate_schema(conn) -> None:
                 "ALTER TABLE scan_jobs ADD COLUMN job_type VARCHAR(20) NOT NULL DEFAULT 'scan'"
             ))
             logger.info("Added job_type column to scan_jobs table")
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_jobs_active_per_type "
+            "ON scan_jobs (job_type) WHERE status IN ('pending', 'running')"
+        ))
 
     if "nodes" not in tables:
         return

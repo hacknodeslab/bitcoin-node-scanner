@@ -451,3 +451,34 @@ class TestMain:
             _script.main()
 
         mock_importer.import_file.assert_called_once_with("/tmp/nodes.json")
+
+
+class TestIpListProvenanceTag:
+    def _tags(self, ip, port=8333):
+        from src.db.connection import get_db_session
+        with get_db_session() as session:
+            node = NodeRepository(session).find_by_ip_port(ip, port)
+            return json.loads(node.tags_json or "[]")
+
+    def _import(self, node_data):
+        importer = JSONImporter(verbose=False)
+        from src.db.connection import get_db_session
+        with get_db_session() as session:
+            importer._import_node(NodeRepository(session), node_data)
+
+    def test_source_tag_from_dump_is_used(self, db_setup):
+        self._import(make_node_dict("7.7.7.1", query="ip-list:peers.txt", source_tag="peer-observer"))
+        assert self._tags("7.7.7.1") == ["peer-observer"]
+
+    def test_legacy_dump_without_source_tag_gets_neutral_tag(self, db_setup):
+        self._import(make_node_dict("7.7.7.2", query="ip-list:peers.txt"))
+        assert self._tags("7.7.7.2") == ["ip-list"]
+
+    def test_query_scan_gets_no_provenance_tag(self, db_setup):
+        self._import(make_node_dict("7.7.7.3", query="product:Satoshi"))
+        assert self._tags("7.7.7.3") == []
+
+    def test_reimport_merges_tags(self, db_setup):
+        self._import(make_node_dict("7.7.7.4", query="ip-list:a.txt", source_tag="peer-observer"))
+        self._import(make_node_dict("7.7.7.4", query="ip-list:b.txt", source_tag="getnodeaddresses"))
+        assert self._tags("7.7.7.4") == ["peer-observer", "getnodeaddresses"]

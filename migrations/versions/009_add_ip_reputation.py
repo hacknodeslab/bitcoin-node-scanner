@@ -65,6 +65,11 @@ def upgrade() -> None:
                 'scan_jobs',
                 sa.Column('job_type', sa.String(20), nullable=False, server_default='scan'),
             )
+        # One active job per type (same statement on SQLite and PostgreSQL).
+        op.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_jobs_active_per_type "
+            "ON scan_jobs (job_type) WHERE status IN ('pending', 'running')"
+        )
 
 
 def downgrade() -> None:
@@ -72,6 +77,7 @@ def downgrade() -> None:
     tables = set(insp.get_table_names())
 
     if 'scan_jobs' in tables:
+        op.execute("DROP INDEX IF EXISTS uq_scan_jobs_active_per_type")
         cols = {c['name'] for c in insp.get_columns('scan_jobs')}
         if 'job_type' in cols:
             with op.batch_alter_table('scan_jobs') as batch:

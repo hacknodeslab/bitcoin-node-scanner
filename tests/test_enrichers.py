@@ -345,6 +345,26 @@ def _fetcher(mapping, fail=()):
     return fetch
 
 
+class TestPartialResults:
+    def test_partial_result_keeps_data_but_stays_due(self, db_session):
+        e = FakeEnricher("blocklists", results={"10.0.0.1": {
+            "status": "ok", "partial": True, "fields": {"blocklists": ["tor_exit"]},
+            "data": {"lists_failed": ["feodo"]},
+        }})
+        enrich_ips(db_session, ["10.0.0.1"], [e])
+        row = ReputationRepository(db_session).get_by_ip("10.0.0.1")
+        assert json.loads(row.blocklists_json) == ["tor_exit"]
+        assert row.blocklists_checked_at is None  # retried next run
+        assert json.loads(row.sources_json)["blocklists"]["status"] == "partial"
+
+    def test_blocklist_enricher_flags_partial_when_a_list_failed(self, cache):
+        fetch = _fetcher(LISTS, fail={"https://feodotracker.abuse.ch/downloads/ipblocklist.txt"})
+        r = BlocklistEnricher(["spamhaus_drop", "feodo"], fetch=fetch).enrich(["8.8.8.8"])
+        assert r["8.8.8.8"]["partial"] is True
+        full = BlocklistEnricher(["spamhaus_drop"], fetch=_fetcher(LISTS)).enrich(["8.8.8.8"])
+        assert full["8.8.8.8"]["partial"] is False
+
+
 class TestBlocklists:
     def test_parse_skips_comments_and_junk(self):
         nets = parse_networks("# c\n1.2.3.0/24 ; x\nnot-an-ip\n\n2001:db8::/32\n5.6.7.8\n")

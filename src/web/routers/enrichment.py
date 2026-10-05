@@ -8,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ...db.repositories import ScanJobRepository
@@ -52,8 +53,16 @@ def trigger_enrichment(
             detail=f"An enrichment run is already {active.status} (job_id={active.id}).",
         )
 
-    job = repo.create(job_type="enrichment")
-    db.commit()
+    try:
+        job = repo.create(job_type="enrichment")
+        db.commit()
+    except IntegrityError:
+        # Lost a race with a concurrent request (uq_scan_jobs_active_per_type).
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An enrichment run is already pending or running.",
+        )
 
     from ..background import run_enrichment_job
     background_tasks.add_task(run_enrichment_job, job.id, params.limit, params.source)

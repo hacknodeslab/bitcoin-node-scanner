@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from collections import Counter
 import argparse
 import os
+import re
 from typing import List, Dict, Set, Optional
 import yaml
 from dotenv import load_dotenv, find_dotenv
@@ -37,6 +38,11 @@ def _load_config_yaml() -> Dict:
     return {}
 
 _CONFIG_YAML = _load_config_yaml()
+
+# --ips provenance: tag added to imported nodes (`--source-tag`). Neutral by
+# default — only the operator knows whether a list came from peer-observer.
+DEFAULT_IP_LIST_TAG = "ip-list"
+_SOURCE_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 
 class Config:
@@ -656,13 +662,23 @@ class BitcoinNodeScanner:
     # `rate`) and an optional `max_ips` cap.
     # ------------------------------------------------------------------
 
-    def scan_from_ip_list(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
+    def scan_from_ip_list(
+        self,
+        path: str,
+        max_ips: Optional[int] = None,
+        rate: float = 1.0,
+        source_tag: str = DEFAULT_IP_LIST_TAG,
+    ) -> Dict:
         """Look up each IP from `path` in Shodan and collect Bitcoin services.
 
         Reuses `parse_node_data` so records are identical to query-based scans.
-        IPs not in Shodan are skipped (no on-demand scanning). Returns a summary
-        dict of counts. Populates `self.results` / `self.unique_ips`.
+        IPs not in Shodan are skipped (no on-demand scanning). Each record
+        carries `source_tag` (where the list came from, e.g. `peer-observer`),
+        which `db-import` adds to the node's tags. Returns a summary dict of
+        counts. Populates `self.results` / `self.unique_ips`.
         """
+        if not _SOURCE_TAG_RE.match(source_tag):
+            raise ValueError("source_tag must match [a-z0-9][a-z0-9_-]{0,39}")
         from src.ip_list import read_ip_list  # noqa: PLC0415
 
         if rate < 0:
@@ -721,6 +737,7 @@ class BitcoinNodeScanner:
                         'city': host.get('city', ''),
                     }
                 node = self.parse_node_data(merged, f"ip-list:{os.path.basename(path)}")
+                node['source_tag'] = source_tag
                 self.results.append(node)
                 self.unique_ips.add(ip)
                 matched += 1
@@ -744,22 +761,30 @@ class BitcoinNodeScanner:
             'elapsed_sec': round(time.time() - start, 1),
         }
 
-    def run_ip_list_scan(self, path: str, max_ips: Optional[int] = None, rate: float = 1.0) -> Dict:
+    def run_ip_list_scan(
+        self,
+        path: str,
+        max_ips: Optional[int] = None,
+        rate: float = 1.0,
+        source_tag: str = DEFAULT_IP_LIST_TAG,
+    ) -> Dict:
         """Full IP-list run: look up IPs, write the JSON dump, print a summary."""
         self.log("=" * 80)
         self.log("STARTING IP-LIST SCAN")
         self.log("=" * 80)
         self.get_account_info()
 
-        summary = self.scan_from_ip_list(path, max_ips=max_ips, rate=rate)
+        summary = self.scan_from_ip_list(path, max_ips=max_ips, rate=rate, source_tag=source_tag)
 
+        # The JSON dump is written even for an empty run (the run completed;
+        # an empty list is its result). Stats/report only when there is data.
+        self.save_raw_data()
         if self.results:
             stats = self.generate_statistics()
-            self.save_raw_data()
             self.save_statistics(stats)
             self.generate_report(stats)
         else:
-            self.log("No Bitcoin nodes found from the IP list — nothing to save.", 'WARNING')
+            self.log("No Bitcoin nodes found from the IP list — wrote an empty dump.", 'WARNING')
 
         self.log("\n" + "=" * 80)
         self.log("IP-LIST SCAN SUMMARY")
@@ -1192,6 +1217,9 @@ Usage examples:
                             'queries. Host lookups consume no query/scan credits.')
     parser.add_argument('--max-ips', type=int, default=None,
                        help='Cap the number of IPs looked up in an --ips run')
+    parser.add_argument('--source-tag', default=DEFAULT_IP_LIST_TAG, metavar='TAG',
+                       help='Tag added to every node from an --ips run on db-import, naming '
+                            f'where the list came from (e.g. peer-observer). Default: {DEFAULT_IP_LIST_TAG}')
     parser.add_argument('--rate', type=float, default=1.0,
                        help='Seconds between host lookups in --ips mode '
                             '(default 1.0 ≈ Shodan rate limit)')
@@ -1210,14 +1238,16 @@ Usage examples:
 
         # IP-list mode: look up a provided list of IPs (credit-free host lookups)
         if args.ips:
-            scanner.run_ip_list_scan(args.ips, max_ips=args.max_ips, rate=args.rate)
+            scanner.run_ip_list_scan(
+                args.ips, max_ips=args.max_ips, rate=args.rate, source_tag=args.source_tag
+            )
             return 0
 
         # Quick mode
         if args.quick:
             scanner.run_optimized_scan(
                 use_cache=True,
-                enrich=True,
+                enrich=not args.no_enrich,  # --quick --no-enrich must not enrich
                 max_enrichments=50  # Limit to 50 for quick scans
             )
         else:

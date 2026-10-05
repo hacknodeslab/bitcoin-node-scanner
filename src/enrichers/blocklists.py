@@ -199,10 +199,14 @@ class BlocklistEnricher:
         matchers = self._load()
         checked = list(matchers)
         results: Dict[str, SourceResult] = {}
+        # Some configured lists failed with no usable cache: keep the hits we
+        # have, but flag the result partial so the source stays due for a retry.
+        partial = bool(self.failed)
         for ip in ips:
             hits = [list_id for list_id, m in matchers.items() if ip in m]
             results[ip] = {
                 "status": "ok",
+                "partial": partial,
                 "fields": {"blocklists": hits},
                 "data": {"lists_checked": checked, "lists_failed": list(self.failed)},
             }
