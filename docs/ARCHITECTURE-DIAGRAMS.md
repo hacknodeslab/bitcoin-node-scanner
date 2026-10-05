@@ -1,7 +1,9 @@
-# Architecture
+# Architecture Diagrams
 
 How the pieces of the HackNodes Recon Platform relate. Both diagrams render on
-GitHub (Mermaid).
+GitHub (Mermaid). Companion to `docs/ARCHITECTURE.md` (system map and
+lifecycle walkthroughs) — this file focuses on the data-flow and entity
+relations.
 
 ## Data flow
 
