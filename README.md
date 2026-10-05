@@ -36,6 +36,9 @@ correlation and MaxMind GeoIP enrichment.
    Nostr:   DNS    ─► src/nostr/ ──────┘
 ```
 
+Full diagrams — system map, data lifecycle, data model (ER) and the
+dashboard ↔ API ↔ tables mapping — in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 Two toolchains run as two processes:
 
 - **FastAPI backend** (`src/`, Python/pip) — serves the REST API at `/api/v1/*`. Does
@@ -44,8 +47,8 @@ Two toolchains run as two processes:
 
 In **dev** the two run on different ports (`:8000` + `:3000`, cross-origin via CORS).
 In **prod** nginx serves both from a single origin on port 80 (`/api/` → backend,
-`/` → Next.js). See [Frontend Deployment](docs/deploy-frontend.md) for the deploy
-pipeline, host bootstrap, and rollback playbook.
+`/` → Next.js). See [Deploying to frodo](docs/deploy-frodo.md) for the host
+bootstrap, deploy script, and rollback playbook.
 
 ---
 
@@ -129,13 +132,14 @@ Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
 
 ## Documentation
 
-- [Architecture Diagrams](docs/ARCHITECTURE-DIAGRAMS.md) — data-flow and data-model diagrams
+- [Architecture Diagrams by Kimi](docs/ARCHITECTURE-DIAGRAMS.md) — data-flow and data-model diagrams
+- [Architecture (diagrams) by Claude](docs/ARCHITECTURE.md)
 - [Installation Guide](docs/INSTALLATION.md)
 - [Usage Guide](docs/USAGE.md)
 - [API Reference](docs/API.md)
 - [Methodology](docs/METHODOLOGY.md)
 - [Database Support](docs/DATABASE.md)
-- [Frontend Deployment](docs/deploy-frontend.md)
+- [Deploying to frodo (HackNodes Proxmox)](docs/deploy-frodo.md)
 - **Bitcoin node scanner** → [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md)
 - **Nostr relay CDN-recon** → [docs/nostr-cdn-recon.md](docs/nostr-cdn-recon.md)
 
