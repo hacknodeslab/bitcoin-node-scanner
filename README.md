@@ -129,6 +129,7 @@ Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
 
 ## Documentation
 
+- [Architecture](docs/ARCHITECTURE.md) — data-flow and data-model diagrams
 - [Installation Guide](docs/INSTALLATION.md)
 - [Usage Guide](docs/USAGE.md)
 - [API Reference](docs/API.md)
