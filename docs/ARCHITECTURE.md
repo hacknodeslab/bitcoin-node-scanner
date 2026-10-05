@@ -26,6 +26,7 @@ flowchart TB
         direction LR
         SHODAN[("Shodan API<br/>search · host lookups")]
         PEERS[/"IP lists<br/>peer-observer · getnodeaddresses"/]
+        ALTBN[("alt-bitnodes crawler<br/>snapshots API")]
         RELAYS[/"Relay lists<br/>nostr.watch export"/]
         DNS[("DNS + CDN IP ranges")]
     end
@@ -63,6 +64,7 @@ flowchart TB
 
     SHODAN --> SCANNER
     PEERS --> SCANNER
+    ALTBN -->|"src.peers.fetch<br/>8-day union file"| SCANNER
     RELAYS --> NSCAN
     DNS --> NSCAN
     SCANNER -->|writes| DUMPS

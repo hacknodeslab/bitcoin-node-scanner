@@ -92,6 +92,28 @@ into reading arbitrary files. Likewise `db-import` only reads dumps under
 `OUTPUT_DIR` (default `output/`). Set either variable in `.env` to use another
 directory.
 
+**From our alt-bitnodes crawler.** [alt-bitnodes](https://pesquisa.hacknodes.xyz)
+([repo](https://github.com/ifuensan/alt-bitnodes)) publishes a snapshot of every
+reachable node about every 40 minutes. Build the union of the last 8 days and scan it:
+
+```bash
+python -m src.peers.fetch alt-bitnodes                    # → data/peers/alt-bitnodes.txt
+python -m src.scanner --ips data/peers/alt-bitnodes.txt --source-tag alt-bitnodes
+python -m src.db.cli db-import output/raw_data/nodes_<ts>.json
+```
+
+- Run it **once a day**: each snapshot is cached in `data/peers/alt-bitnodes/cache/`,
+  so only new snapshots are downloaded (~37/day, ~7 MB); the first run fetches the
+  whole window (~300 snapshots, ~57 MB). Cache files older than the window are pruned.
+- Don't feed a raw snapshot to `--ips`: alt-bitnodes writes IPv6 nodes **unbracketed**
+  (`2a07:9a07:3::2:105:8333`), which is itself a valid IPv6 address and would be
+  misread. The fetcher splits off the port and writes `[2a07:9a07:3::2:105]:8333`.
+- Onion, I2P, CJDNS and non-globally-routable addresses are skipped (Shodan can't
+  look them up) and counted in the summary.
+- Settings: `ALT_BITNODES_URL`, `ALT_BITNODES_WINDOW_DAYS` (default 8), `--days N`,
+  `ALT_BITNODES_DELAY` (seconds between downloads, default 0.2), `--output` (must be
+  under `INPUT_DIR`).
+
 **Provenance tag.** `db-import` adds a tag to every node from an `--ips` run so they
 stay distinguishable from query-discovered nodes. It defaults to the neutral
 `ip-list`; name the source with `--source-tag` (lowercase, `[a-z0-9_-]`, ≤ 40 chars):
