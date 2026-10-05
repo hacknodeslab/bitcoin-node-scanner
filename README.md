@@ -36,6 +36,9 @@ correlation and MaxMind GeoIP enrichment.
    Nostr:   DNS    ─► src/nostr/ ──────┘
 ```
 
+Full diagrams — system map, data lifecycle, data model (ER) and the
+dashboard ↔ API ↔ tables mapping — in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 Two toolchains run as two processes:
 
 - **FastAPI backend** (`src/`, Python/pip) — serves the REST API at `/api/v1/*`. Does
@@ -129,6 +132,7 @@ Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
 
 ## Documentation
 
+- [Architecture (diagrams)](docs/ARCHITECTURE.md)
 - [Installation Guide](docs/INSTALLATION.md)
 - [Usage Guide](docs/USAGE.md)
 - [API Reference](docs/API.md)
