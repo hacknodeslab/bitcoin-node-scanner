@@ -44,8 +44,8 @@ Two toolchains run as two processes:
 
 In **dev** the two run on different ports (`:8000` + `:3000`, cross-origin via CORS).
 In **prod** nginx serves both from a single origin on port 80 (`/api/` → backend,
-`/` → Next.js). See [Frontend Deployment](docs/deploy-frontend.md) for the deploy
-pipeline, host bootstrap, and rollback playbook.
+`/` → Next.js). See [Deploying to frodo](docs/deploy-frodo.md) for the host
+bootstrap, deploy script, and rollback playbook.
 
 ---
 
@@ -132,7 +132,6 @@ Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
 - [API Reference](docs/API.md)
 - [Methodology](docs/METHODOLOGY.md)
 - [Database Support](docs/DATABASE.md)
-- [Frontend Deployment](docs/deploy-frontend.md)
 - [Deploying to frodo (HackNodes Proxmox)](docs/deploy-frodo.md)
 - **Bitcoin node scanner** → [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md)
 - **Nostr relay CDN-recon** → [docs/nostr-cdn-recon.md](docs/nostr-cdn-recon.md)
