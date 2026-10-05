@@ -80,7 +80,7 @@ Mouse hover SHALL change the focused item.
 ### Requirement: Every palette command has a REST endpoint
 Every command exposed by the palette outside the `NAV` group SHALL have a corresponding REST endpoint under `/api/v1/*`. Verbs and nouns in the palette grammar SHALL be consistent with the REST surface (e.g. palette `scan: start` ↔ REST `POST /api/v1/scans`). Commands in the `NAV` group SHALL be frontend-only (route navigation, palette/drawer dismissal, clipboard actions) and SHALL be exempt from this requirement.
 
-CLI parity is a design-system goal tracked as debt in a follow-up change (`align-cli-api-palette-grammar`); v0 SHALL NOT block on CLI alignment.
+The registry SHALL include the previously deferred argument-taking entries once their endpoints exist.
 
 #### Scenario: Non-NAV palette entry without REST counterpart fails CI
 - **WHEN** a developer adds a palette command outside the `NAV` group whose target verb does not resolve to a registered REST endpoint
@@ -90,16 +90,26 @@ CLI parity is a design-system goal tracked as debt in a follow-up change (`align
 - **WHEN** a developer adds a `NAV`-group command such as `drawer: close` or `go: explorer`
 - **THEN** the palette-REST parity check SHALL skip it and CI SHALL pass
 
-#### Scenario: V0 command set is the frozen list
-- **WHEN** the v0 palette is shipped
-- **THEN** it SHALL expose exactly the commands listed under "V0 palette command set" in `design.md` D10, no more and no less; additions SHALL be deferred to follow-up changes
+#### Scenario: Re-enabled deferred commands map to real endpoints
+- **WHEN** the parity test walks `COMMAND_SPECS`
+- **THEN** `scan: status <job_id>` maps to `GET /api/v1/scans/{job_id}`
+- **AND** `node: filter country <code>` maps to `GET /api/v1/nodes`
+
+### Requirement: Palette argument-input mode
+The command palette SHALL support commands that require a single textual argument so entries such as `scan: status <job_id>` and `node: filter country <code>` can be invoked without leaving the keyboard surface.
+
+#### Scenario: Argument prompt after command selection
+- **WHEN** a user selects a command declared with `requiresArg`
+- **THEN** the palette transitions to an argument-input row showing the command name and an input
+- **AND** Enter executes the command with the entered argument
+- **AND** Esc returns the palette to the command-list view
 
 ### Requirement: Palette closes on command execution
-When the user presses `↵` on a focused command, the palette SHALL execute the command and close itself. Commands that open a sub-surface (e.g. opening the drawer, focusing a query field) SHALL transfer focus to the new surface as part of execution.
+When the user presses `↵` on a focused command, the palette SHALL execute the command and close itself. Commands declared with `requiresArg` SHALL instead transition to the argument-input row first and close once the argument is submitted. Commands that open a sub-surface (e.g. opening the drawer, focusing a query field) SHALL transfer focus to the new surface as part of execution.
 
-#### Scenario: Selecting `node: open` closes palette and opens drawer
-- **WHEN** the user activates `node: open <ip>` in the palette
-- **THEN** the palette SHALL close, the node detail drawer SHALL open for that IP, and focus SHALL move to the drawer's first focusable element
+#### Scenario: Selecting a filter command closes palette and applies the filter
+- **WHEN** the user activates `node: filter risk critical` in the palette
+- **THEN** the palette SHALL close and the node list SHALL show the filtered rows
 
 ### Requirement: Blocklist filter commands
 The palette SHALL offer, in the `NODES` group, `node: filter blocklisted (any list)`, which sets the query to `blocklisted=true`, and one `node: filter blocklist <id>` command per known blocklist id, which sets the query to `blocklist=<id>`. All of them SHALL map to `GET /api/v1/nodes` for REST parity.

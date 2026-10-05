@@ -293,7 +293,7 @@ When a row expands inline, it switches to `surface` background and gains a 2px l
 
 **Do** treat L402 as a feature. Pay-to-unlock affordances should be visible and well-formed wherever there's premium content — never hidden behind a menu, never disguised as something else.
 
-**Do** keep the command palette and the API in lockstep. Every entry in the palette must have a matching CLI flag and REST endpoint with consistent grammar. The palette *is* the product's surface for the API.
+**Do** keep the command palette and the REST API in lockstep. Every entry in the palette must resolve to a REST endpoint with consistent grammar. The palette *is* the product's surface for the API. CLI parity is desirable but tracked as engineering debt (openspec), not as a design rule.
 
 **Don't** add gradients, glows, blurs, drop shadows, or glassmorphism. Anywhere. They erase the system's identity.
 

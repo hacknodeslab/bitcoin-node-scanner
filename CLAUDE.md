@@ -51,7 +51,7 @@ python -m src.nostr.extract_relays data/nw-relays.xlsx data/relays.txt --online 
 # out of scope.
 
 # Database CLI
-python -m src.db.cli db-stats --days 30
+python -m src.db.cli stats --days 30
 python -m src.db.cli db-trends --days 30 --granularity week
 python -m src.db.cli db-export --output output/export.json
 python -m src.db.cli db-import output/raw_data/nodes_<ts>.json  # Load a scanner JSON dump into the DB
