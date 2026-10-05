@@ -59,6 +59,9 @@ python -m src.db.cli db-link-cves --scan-id 5  # limit to nodes of one scan
 python -m src.db.cli db-mark-examples    # Reconcile is_example flag against canonical IP list
 python -m src.db.cli db-seed-examples    # Upsert canonical example nodes (idempotent demo data)
 python -m src.db.cli db-seed-examples --purge-extras  # also drop legacy is_example rows at non-canonical ports
+python -m src.db.cli db-enrich-ips --dry-run   # IP-reputation plan (offline: candidates per risk, quota stop point)
+python -m src.db.cli db-enrich-ips --limit 500 # AbuseIPDB + public blocklists, highest risk first; resumable
+python -m src.db.cli db-enrich-ips --source blocklists  # local blocklist match only (no key, no quota)
 ```
 
 ## Required Environment Variables
@@ -69,7 +72,7 @@ WEB_API_KEY=          # Secret key for API authentication
 DATABASE_URL=sqlite:///./bitcoin_scanner.db   # or PostgreSQL DSN
 ```
 
-Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`), `NOSTR_CDN_CACHE_DIR` (where the Nostr scanner caches CDN IP-range lists, default `.cdn_cache`; refreshed every 7 days).
+Optional: `MAXMIND_LICENSE_KEY`, `NVD_API_KEY`, `NVD_AUTO_RELINK` (default `true`; when truthy, refreshing the NVD catalog auto-rebuilds `node_vulnerabilities` for every persisted node — set to `false` if you'd rather run `db-link-cves` manually), `WEB_HOST`, `WEB_PORT`, `FRONTEND_ORIGIN` (origin of the Next.js dashboard at `frontend/`, default `http://localhost:3000`; comma-separated for multiple), `ENABLE_API_DOCS` (turns on `/docs`, `/redoc`, `/openapi.json`; default off), `OUTPUT_DIR`, `LOG_LEVEL`, `QUERIES`, `QUERIES_OPTIMIZED`, `MAX_RESULTS_NORMAL` (per-query result cap for non-critical queries, default `500`), `MAX_RESULTS_CRITICAL` (cap for critical/RPC queries, default `1000`), `MAX_QUERY_CREDITS_PER_SCAN` (hard ceiling on Shodan search pages — and thus query credits — a single scan run may consume before it aborts; default `50`), `NOSTR_CDN_CACHE_DIR` (where the Nostr scanner caches CDN IP-range lists, default `.cdn_cache`; refreshed every 7 days), `ABUSEIPDB_API_KEY` (enables the AbuseIPDB reputation source; each lookup discloses the node IP to AbuseIPDB), `ABUSEIPDB_DAILY_QUOTA` (default `1000`, tracked per UTC day in the DB), `ABUSEIPDB_MIN_INTERVAL` (seconds between requests, default `1`), `REPUTATION_STALE_DAYS` (re-enrich after N days, default `7`), `BLOCKLISTS` (comma-separated ids, default `firehol_level1,spamhaus_drop,feodo,tor_exit`), `BLOCKLIST_CACHE_DIR` (default `.blocklist_cache`, refreshed every 24h). Copy `.env.example` to `.env` to start.
 
 ## Architecture
 
@@ -97,6 +100,7 @@ The repo has **two toolchains**: Python (uv/pip) for the backend at `src/` and N
 - **reporter.py** — Multi-format output (JSON, CSV, text reports).
 - **geoip.py** — MaxMind GeoIP enrichment (separate from Shodan geo fields).
 - **credit_tracker.py** — Monitors Shodan API credit consumption.
+- **enrichers/** — Passive IP-reputation enrichment behind an `Enricher` protocol + `REGISTRY` (a new source = one module + one registry entry + its `<name>_checked_at` column): `abuseipdb.py` (per-IP `check` API, opt-in), `blocklists.py` (FireHOL level1 / Spamhaus DROP / Feodo / Tor exits, downloaded + cached + CIDR-matched locally), `quota.py` (DB-persisted per-source daily quota, atomic increments; 429 exhausts the day, 401/403 only disables the source for the run), `service.py` (candidate selection CRITICAL→LOW with per-source staleness — each source is only called for IPs it still owes —, example-IP exclusion, per-source failure isolation). Never sends traffic to the nodes. GreyNoise (50 lookups/week) and ipinfo (redundant ASN source) were evaluated and rejected.
 - **nostr/** — Nostr relay CDN-recon (phase 0): `classifier.py` (normalize → resolve A/AAAA → CDN CIDR match → verdict), `cdn_ranges.py` (cached Cloudflare/CloudFront/Fastly ranges + hardcoded Cloudflare fallback), `scanner.py` (runnable; writes a JSON dump to `output/`), `extract_relays.py` (nostr.watch xlsx → host list). No Shodan credits; pure DNS. Loaded into the DB via `db-import-nostr`. Phase 2 (origin unmasking) is out of scope.
 
 ### Database Layer (`src/db/`)
@@ -106,7 +110,8 @@ Uses **SQLAlchemy 2.0** with SQLite (default) or PostgreSQL. Key models in `mode
 - `Scan` — Session metadata (queries, node count, credits used, status).
 - `CVEEntry` — Vulnerability catalog from NVD with CVSS scores.
 - `NodeVulnerability` — Many-to-many junction (node ↔ CVE) with detection timestamps.
-- `ScanJob` — Background async job tracking (pending → running → completed/failed).
+- `ScanJob` — Background async job tracking (pending → running → completed/failed). `job_type` is `scan` or `enrichment`; single-flight is per type.
+- `IpReputation` — One row per IP (unique `ip`, no FK to `nodes`; joined on `nodes.ip`): `abuse_*` columns, `blocklists_json`, `sources_json` (per-source status/payload), `<source>_checked_at` per source (drives candidate selection), `reputation_enriched_at` (last success of any source; display only). `EnrichmentQuota` — per-source per-UTC-day call counts. Kept off the `nodes` table on purpose (its `asn`/`org` columns are Shodan/MaxMind data).
 - `NostrScan` / `NostrRelay` — Nostr relay CDN-recon (dedicated tables, independent of `Node`/`Scan`). `NostrRelay` is keyed by `host` (unique), stores `verdict`/`providers`/`ips`; indexes on `host`, `verdict`, `last_seen`. Re-importing upserts in place (one row per host). The list/stats queries scope to the latest `NostrScan`.
 
 Repository pattern in `db/repositories/` abstracts all queries. `db/scanner_integration.py` bridges the scanner output into the database.
@@ -114,10 +119,11 @@ Repository pattern in `db/repositories/` abstracts all queries. `db/scanner_inte
 ### Web API (`src/web/`)
 
 FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`auth.py`). Routers:
-- `GET /api/v1/nodes` — Paginated, filterable node list (filters: `risk_level`, `country`, `exposed`, `tor`, `is_example`). Each node payload includes `is_example: bool`.
+- `GET /api/v1/nodes` — Paginated, filterable node list (filters: `risk_level`, `country`, `exposed`, `tor`, `is_example`, `port`, `blocklisted=true`, `blocklist=<id>`; the last two join `ip_reputation` and are mirrored as query-bar keys and palette commands). Each node payload includes `is_example: bool`.
 - `GET /api/v1/stats` — Aggregate statistics
 - `POST /api/v1/scans`, `GET /api/v1/scans/{job_id}` — Background scan jobs
 - `GET /api/v1/vulnerabilities` — CVE lookups
+- `GET /api/v1/nodes/{id}` includes `reputation` (null if never enriched; raw source payloads are not exposed). `POST /api/v1/enrichment/run` (API key + CSRF, body `{limit: 1-1000, source?}`) starts a background enrichment job; status via `GET /api/v1/scans/{job_id}`.
 - `GET /api/v1/nostr/relays` — Paginated Nostr relay list from the latest scan (filters: `verdict`, `provider`, `behind_cdn`); `GET /api/v1/nostr/stats` — per-verdict counts, % behind CDN. Surfaced in the dashboard `/nostr` panel.
 - `GET /api/v1/csrf-token` — CSRF token endpoint
 

@@ -511,4 +511,126 @@ describe("NodeDetailDrawer", () => {
 
     vi.unstubAllGlobals();
   });
+
+  describe("reputation card", () => {
+    const REP = {
+      abuse_confidence_score: 82,
+      abuse_total_reports: 41,
+      abuse_last_reported_at: "2026-09-30T10:00:00",
+      blocklists: ["feodo", "spamhaus_drop"],
+      reputation_enriched_at: "2026-10-01T10:00:00",
+      stale: false,
+      sources: { abuseipdb: "ok", blocklists: "ok" },
+    };
+
+    function renderWith(reputation: NodeDetailOut["reputation"]) {
+      render(
+        <NodeDetailDrawer
+          ip={NODE.ip}
+          onOpenChange={() => {}}
+          detailOverride={HOOK_LOADED({ ...NODE, reputation })}
+          initialTab="host"
+        />,
+      );
+    }
+
+    it("is absent when the node was never enriched", () => {
+      renderWith(null);
+      expect(screen.getByTestId("card-host")).toBeTruthy();
+      expect(screen.queryByTestId("card-reputation")).toBeNull();
+    });
+
+    it("is absent when every source failed (row exists but carries no data)", () => {
+      renderWith({
+        abuse_confidence_score: null,
+        abuse_total_reports: null,
+        abuse_last_reported_at: null,
+        blocklists: null,
+        reputation_enriched_at: null,
+        stale: true,
+        sources: { abuseipdb: "error", blocklists: "error" },
+      });
+      expect(screen.queryByTestId("card-reputation")).toBeNull();
+    });
+
+    it("renders an alert pill for a high abuse score", () => {
+      renderWith(REP);
+      const pill = screen
+        .getByTestId("reputation-row-abuse-score")
+        .querySelector('[data-pill-kind="ABUSE"]')!;
+      expect(pill.textContent).toBe("82");
+      expect(pill.className).toContain("text-alert");
+      expect(pill.className).toContain("bg-alert-bg");
+    });
+
+    it("renders a warn pill for a medium score", () => {
+      renderWith({ ...REP, abuse_confidence_score: 30 });
+      const warn = screen.getByTestId("card-reputation").querySelector('[data-pill-kind="ABUSE"]')!;
+      expect(warn.className).toContain("text-warn");
+    });
+
+    it("renders an ok pill below 25", () => {
+      renderWith({ ...REP, abuse_confidence_score: 3 });
+      const ok = screen.getByTestId("card-reputation").querySelector('[data-pill-kind="ABUSE"]')!;
+      expect(ok.className).toContain("text-ok");
+    });
+
+    it("renders one BLOCKLIST pill per hit", () => {
+      renderWith(REP);
+      const pills = screen
+        .getByTestId("reputation-row-blocklists")
+        .querySelectorAll('[data-pill-kind="BLOCKLIST"]');
+      expect(Array.from(pills).map((p) => p.textContent)).toEqual(["feodo", "spamhaus_drop"]);
+    });
+
+    it("links each blocklist pill to its public lookup page in a new tab", () => {
+      renderWith({ ...REP, blocklists: ["spamhaus_drop", "tor_exit", "firehol_level1"] });
+      const spamhaus = screen.getByTestId("blocklist-link-spamhaus_drop");
+      expect(spamhaus.getAttribute("href")).toBe(
+        "https://check.spamhaus.org/results/?query=1.2.3.4",
+      );
+      expect(spamhaus.getAttribute("target")).toBe("_blank");
+      expect(spamhaus.getAttribute("rel")).toBe("noopener noreferrer");
+      expect(screen.getByTestId("blocklist-link-tor_exit").getAttribute("href")).toBe(
+        "https://metrics.torproject.org/rs.html#search/1.2.3.4",
+      );
+      expect(screen.getByTestId("blocklist-link-firehol_level1").getAttribute("href")).toBe(
+        "https://iplists.firehol.org/?ipset=firehol_level1",
+      );
+    });
+
+    it("renders an unknown list id as a plain pill without a link", () => {
+      renderWith({ ...REP, blocklists: ["some_future_list"] });
+      const row = screen.getByTestId("reputation-row-blocklists");
+      expect(row.querySelector("a")).toBeNull();
+      expect(row.querySelector('[data-pill-kind="BLOCKLIST"]')!.textContent).toBe("some_future_list");
+    });
+
+    it("blocklist-only enrichment shows only BLOCKLISTS and ENRICHED rows", () => {
+      renderWith({
+        ...REP,
+        abuse_confidence_score: null,
+        abuse_total_reports: null,
+        abuse_last_reported_at: null,
+        blocklists: [],
+      });
+      const card = screen.getByTestId("card-reputation");
+      expect(card.querySelector('[data-testid="reputation-row-abuse-score"]')).toBeNull();
+      expect(card.querySelector('[data-testid="reputation-row-reports"]')).toBeNull();
+      expect(screen.getByTestId("reputation-row-blocklists").textContent).toContain("none");
+      expect(screen.getByTestId("reputation-row-enriched")).toBeTruthy();
+    });
+
+    it("shows the stale hint when the data is stale", () => {
+      renderWith({ ...REP, stale: true });
+      const row = screen.getByTestId("reputation-row-enriched");
+      expect(row.textContent).toContain("· data may be stale");
+      expect(row.querySelector(".text-warn")).not.toBeNull();
+    });
+
+    it("omits the stale hint for fresh data", () => {
+      renderWith(REP);
+      expect(screen.getByTestId("reputation-row-enriched").textContent).not.toContain("stale");
+    });
+  });
 });

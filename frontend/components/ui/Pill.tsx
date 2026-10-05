@@ -14,7 +14,9 @@ export type PillKind =
   | { kind: "RISK"; severity: CveSeverity }
   | { kind: "BITCOIN" }
   | { kind: "CDN"; verdict: string }
-  | { kind: "TAG"; label: string };
+  | { kind: "TAG"; label: string }
+  | { kind: "ABUSE"; score: number }
+  | { kind: "BLOCKLIST"; list: string };
 
 type Tone = "alert" | "warn" | "ok" | "accent" | "dim" | "primary";
 
@@ -46,6 +48,13 @@ function toneFor(p: PillKind): Tone {
     }
     case "TAG":
       return "dim";
+    case "ABUSE":
+      // AbuseIPDB confidence: ≥75 likely abusive, ≥25 suspicious.
+      if (p.score >= 75) return "alert";
+      if (p.score >= 25) return "warn";
+      return "ok";
+    case "BLOCKLIST":
+      return "alert";
   }
 }
 
@@ -70,7 +79,11 @@ export function Pill(props: PillKind & { className?: string }) {
         ? props.severity.toUpperCase()
         : props.kind === "CDN"
           ? props.verdict.replace(/_/g, " ").toUpperCase()
-          : props.kind;
+          : props.kind === "ABUSE"
+            ? String(props.score)
+            : props.kind === "BLOCKLIST"
+              ? props.list
+              : props.kind;
   return (
     <span
       data-pill-kind={props.kind}

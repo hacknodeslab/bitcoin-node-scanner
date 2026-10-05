@@ -2,17 +2,18 @@
  * Bridge between the query-bar grammar (key=value tokens) and the
  * NodeListParams shape consumed by `useNodes`.
  *
- * The grammar is closed: only `risk`, `country`, `exposed`, `tor`, `example`
- * are accepted. Unknown keys produce diagnostics but are not silently
+ * The grammar is closed: only `risk`, `country`, `exposed`, `tor`, `example`,
+ * `port`, `blocklisted`, `blocklist` are accepted. Unknown keys produce diagnostics but are not silently
  * dropped — `tokensToFilters` returns a `warnings` array so the UI can
  * surface them inline if it wants.
  */
 import { parseQuery, type QueryToken } from "@/components/ui/QueryBar";
 import type { NodeListParams, RiskLevel } from "@/lib/api/types";
+import { BLOCKLIST_IDS, isBlocklistId } from "@/lib/blocklists";
 
 export type ExplorerFilters = Pick<
   NodeListParams,
-  "risk_level" | "country" | "exposed" | "tor" | "is_example" | "port"
+  "risk_level" | "country" | "exposed" | "tor" | "is_example" | "port" | "blocklisted" | "blocklist"
 >;
 
 export interface ParseResult {
@@ -85,6 +86,28 @@ export function tokensToFilters(tokens: QueryToken[]): ParseResult {
           break;
         }
         filters.port = n;
+        break;
+      }
+      case "blocklisted": {
+        const b = parseBool(t.value);
+        if (b === "invalid") {
+          warnings.push(`blocklisted=${t.value}: must be true`);
+          break;
+        }
+        if (b === false) {
+          warnings.push("blocklisted=false is not supported; omit the filter or use blocklisted=true");
+          break;
+        }
+        filters.blocklisted = true;
+        break;
+      }
+      case "blocklist": {
+        const id = t.value.toLowerCase();
+        if (!isBlocklistId(id)) {
+          warnings.push(`blocklist=${t.value}: must be ${BLOCKLIST_IDS.join("|")}`);
+          break;
+        }
+        filters.blocklist = id;
         break;
       }
       default:

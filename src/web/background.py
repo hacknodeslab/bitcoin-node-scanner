@@ -1,12 +1,12 @@
 """
-Background scan executor for the web interface.
+Background job executor for the web interface.
 
-Runs the Bitcoin Node Scanner in a thread pool so that the HTTP layer
+Runs Bitcoin Node Scanner scans and IP-reputation enrichment batches in a thread pool so that the HTTP layer
 stays responsive during long-running scans.
 """
 import asyncio
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 from ..db.connection import get_session_factory
 from ..db.repositories import ScanJobRepository
@@ -57,6 +57,34 @@ def _update_job_status(job_id: str, status: str, summary: Optional[dict]) -> Non
         session.close()
 
 
+async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
+    """Mark the job running, execute ``work`` in a thread pool, record the outcome."""
+    factory = get_session_factory()
+    if factory is None:
+        logger.error("Cannot run %s job %s: DATABASE_URL not configured.", kind, job_id)
+        return
+
+    # Mark as running
+    _update_job_status(job_id, "running", None)
+
+    # Run in a thread so the async event loop is not blocked
+    loop = asyncio.get_event_loop()
+    result_summary: Optional[dict] = None
+    error_summary: Optional[dict] = None
+
+    try:
+        result_summary = await loop.run_in_executor(None, work)
+    except Exception as exc:
+        logger.exception("%s job %s failed: %s", kind.capitalize(), job_id, exc)
+        error_summary = {"error": str(exc)}
+
+    # Mark as completed or failed
+    if error_summary:
+        _update_job_status(job_id, "failed", error_summary)
+    else:
+        _update_job_status(job_id, "completed", result_summary)
+
+
 async def run_scan_job(job_id: str) -> None:
     """
     FastAPI BackgroundTask entry point.
@@ -65,27 +93,26 @@ async def run_scan_job(job_id: str) -> None:
     (so the event loop is not blocked), then marks the job 'completed'
     or 'failed'.
     """
+    await _run_job(job_id, "scan", _execute_scan)
+
+
+def _execute_enrichment(limit: int, source: Optional[str]) -> dict:
+    """Run one bounded IP-reputation enrichment batch in its own session."""
+    from ..enrichers.service import run_enrichment
+
     factory = get_session_factory()
-    if factory is None:
-        logger.error("Cannot run scan job %s: DATABASE_URL not configured.", job_id)
-        return
-
-    # Mark as running
-    _update_job_status(job_id, "running", None)
-
-    # Run scanner in a thread so the async event loop is not blocked
-    loop = asyncio.get_event_loop()
-    result_summary: Optional[dict] = None
-    error_summary: Optional[dict] = None
-
+    session = factory()
     try:
-        result_summary = await loop.run_in_executor(None, _execute_scan)
-    except Exception as exc:
-        logger.exception("Scan job %s failed: %s", job_id, exc)
-        error_summary = {"error": str(exc)}
+        stats = run_enrichment(session, limit=limit, source=source)
+        session.commit()
+        return stats
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
-    # Mark as completed or failed
-    if error_summary:
-        _update_job_status(job_id, "failed", error_summary)
-    else:
-        _update_job_status(job_id, "completed", result_summary)
+
+async def run_enrichment_job(job_id: str, limit: int, source: Optional[str] = None) -> None:
+    """FastAPI BackgroundTask entry point for `POST /api/v1/enrichment/run`."""
+    await _run_job(job_id, "enrichment", lambda: _execute_enrichment(limit, source))

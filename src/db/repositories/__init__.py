@@ -7,6 +7,7 @@ from .scan_repository import ScanRepository
 from .vulnerability_repository import VulnerabilityRepository
 from .scan_job_repository import ScanJobRepository
 from .nostr_repository import NostrRepository
+from .reputation_repository import ReputationRepository
 
 __all__ = [
     'NodeRepository',
@@ -14,4 +15,5 @@ __all__ = [
     'VulnerabilityRepository',
     'ScanJobRepository',
     'NostrRepository',
+    'ReputationRepository',
 ]

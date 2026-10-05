@@ -19,6 +19,8 @@ const ALERT_RULES: Array<(t: QueryToken) => boolean> = [
   (t) => t.key === "exposed" && t.value === "true",
   (t) => t.key === "stale" && t.value === "true",
   (t) => t.key === "risk" && /^(critical|high)$/i.test(t.value),
+  (t) => t.key === "blocklisted" && t.value === "true",
+  (t) => t.key === "blocklist",
 ];
 
 const OK_RULES: Array<(t: QueryToken) => boolean> = [

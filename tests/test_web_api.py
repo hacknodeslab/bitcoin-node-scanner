@@ -31,6 +31,13 @@ API_KEY = "integration-test-key"
 HEADERS = {"X-API-Key": API_KEY}
 
 
+@pytest.fixture(autouse=True)
+def _pin_api_key(monkeypatch):
+    # Another module's import can re-run load_dotenv(override=True) and clobber
+    # WEB_API_KEY before these tests run; pin it per test (as test_web_nostr does).
+    monkeypatch.setenv("WEB_API_KEY", API_KEY)
+
+
 @pytest.fixture(scope="function")
 def db_engine():
     engine = create_engine(
@@ -653,3 +660,150 @@ class TestVulnerabilitiesCatalog:
         items = {i["cve_id"]: i for i in r.json()["items"]}
         assert items["CVE-LINKED"]["affected_node_count"] == 2
         assert items["CVE-UNLINKED"]["affected_node_count"] == 0
+
+
+class TestNodeDetailReputation:
+    def test_reputation_null_when_never_enriched(self, client, db_session):
+        node = _make_node(ip="10.1.1.1")
+        db_session.add(node)
+        db_session.commit()
+        r = client.get(f"/api/v1/nodes/{node.id}", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["reputation"] is None
+        assert r.json()["ip"] == "10.1.1.1"
+
+    def test_reputation_populated_and_shared_across_ports(self, client, db_session):
+        from src.db.models import IpReputation
+        a = _make_node(ip="10.1.1.2", port=8333)
+        b = _make_node(ip="10.1.1.2", port=8332)
+        db_session.add_all([a, b])
+        db_session.add(IpReputation(
+            ip="10.1.1.2",
+            abuse_confidence_score=82,
+            abuse_total_reports=41,
+            blocklists_json=json.dumps(["feodo"]),
+            sources_json=json.dumps({
+                "abuseipdb": {"status": "ok", "data": {"isp": "secret-ish"}},
+                "blocklists": {"status": "ok"},
+            }),
+            reputation_enriched_at=datetime.utcnow() - timedelta(days=10),
+        ))
+        db_session.commit()
+        for node in (a, b):
+            rep = client.get(f"/api/v1/nodes/{node.id}", headers=HEADERS).json()["reputation"]
+            assert rep["abuse_confidence_score"] == 82
+            assert rep["blocklists"] == ["feodo"]
+            assert rep["stale"] is True
+            assert rep["sources"] == {"abuseipdb": "ok", "blocklists": "ok"}
+            assert "data" not in json.dumps(rep)
+
+    def test_list_endpoint_has_no_reputation(self, client, db_session):
+        db_session.add(_make_node(ip="10.1.1.3"))
+        db_session.commit()
+        rows = client.get("/api/v1/nodes", headers=HEADERS).json()
+        assert "reputation" not in rows[0]
+
+
+class TestEnrichmentEndpoint:
+    def test_trigger_returns_202_with_job_type(self, client):
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_enrichment_job", new_callable=AsyncMock) as run:
+            r = client.post("/api/v1/enrichment/run", headers=headers, json={"limit": 10})
+        assert r.status_code == 202
+        assert r.json()["job_type"] == "enrichment"
+        assert run.await_args.args[1:] == (10, None)
+
+    def test_default_body(self, client):
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_enrichment_job", new_callable=AsyncMock) as run:
+            r = client.post("/api/v1/enrichment/run", headers=headers)
+        assert r.status_code == 202
+        assert run.await_args.args[1:] == (100, None)
+
+    def test_requires_csrf(self, client, db_session):
+        r = client.post("/api/v1/enrichment/run", headers=HEADERS)
+        assert r.status_code == 403
+        assert db_session.query(ScanJob).count() == 0
+
+    def test_409_when_enrichment_active(self, client, db_session):
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="enrichment", status="running",
+                               created_at=datetime.utcnow()))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_enrichment_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/enrichment/run", headers=headers)
+        assert r.status_code == 409
+
+    @pytest.mark.parametrize("body", [{"limit": 5000}, {"limit": 0}, {"source": "greynoise"}])
+    def test_invalid_body_422(self, client, body):
+        headers = _csrf_headers(client)
+        r = client.post("/api/v1/enrichment/run", headers=headers, json=body)
+        assert r.status_code == 422
+
+    def test_running_enrichment_does_not_block_scan(self, client, db_session):
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="enrichment", status="running",
+                               created_at=datetime.utcnow()))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_scan_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/scans", headers=headers)
+        assert r.status_code == 202
+        assert r.json()["job_type"] == "scan"
+
+    def test_job_status_exposes_job_type(self, client, db_session):
+        job_id = str(uuid.uuid4())
+        db_session.add(ScanJob(id=job_id, job_type="enrichment", status="completed",
+                               created_at=datetime.utcnow()))
+        db_session.commit()
+        r = client.get(f"/api/v1/scans/{job_id}", headers=HEADERS)
+        assert r.json()["job_type"] == "enrichment"
+
+
+class TestNodeBlocklistFilters:
+    def _seed(self, db_session):
+        from src.db.models import IpReputation
+        db_session.add_all([
+            _make_node(ip="10.2.0.1", port=8333),
+            _make_node(ip="10.2.0.1", port=8332),  # same IP, second port
+            _make_node(ip="10.2.0.2"),
+            _make_node(ip="10.2.0.3"),
+            _make_node(ip="10.2.0.4"),  # never enriched
+        ])
+        db_session.add_all([
+            IpReputation(ip="10.2.0.1", blocklists_json=json.dumps(["firehol_level1", "spamhaus_drop"])),
+            IpReputation(ip="10.2.0.2", blocklists_json=json.dumps(["tor_exit"])),
+            IpReputation(ip="10.2.0.3", blocklists_json="[]"),
+        ])
+        db_session.commit()
+
+    def _ips(self, r):
+        return sorted({n["ip"] for n in r.json()})
+
+    def test_blocklisted_true(self, client, db_session):
+        self._seed(db_session)
+        r = client.get("/api/v1/nodes?blocklisted=true", headers=HEADERS)
+        assert r.status_code == 200
+        assert self._ips(r) == ["10.2.0.1", "10.2.0.2"]
+        assert r.headers["X-Total-Count"] == "3"  # both ports of 10.2.0.1
+
+    def test_blocklist_by_id(self, client, db_session):
+        self._seed(db_session)
+        r = client.get("/api/v1/nodes?blocklist=spamhaus_drop", headers=HEADERS)
+        assert self._ips(r) == ["10.2.0.1"]
+        r = client.get("/api/v1/nodes?blocklist=tor_exit", headers=HEADERS)
+        assert self._ips(r) == ["10.2.0.2"]
+        r = client.get("/api/v1/nodes?blocklist=feodo", headers=HEADERS)
+        assert r.json() == []
+
+    def test_unknown_blocklist_422(self, client, db_session):
+        r = client.get("/api/v1/nodes?blocklist=%25", headers=HEADERS)
+        assert r.status_code == 422
+
+    def test_blocklisted_false_400(self, client):
+        r = client.get("/api/v1/nodes?blocklisted=false", headers=HEADERS)
+        assert r.status_code == 400
+
+    def test_combines_with_other_filters(self, client, db_session):
+        self._seed(db_session)
+        r = client.get("/api/v1/nodes?blocklisted=true&port=8332", headers=HEADERS)
+        assert [(n["ip"], n["port"]) for n in r.json()] == [("10.2.0.1", 8332)]

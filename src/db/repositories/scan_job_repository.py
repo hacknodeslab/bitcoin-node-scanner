@@ -18,10 +18,11 @@ class ScanJobRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create(self) -> ScanJob:
-        """Create a new scan job in 'pending' state."""
+    def create(self, job_type: str = 'scan') -> ScanJob:
+        """Create a new job of ``job_type`` ('scan' | 'enrichment') in 'pending' state."""
         job = ScanJob(
             id=str(uuid.uuid4()),
+            job_type=job_type,
             status='pending',
             created_at=datetime.utcnow(),
         )
@@ -49,9 +50,13 @@ class ScanJobRepository:
             job.result_summary = json.dumps(result_summary)
         return job
 
-    def get_active_job(self) -> Optional[ScanJob]:
-        """Return the first job in 'pending' or 'running' state, or None."""
+    def get_active_job(self, job_type: str = 'scan') -> Optional[ScanJob]:
+        """Return the first ``job_type`` job in 'pending' or 'running' state, or None.
+
+        Single-flight is per job type: an enrichment run never blocks a scan.
+        """
         stmt = select(ScanJob).where(
-            ScanJob.status.in_(['pending', 'running'])
+            ScanJob.job_type == job_type,
+            ScanJob.status.in_(['pending', 'running']),
         ).order_by(ScanJob.created_at)
         return self.session.scalar(stmt)

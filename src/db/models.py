@@ -296,6 +296,8 @@ class ScanJob(Base):
     __tablename__ = 'scan_jobs'
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # 'scan' (Shodan scan) or 'enrichment' (IP reputation run); single-flight is per type.
+    job_type: Mapped[str] = mapped_column(String(20), nullable=False, default='scan', server_default='scan')
     status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -308,3 +310,67 @@ class ScanJob(Base):
 
     def __repr__(self) -> str:
         return f"<ScanJob(id={self.id}, status={self.status})>"
+
+
+class IpReputation(Base):
+    """Passive reputation data for one IP (AbuseIPDB score, blocklist hits).
+
+    One row per IP, shared by every `(ip, port)` node row with that address.
+    Deliberately no FK to `nodes`: reputation outlives node-row churn and the
+    join (`nodes.ip`) is on a non-unique column.
+    """
+    __tablename__ = 'ip_reputation'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+
+    # AbuseIPDB
+    abuse_confidence_score: Mapped[Optional[int]] = mapped_column(Integer)
+    abuse_total_reports: Mapped[Optional[int]] = mapped_column(Integer)
+    abuse_last_reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Public blocklists: JSON list of matched list ids; '[]' = checked & clean,
+    # NULL = never checked.
+    blocklists_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    # JSON: {source: {status: ok|error|skipped, fetched_at, error?, data?}}
+    sources_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Per-source "last successful check" — drives candidate selection, so an IP
+    # one source covered stays pending for the others. Column name convention:
+    # `<source name>_checked_at` (see ReputationRepository.CHECKED_AT).
+    abuseipdb_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    blocklists_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Last success of any source (display only; not used for selection).
+    reputation_enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    first_enriched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index('idx_ip_reputation_ip', 'ip', unique=True),
+        Index('idx_ip_reputation_enriched_at', 'reputation_enriched_at'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<IpReputation(ip={self.ip}, score={self.abuse_confidence_score})>"
+
+
+class EnrichmentQuota(Base):
+    """Per-source, per-UTC-day call counter so enrichment quotas survive restarts."""
+    __tablename__ = 'enrichment_quota'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    day_utc: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    exhausted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
+
+    __table_args__ = (
+        Index('idx_enrichment_quota_source_day', 'source', 'day_utc', unique=True),
+    )
+
+    def __repr__(self) -> str:
+        return f"<EnrichmentQuota(source={self.source}, day={self.day_utc}, calls={self.calls})>"

@@ -14,6 +14,8 @@
  * tracked as parity debt alongside the existing CLI parity work.
  */
 
+import { BLOCKLIST_IDS } from "@/lib/blocklists";
+
 export type CommandGroupId = "SCAN" | "STATS" | "NODES" | "VULNERABILITIES" | "NAV";
 
 export interface CommandSpec {
@@ -89,6 +91,21 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
       label: "node: filter port 8333 (p2p)",
       restEndpoint: "GET /api/v1/nodes",
   },
+  {
+    id: "node.filter.blocklisted",
+    group: "NODES",
+    label: "node: filter blocklisted (any list)",
+    restEndpoint: "GET /api/v1/nodes",
+  },
+  // One command per list id: `node.filter.blocklist.<id>` → `blocklist=<id>`.
+  ...BLOCKLIST_IDS.map(
+    (id): CommandSpec => ({
+      id: `node.filter.blocklist.${id}`,
+      group: "NODES",
+      label: `node: filter blocklist ${id}`,
+      restEndpoint: "GET /api/v1/nodes",
+    }),
+  ),
 
   // VULNERABILITIES
   { id: "vuln.list", group: "VULNERABILITIES", label: "vuln: list", restEndpoint: "GET /api/v1/vulnerabilities" },

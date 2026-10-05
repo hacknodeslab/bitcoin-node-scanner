@@ -117,7 +117,9 @@ Per-domain endpoints are documented in their respective docs; the full reference
 | `STALE_THRESHOLD_DAYS` | No | `7` | Age in days before a node is counted as STALE |
 
 Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
-`NOSTR_CDN_CACHE_DIR`, …) are listed in the per-domain docs.
+`NOSTR_CDN_CACHE_DIR`, the IP-reputation `ABUSEIPDB_*` / `REPUTATION_STALE_DAYS` /
+`BLOCKLISTS` / `BLOCKLIST_CACHE_DIR`, …) are listed in the per-domain docs and in
+`.env.example`.
 
 > **Security note**: do not expose the web server on a public interface without a
 > TLS-terminating reverse proxy (e.g. nginx). The API key provides authentication
@@ -179,6 +181,9 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 - **Responsible Disclosure**: report 0-day vulnerabilities responsibly to the relevant security team
 - **No Active Exploitation**: this tool is for passive reconnaissance only
 - **Respect Privacy**: do not publish IP addresses of vulnerable nodes
+- **Third-party lookups**: IP-reputation enrichment via AbuseIPDB sends node IPs to
+  AbuseIPDB (opt-in via `ABUSEIPDB_API_KEY`); public blocklists are downloaded and
+  matched locally, so they disclose nothing
 - **GDPR Compliance**: handle European data in accordance with regulations
 
 ## Credits
@@ -196,7 +201,8 @@ and OSTIF & Quarkslab for their comprehensive security audit.
 ## Disclaimer
 
 This tool is for **security research and educational purposes only**. All data
-collected is from publicly available sources (Shodan, DNS & MaxMind GeoIP). Do not
+collected is from publicly available sources (Shodan, DNS, MaxMind GeoIP, AbuseIPDB
+and public IP blocklists). Do not
 perform active penetration testing without explicit authorization.
 
 ---

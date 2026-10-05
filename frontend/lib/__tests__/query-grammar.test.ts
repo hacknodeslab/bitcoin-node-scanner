@@ -102,6 +102,31 @@ describe("parseQueryToFilters", () => {
   });
 });
 
+describe("blocklist keys", () => {
+  it("blocklisted=true sets the flag", () => {
+    const r = parseQueryToFilters("blocklisted=true");
+    expect(r.filters).toEqual({ blocklisted: true });
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("blocklisted=false is rejected with a warning", () => {
+    const r = parseQueryToFilters("blocklisted=false");
+    expect(r.filters).toEqual({});
+    expect(r.warnings[0]).toMatch(/not supported/);
+  });
+
+  it("blocklist=<id> accepts known ids case-insensitively", () => {
+    const r = parseQueryToFilters("blocklist=Spamhaus_DROP risk=low");
+    expect(r.filters).toEqual({ blocklist: "spamhaus_drop", risk_level: "LOW" });
+  });
+
+  it("blocklist with an unknown id warns and lists the valid ids", () => {
+    const r = parseQueryToFilters("blocklist=greynoise");
+    expect(r.filters).toEqual({});
+    expect(r.warnings[0]).toContain("firehol_level1|spamhaus_drop|feodo|tor_exit");
+  });
+});
+
 describe("tokensToFilters direct entry point", () => {
   it("accepts already-parsed tokens", () => {
     const r = tokensToFilters([{ key: "risk", value: "critical" }]);

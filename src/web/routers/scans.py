@@ -18,6 +18,7 @@ router = APIRouter()
 
 class ScanJobOut(BaseModel):
     job_id: str
+    job_type: str = "scan"
     status: str
     started_at: Optional[str]
     finished_at: Optional[str]
@@ -36,14 +37,14 @@ def trigger_scan(
 ):
     repo = ScanJobRepository(db)
 
-    active = repo.get_active_job()
+    active = repo.get_active_job("scan")
     if active:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A scan is already {active.status} (job_id={active.id}). Wait for it to finish.",
         )
 
-    job = repo.create()
+    job = repo.create(job_type="scan")
     db.commit()
     job_id = job.id
 
@@ -80,6 +81,7 @@ def get_scan_job(job_id: str, db: Session = Depends(get_db)):
 
     return ScanJobOut(
         job_id=job.id,
+        job_type=job.job_type,
         status=job.status,
         started_at=job.started_at.isoformat() if job.started_at else None,
         finished_at=job.finished_at.isoformat() if job.finished_at else None,

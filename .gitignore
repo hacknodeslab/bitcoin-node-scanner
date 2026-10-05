@@ -83,3 +83,6 @@ electrum_monitor.db*
 bitcoin_scanner.db
 *.db
 *.db-journal
+
+# IP-reputation blocklist cache (src/enrichers/blocklists.py)
+.blocklist_cache/

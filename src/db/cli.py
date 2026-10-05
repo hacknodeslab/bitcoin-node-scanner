@@ -7,6 +7,7 @@ Provides subcommands for database operations:
 - db-trends: Analyze vulnerability trends
 - db-export: Export historical data
 - db-import: Import JSON data
+- db-enrich-ips: Passive IP-reputation enrichment
 
 Usage:
     python -m src.db.cli db-stats
@@ -520,6 +521,84 @@ def cmd_seed_examples(args):
     return 0
 
 
+def _print_enrich_plan(session, enrichers, limit, stale_days):
+    """Offline plan for --dry-run: selection + quota reads only, no HTTP, no writes."""
+    from src.db.repositories import ReputationRepository
+
+    repo = ReputationRepository(session)
+    active = [e for e in enrichers if e.available()]
+    counts = repo.candidate_counts_by_risk(stale_days, [e.name for e in active])
+    total = sum(counts.values())
+    planned = min(total, limit) if limit is not None else total
+
+    print("=" * 50)
+    print("IP REPUTATION ENRICHMENT — DRY RUN (no network calls)")
+    print("=" * 50)
+    print(f"  Stale after:          {stale_days} days")
+    print(f"  Candidate IPs:        {total}")
+    for label, count in counts.items():
+        print(f"    {label:<10} {count}")
+    print(f"  Would process:        {planned}" + (f" (--limit {limit})" if limit is not None else ""))
+    for enricher in enrichers:
+        if enricher not in active:
+            print(f"  {enricher.name:<20}  unavailable")
+            continue
+        due = sum(repo.candidate_counts_by_risk(stale_days, [enricher.name]).values())
+        due = min(due, planned)
+        quota = getattr(enricher, "quota", None)
+        if quota is not None:
+            remaining = quota.remaining()
+            note = (f"stops after {remaining} IPs (quota)" if remaining < due
+                    else f"{due} calls")
+            print(f"  {enricher.name:<20}  {due} IPs due, {remaining} calls left today → {note}")
+        else:
+            print(f"  {enricher.name:<20}  {due} IPs due (local match, no quota)")
+
+
+def cmd_enrich_ips(args):
+    """Enrich node IPs with passive reputation data (AbuseIPDB, public blocklists)."""
+    if not is_database_configured():
+        print("Error: DATABASE_URL not configured")
+        return 1
+
+    init_db()
+
+    from src.enrichers.service import build_enrichers, run_enrichment, stale_days_from_env
+
+    stale_days = stale_days_from_env()
+    limit = getattr(args, "limit", None)
+    source = getattr(args, "source", None)
+
+    with get_db_session() as session:
+        if session is None:
+            print("Error: Could not connect to database")
+            return 1
+
+        try:
+            enrichers = build_enrichers(session, source)
+        except ValueError as exc:
+            print(f"Error: {exc}")
+            return 1
+
+        if getattr(args, "dry_run", False):
+            _print_enrich_plan(session, enrichers, limit, stale_days)
+            return 0
+
+        stats = run_enrichment(session, limit=limit, stale_days=stale_days, enrichers=enrichers)
+
+    print("=" * 50)
+    print("IP REPUTATION ENRICHMENT COMPLETE")
+    print("=" * 50)
+    print(f"  Candidates:           {stats['candidates']}")
+    print(f"  IPs processed:        {stats['ips_processed']}")
+    for name, s in stats["sources"].items():
+        state = "unavailable" if s["unavailable"] else f"ok={s['ok']} error={s['error']}"
+        print(f"  {name:<20}  {state}")
+    for name, remaining in stats.get("quota_remaining", {}).items():
+        print(f"  {name} quota left today: {remaining}")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Bitcoin Node Scanner Database CLI"
@@ -591,6 +670,20 @@ def main():
         help="Also delete is_example=True rows whose (ip, port) is not in the canonical seed set",
     )
 
+    # db-enrich-ips command
+    enrich_parser = subparsers.add_parser(
+        "db-enrich-ips",
+        help="Enrich node IPs with passive reputation data (AbuseIPDB, public blocklists)",
+    )
+    enrich_parser.add_argument("--limit", type=int, default=None, help="Max IPs to process this run")
+    enrich_parser.add_argument(
+        "--source", default=None, help="Run only this source (e.g. abuseipdb, blocklists)"
+    )
+    enrich_parser.add_argument(
+        "--dry-run", action="store_true", default=False,
+        help="Print the plan (candidates, quota stop point) without any network call or write",
+    )
+
     args = parser.parse_args()
 
     if args.command == "db-stats":
@@ -613,6 +706,8 @@ def main():
         return cmd_mark_examples(args)
     elif args.command == "db-seed-examples":
         return cmd_seed_examples(args)
+    elif args.command == "db-enrich-ips":
+        return cmd_enrich_ips(args)
     else:
         parser.print_help()
         return 1

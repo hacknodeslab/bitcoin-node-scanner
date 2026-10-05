@@ -135,19 +135,64 @@ already in the database, processing them in batches of 500.
 
 ---
 
+## IP reputation enrichment
+
+Passive reputation context for node IPs, stored once per IP in `ip_reputation`
+(shared by every `(ip, port)` row) and shown in the dashboard drawer's `host` tab.
+Nothing is sent to the nodes themselves.
+
+```bash
+python -m src.db.cli db-enrich-ips --dry-run     # offline plan: candidates per risk, quota stop point
+python -m src.db.cli db-enrich-ips --limit 500   # highest risk first (CRITICAL → HIGH → MEDIUM → LOW)
+python -m src.db.cli db-enrich-ips --source blocklists
+```
+
+Staleness is tracked per source (`<source>_checked_at`): an IP is a candidate while any
+available source has never checked it or checked it more than `REPUTATION_STALE_DAYS`
+ago, and each source is only called for the IPs it still owes — a `--source blocklists`
+run never makes IPs look done for AbuseIPDB. Re-running resumes where the last run
+stopped. A rejected AbuseIPDB key (401/403) stops that source for the run without
+spending the day's quota. Example IPs
+(`is_example`) are never enriched.
+
+| Source | What it gives | Limits | Disclosure |
+|--------|---------------|--------|------------|
+| `abuseipdb` | Abuse confidence score, total reports, last reported | 1,000 lookups/day (free), tracked per UTC day in `enrichment_quota`; HTTP 429 stops the source until the next day | Sends each node IP to AbuseIPDB — opt-in via `ABUSEIPDB_API_KEY` |
+| `blocklists` | Which public lists the IP is on | None — lists cached 24h under `BLOCKLIST_CACHE_DIR` | None — matched locally |
+
+Blocklists (select with `BLOCKLISTS`, comma-separated):
+
+| Id | Source | Terms |
+|----|--------|-------|
+| `firehol_level1` | [FireHOL level1](https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset) | Aggregate of freely redistributable lists (includes bogons) |
+| `spamhaus_drop` | [Spamhaus DROP](https://www.spamhaus.org/drop/drop.txt) + [DROPv6](https://www.spamhaus.org/drop/dropv6.txt) | Free to use; some commercial use needs a Spamhaus agreement — remove it from `BLOCKLISTS` if that applies |
+| `feodo` | [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/downloads/ipblocklist.txt) (botnet C2) | CC0 |
+| `tor_exit` | [Tor bulk exit list](https://check.torproject.org/torbulkexitlist) | Public |
+
+In the dashboard, filter with `blocklisted=true` or `blocklist=<id>` in the query bar, or the
+palette commands `node: filter blocklisted (any list)` / `node: filter blocklist <id>`.
+
+The same run can be started from the API with `POST /api/v1/enrichment/run`
+(body `{"limit": 1-1000, "source": "abuseipdb" | "blocklists"}`); progress is read
+from `GET /api/v1/scans/{job_id}` (`job_type: "enrichment"`).
+
+---
+
 ## API
 
 Bitcoin endpoints (under the shared API-key / CSRF auth — see the [API reference](API.md)):
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `sort_by`, `sort_dir`, `limit`, `offset`) |
+| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `blocklisted=true`, `blocklist=<id>`, `sort_by`, `sort_dir`, `limit`, `offset`) |
 | GET | `/api/v1/nodes/countries` | Distinct country names |
 | GET | `/api/v1/nodes/{id}/geo` | Geo + ASN detail for a single node |
 | GET | `/api/v1/stats` | Aggregate statistics (TOTAL / EXPOSED / STALE / TOR / OK + by_risk_level, by_country) |
 | GET | `/api/v1/vulnerabilities` | CVE catalogue (from the NVD) |
 | POST | `/api/v1/scans` | Trigger a background scan; returns `job_id` |
-| GET | `/api/v1/scans/{job_id}` | Job status (`pending`/`running`/`completed`/`failed`) |
+| GET | `/api/v1/nodes/{id}` | Node detail incl. CVEs and `reputation` (null if never enriched) |
+| GET | `/api/v1/scans/{job_id}` | Job status (`pending`/`running`/`completed`/`failed`) and `job_type` (`scan`/`enrichment`) |
+| POST | `/api/v1/enrichment/run` | Start a bounded IP-reputation batch (`limit` 1–1000, optional `source`); 409 if one is running |
 
 ---
 
@@ -167,6 +212,12 @@ vulnerable-version database, output directories, and risk-assessment thresholds.
 | `MAX_RESULTS_NORMAL` | No | Per-query result cap for non-critical queries (default `500`) |
 | `MAX_RESULTS_CRITICAL` | No | Cap for critical/RPC queries (default `1000`) |
 | `MAX_QUERY_CREDITS_PER_SCAN` | No | Hard ceiling on Shodan search pages per scan run (default `50`) |
+| `ABUSEIPDB_API_KEY` | No | Enables the AbuseIPDB reputation source (skipped when unset) |
+| `ABUSEIPDB_DAILY_QUOTA` | No | AbuseIPDB lookups per UTC day (default `1000`) |
+| `ABUSEIPDB_MIN_INTERVAL` | No | Seconds between AbuseIPDB requests (default `1`) |
+| `REPUTATION_STALE_DAYS` | No | Re-enrich IPs whose reputation is older than this (default `7`) |
+| `BLOCKLISTS` | No | Comma-separated blocklist ids (default all: `firehol_level1,spamhaus_drop,feodo,tor_exit`) |
+| `BLOCKLIST_CACHE_DIR` | No | Blocklist download cache (default `.blocklist_cache`, refreshed every 24h) |
 
 > **Risk level enum**: always `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` (defined in
 > `analyzer.py`) — never numeric scores.

@@ -55,6 +55,23 @@ describe("CommandPaletteRoot", () => {
     expect(setQuery).toHaveBeenCalledWith("risk=CRITICAL");
   });
 
+  it("'node: filter blocklisted (any list)' sets blocklisted=true", () => {
+    const { setQuery } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText("node: filter blocklisted (any list)"));
+    expect(setQuery).toHaveBeenCalledWith("blocklisted=true");
+  });
+
+  it.each(["firehol_level1", "spamhaus_drop", "feodo", "tor_exit"])(
+    "'node: filter blocklist %s' sets blocklist=%s",
+    (id) => {
+      const { setQuery } = renderRoot();
+      openPalette();
+      fireEvent.click(screen.getByText(`node: filter blocklist ${id}`));
+      expect(setQuery).toHaveBeenCalledWith(`blocklist=${id}`);
+    },
+  );
+
   it("clicking 'node: clear filters' resets the query string", () => {
     const { setQuery } = renderRoot();
     openPalette();
