@@ -97,6 +97,24 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
     label: "node: filter blocklisted (any list)",
     restEndpoint: "GET /api/v1/nodes",
   },
+  {
+    id: "node.filter.abuse.25",
+    group: "NODES",
+    label: "node: filter abuse score ≥ 25 (abuseipdb)",
+    restEndpoint: "GET /api/v1/nodes",
+  },
+  {
+    id: "node.filter.abuse.75",
+    group: "NODES",
+    label: "node: filter abuse score ≥ 75 (abuseipdb)",
+    restEndpoint: "GET /api/v1/nodes",
+  },
+  {
+    id: "node.filter.reported",
+    group: "NODES",
+    label: "node: filter reported (abuseipdb)",
+    restEndpoint: "GET /api/v1/nodes",
+  },
   // One command per list id: `node.filter.blocklist.<id>` → `blocklist=<id>`.
   ...BLOCKLIST_IDS.map(
     (id): CommandSpec => ({

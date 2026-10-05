@@ -807,3 +807,49 @@ class TestNodeBlocklistFilters:
         self._seed(db_session)
         r = client.get("/api/v1/nodes?blocklisted=true&port=8332", headers=HEADERS)
         assert [(n["ip"], n["port"]) for n in r.json()] == [("10.2.0.1", 8332)]
+
+
+class TestNodeAbuseFilters:
+    def _seed(self, db_session):
+        from src.db.models import IpReputation
+        db_session.add_all([
+            _make_node(ip="10.3.0.1"),
+            _make_node(ip="10.3.0.2"),
+            _make_node(ip="10.3.0.3"),
+            _make_node(ip="10.3.0.4"),  # never checked by AbuseIPDB
+        ])
+        db_session.add_all([
+            IpReputation(ip="10.3.0.1", abuse_confidence_score=90, abuse_total_reports=40),
+            IpReputation(ip="10.3.0.2", abuse_confidence_score=30, abuse_total_reports=2),
+            IpReputation(ip="10.3.0.3", abuse_confidence_score=0, abuse_total_reports=0),
+        ])
+        db_session.commit()
+
+    def _ips(self, r):
+        return sorted(n["ip"] for n in r.json())
+
+    def test_abuse_min(self, client, db_session):
+        self._seed(db_session)
+        assert self._ips(client.get("/api/v1/nodes?abuse_min=75", headers=HEADERS)) == ["10.3.0.1"]
+        assert self._ips(client.get("/api/v1/nodes?abuse_min=25", headers=HEADERS)) == ["10.3.0.1", "10.3.0.2"]
+        r = client.get("/api/v1/nodes?abuse_min=0", headers=HEADERS)
+        assert self._ips(r) == ["10.3.0.1", "10.3.0.2", "10.3.0.3"]  # unchecked IP excluded
+
+    def test_abuse_min_out_of_range(self, client):
+        assert client.get("/api/v1/nodes?abuse_min=101", headers=HEADERS).status_code == 422
+
+    def test_reported(self, client, db_session):
+        self._seed(db_session)
+        r = client.get("/api/v1/nodes?reported=true", headers=HEADERS)
+        assert self._ips(r) == ["10.3.0.1", "10.3.0.2"]
+        assert r.headers["X-Total-Count"] == "2"
+
+    def test_reported_false_400(self, client):
+        assert client.get("/api/v1/nodes?reported=false", headers=HEADERS).status_code == 400
+
+    def test_ip_exact_match_returns_all_ports(self, client, db_session):
+        db_session.add_all([_make_node(ip="10.3.1.1", port=8333), _make_node(ip="10.3.1.1", port=8332),
+                            _make_node(ip="10.3.1.10")])
+        db_session.commit()
+        r = client.get("/api/v1/nodes?ip=10.3.1.1", headers=HEADERS)
+        assert sorted(n["port"] for n in r.json()) == [8332, 8333]

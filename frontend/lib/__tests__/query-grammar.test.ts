@@ -127,6 +127,57 @@ describe("blocklist keys", () => {
   });
 });
 
+describe("ip search", () => {
+  it("ip=<addr> filters by exact IP", () => {
+    const r = parseQueryToFilters("ip=23.176.184.73");
+    expect(r.filters).toEqual({ ip: "23.176.184.73" });
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("a bare IPv4 is shorthand for ip=", () => {
+    const r = parseQueryToFilters("23.176.184.73");
+    expect(r.filters).toEqual({ ip: "23.176.184.73" });
+    expect(r.warnings).toEqual([]);
+  });
+
+  it("a bare IPv6 (with or without brackets) is shorthand for ip=", () => {
+    expect(parseQueryToFilters("2001:db8::1").filters).toEqual({ ip: "2001:db8::1" });
+    expect(parseQueryToFilters("[2001:db8::1]").filters).toEqual({ ip: "2001:db8::1" });
+  });
+
+  it("a bare IP composes with other keys", () => {
+    const r = parseQueryToFilters("risk=critical 10.0.0.1");
+    expect(r.filters).toEqual({ risk_level: "CRITICAL", ip: "10.0.0.1" });
+  });
+
+  it("an invalid ip value warns", () => {
+    const r = parseQueryToFilters("ip=999.1.1.1");
+    expect(r.filters).toEqual({});
+    expect(r.warnings[0]).toMatch(/IPv4 or IPv6/);
+  });
+
+  it("non-IP bare words warn instead of being silently ignored", () => {
+    const r = parseQueryToFilters("bitcoin risk=low");
+    expect(r.filters).toEqual({ risk_level: "LOW" });
+    expect(r.warnings).toEqual(['"bitcoin" ignored: use key=value (e.g. ip=1.2.3.4 or risk=high)']);
+  });
+});
+
+describe("abuseipdb keys", () => {
+  it("abuse_min=N accepts 0-100", () => {
+    expect(parseQueryToFilters("abuse_min=75").filters).toEqual({ abuse_min: 75 });
+    expect(parseQueryToFilters("abuse_min=101").warnings[0]).toMatch(/between 0 and 100/);
+    expect(parseQueryToFilters("abuse_min=high").filters).toEqual({});
+  });
+
+  it("reported=true only", () => {
+    expect(parseQueryToFilters("reported=true").filters).toEqual({ reported: true });
+    const r = parseQueryToFilters("reported=false");
+    expect(r.filters).toEqual({});
+    expect(r.warnings[0]).toMatch(/not supported/);
+  });
+});
+
 describe("tokensToFilters direct entry point", () => {
   it("accepts already-parsed tokens", () => {
     const r = tokensToFilters([{ key: "risk", value: "critical" }]);

@@ -169,8 +169,10 @@ Blocklists (select with `BLOCKLISTS`, comma-separated):
 | `feodo` | [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/downloads/ipblocklist.txt) (botnet C2) | CC0 |
 | `tor_exit` | [Tor bulk exit list](https://check.torproject.org/torbulkexitlist) | Public |
 
-In the dashboard, filter with `blocklisted=true` or `blocklist=<id>` in the query bar, or the
-palette commands `node: filter blocklisted (any list)` / `node: filter blocklist <id>`.
+In the dashboard, filter with `blocklisted=true`, `blocklist=<id>`, `abuse_min=<0-100>` or
+`reported=true` in the query bar, or the palette commands `node: filter blocklisted (any list)`,
+`node: filter blocklist <id>`, `node: filter abuse score ≥ 25|75 (abuseipdb)` and
+`node: filter reported (abuseipdb)`. Paste an IP into the query bar (or `ip=<addr>`) to find a node.
 
 The same run can be started from the API with `POST /api/v1/enrichment/run`
 (body `{"limit": 1-1000, "source": "abuseipdb" | "blocklists"}`); progress is read
@@ -184,7 +186,7 @@ Bitcoin endpoints (under the shared API-key / CSRF auth — see the [API referen
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `blocklisted=true`, `blocklist=<id>`, `sort_by`, `sort_dir`, `limit`, `offset`) |
+| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `ip`, `blocklisted=true`, `blocklist=<id>`, `abuse_min=<0-100>`, `reported=true`, `sort_by`, `sort_dir`, `limit`, `offset`) |
 | GET | `/api/v1/nodes/countries` | Distinct country names |
 | GET | `/api/v1/nodes/{id}/geo` | Geo + ASN detail for a single node |
 | GET | `/api/v1/stats` | Aggregate statistics (TOTAL / EXPOSED / STALE / TOR / OK + by_risk_level, by_country) |

@@ -72,6 +72,17 @@ describe("CommandPaletteRoot", () => {
     },
   );
 
+  it.each([
+    ["node: filter abuse score ≥ 25 (abuseipdb)", "abuse_min=25"],
+    ["node: filter abuse score ≥ 75 (abuseipdb)", "abuse_min=75"],
+    ["node: filter reported (abuseipdb)", "reported=true"],
+  ])("'%s' sets %s", (label, query) => {
+    const { setQuery } = renderRoot();
+    openPalette();
+    fireEvent.click(screen.getByText(label));
+    expect(setQuery).toHaveBeenCalledWith(query);
+  });
+
   it("clicking 'node: clear filters' resets the query string", () => {
     const { setQuery } = renderRoot();
     openPalette();

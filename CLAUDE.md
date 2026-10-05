@@ -119,7 +119,7 @@ Repository pattern in `db/repositories/` abstracts all queries. `db/scanner_inte
 ### Web API (`src/web/`)
 
 FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`auth.py`). Routers:
-- `GET /api/v1/nodes` — Paginated, filterable node list (filters: `risk_level`, `country`, `exposed`, `tor`, `is_example`, `port`, `blocklisted=true`, `blocklist=<id>`; the last two join `ip_reputation` and are mirrored as query-bar keys and palette commands). Each node payload includes `is_example: bool`.
+- `GET /api/v1/nodes` — Paginated, filterable node list (filters: `risk_level`, `country`, `exposed`, `tor`, `is_example`, `port`, `ip`, `blocklisted=true`, `blocklist=<id>`, `abuse_min=<0-100>`, `reported=true`; the reputation ones join `ip_reputation` and are mirrored as query-bar keys and palette commands. In the query bar a bare IP is shorthand for `ip=`). Each node payload includes `is_example: bool`.
 - `GET /api/v1/stats` — Aggregate statistics
 - `POST /api/v1/scans`, `GET /api/v1/scans/{job_id}` — Background scan jobs
 - `GET /api/v1/vulnerabilities` — CVE lookups

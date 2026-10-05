@@ -199,6 +199,10 @@ export interface NodeListParams {
   blocklisted?: boolean;
   /** Only nodes whose IP is on this blocklist id. */
   blocklist?: string;
+  /** Only nodes whose IP has an AbuseIPDB confidence score >= this (0-100). */
+  abuse_min?: number;
+  /** Only nodes whose IP has at least one AbuseIPDB report (true only). */
+  reported?: boolean;
 }
 
 /**

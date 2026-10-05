@@ -57,7 +57,7 @@ export function QueryBarController({
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="risk=critical exposed=true ↵ to apply"
+          placeholder="risk=critical exposed=true · or paste an IP ↵ to apply"
           aria-label="filter query"
           data-testid="query-bar-input"
           className="text-text placeholder:text-dim text-body-sm flex-1 outline-none"

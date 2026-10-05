@@ -111,3 +111,10 @@ The palette SHALL offer, in the `NODES` group, `node: filter blocklisted (any li
 #### Scenario: Per-list command
 - **WHEN** the user runs `node: filter blocklist spamhaus_drop`
 - **THEN** the explorer query SHALL become `blocklist=spamhaus_drop`
+
+### Requirement: AbuseIPDB filter commands
+The palette SHALL offer, in the `NODES` group, `node: filter abuse score ≥ 25 (abuseipdb)` (query `abuse_min=25`), `node: filter abuse score ≥ 75 (abuseipdb)` (query `abuse_min=75`) and `node: filter reported (abuseipdb)` (query `reported=true`), matching the drawer's warn/alert score thresholds. All SHALL map to `GET /api/v1/nodes`.
+
+#### Scenario: High-score command
+- **WHEN** the user runs `node: filter abuse score ≥ 75 (abuseipdb)`
+- **THEN** the explorer query SHALL become `abuse_min=75`

@@ -175,3 +175,21 @@ The query bar grammar SHALL accept `blocklisted=true`, mapped to the `blockliste
 #### Scenario: Unknown list id warns
 - **WHEN** the user applies `blocklist=greynoise`
 - **THEN** no blocklist filter SHALL be sent and a warning listing the valid ids SHALL be produced
+
+### Requirement: IP search in the query bar
+The query bar grammar SHALL accept `ip=<addr>` (IPv4 or IPv6, exact match) mapped to the `ip` node-list parameter. A bare word that is an IP address (optionally in `[ ]`) SHALL be treated as `ip=<addr>`. Any other bare word SHALL produce a warning naming it instead of being silently ignored. An invalid `ip` value SHALL produce a warning and no filter.
+
+#### Scenario: Pasted IP filters the table
+- **WHEN** the user applies `23.176.184.73`
+- **THEN** the explorer SHALL fetch `GET /api/v1/nodes?ip=23.176.184.73` and the active-filters row SHALL show `ip=23.176.184.73`
+
+#### Scenario: Stray word warns
+- **WHEN** the user applies `bitcoin risk=low`
+- **THEN** the `risk` filter SHALL apply and a warning SHALL say `"bitcoin"` was ignored
+
+### Requirement: AbuseIPDB keys in the query bar
+The query bar grammar SHALL accept `abuse_min=<0-100>` mapped to `abuse_min` and `reported=true` mapped to `reported`. Out-of-range values, `reported=false` and non-boolean values SHALL produce a warning and no filter. Both keys' values SHALL render in `alert` colour.
+
+#### Scenario: Minimum score applied
+- **WHEN** the user applies `abuse_min=75`
+- **THEN** the explorer SHALL fetch `GET /api/v1/nodes?abuse_min=75`

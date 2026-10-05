@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines server-side filtering of the node list endpoint: filtering by country (with a distinct-countries lookup), by the example-data flag, and by public-blocklist membership from IP reputation data.
+Defines server-side filtering of the node list endpoint: filtering by country (with a distinct-countries lookup), by the example-data flag, and by IP reputation (public-blocklist membership, AbuseIPDB score and reports).
 
 ## Requirements
 
@@ -70,3 +70,18 @@ The API SHALL accept on `GET /api/v1/nodes` a `blocklisted` query parameter (onl
 #### Scenario: Negated filter unsupported
 - **WHEN** `GET /api/v1/nodes?blocklisted=false` is called
 - **THEN** the API SHALL return HTTP 400
+
+### Requirement: Filter nodes by AbuseIPDB reputation
+The API SHALL accept on `GET /api/v1/nodes` an `abuse_min` integer parameter (0–100) returning nodes whose IP has `abuse_confidence_score >= abuse_min` in `ip_reputation`, and a `reported` parameter (only `true` supported) returning nodes whose IP has `abuse_total_reports > 0`. IPs never checked by AbuseIPDB SHALL NOT match either filter. Both SHALL combine with other filters and apply to `X-Total-Count`.
+
+#### Scenario: Minimum score
+- **WHEN** `GET /api/v1/nodes?abuse_min=75` is called and IP `A` scores 90, IP `B` scores 30
+- **THEN** only the nodes of `A` SHALL be returned
+
+#### Scenario: Out-of-range score
+- **WHEN** `GET /api/v1/nodes?abuse_min=101` is called
+- **THEN** the API SHALL return HTTP 422
+
+#### Scenario: Reported
+- **WHEN** `GET /api/v1/nodes?reported=true` is called
+- **THEN** only nodes whose IP has at least one AbuseIPDB report SHALL be returned; `reported=false` SHALL return HTTP 400

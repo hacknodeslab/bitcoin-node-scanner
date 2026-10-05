@@ -276,6 +276,8 @@ def list_nodes(
     ip: Annotated[Optional[str], Query(description="Filter by exact IP address")] = None,
     blocklisted: Annotated[Optional[bool], Query(description="Only nodes whose IP is on at least one public blocklist. Only `true` is supported.")] = None,
     blocklist: Annotated[Optional[str], Query(description="Only nodes whose IP is on this blocklist id (e.g. spamhaus_drop)")] = None,
+    abuse_min: Annotated[Optional[int], Query(ge=0, le=100, description="Only nodes whose IP has an AbuseIPDB confidence score >= this value")] = None,
+    reported: Annotated[Optional[bool], Query(description="Only nodes whose IP has at least one AbuseIPDB report. Only `true` is supported.")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -298,6 +300,11 @@ def list_nodes(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="blocklisted=false is not supported; omit the filter or use blocklisted=true.",
+        )
+    if reported is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reported=false is not supported; omit the filter or use reported=true.",
         )
     if blocklist is not None and blocklist not in BLOCKLISTS:
         # Closed set: also keeps the LIKE pattern below free of user wildcards.
@@ -331,6 +338,14 @@ def list_nodes(
             else IpReputation.blocklists_json.notin_(["[]", ""])
         )
         conds.append(Node.ip.in_(select(IpReputation.ip).where(rep_cond)))
+    if abuse_min is not None:
+        conds.append(Node.ip.in_(
+            select(IpReputation.ip).where(IpReputation.abuse_confidence_score >= abuse_min)
+        ))
+    if reported:
+        conds.append(Node.ip.in_(
+            select(IpReputation.ip).where(IpReputation.abuse_total_reports > 0)
+        ))
 
     total = db.scalar(select(func.count()).select_from(Node).where(*conds)) or 0
     response.headers["X-Total-Count"] = str(total)
