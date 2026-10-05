@@ -93,10 +93,10 @@ FastAPI app mounted at `src/web/main.py`. Authentication via API key + CSRF (`au
 - `GET /api/v1/stats` — Aggregate statistics (all-time counts + `period_stats` mirroring CLI `stats`, scoped by `days`)
 - `POST /api/v1/scans`, `GET /api/v1/scans/{job_id}` — Background scan jobs
 - `POST /api/v1/enrichment/run` — Background IP-reputation batch
-- `POST /api/v1/enrich-geo` — Background MaxMind geo enrichment (shares the `enrichment` job_type single-flight)
-- `GET /api/v1/trends` — Vulnerability trends (parity with `db-trends`)
+- `POST /api/v1/enrich-geo` — Background MaxMind geo enrichment (shares the `enrichment` job_type single-flight; batch loop shared with the CLI in `db/geo_enrichment.py`)
+- `GET /api/v1/trends` — Vulnerability trends (parity with `db-trends`; computation shared via `db/analysis.py:compute_vulnerability_trends`)
 - `GET /api/v1/credits` — Locally tracked Shodan credit usage (never calls the Shodan API)
-- `GET /api/v1/export`, `POST /api/v1/import` — DB dump out/in (parity with `db-export`/`db-import`; shared logic in `db/importer.py`)
+- `GET /api/v1/export`, `POST /api/v1/import` — DB dump out/in (parity with `db-export`/`db-import`; shared logic in `db/exporter.py` and `db/importer.py`)
 - `GET /api/v1/vulnerabilities` — CVE lookups
 - `GET /api/v1/csrf-token` — CSRF token endpoint
 

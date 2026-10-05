@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, mock_open
 
-from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_import_nostr, cmd_node, cmd_link_cves, cmd_mark_examples, cmd_seed_examples, main
+from src.db.cli import cmd_stats, cmd_trends, cmd_export, cmd_import, cmd_import_nostr, cmd_node, cmd_enrich_geo, cmd_link_cves, cmd_mark_examples, cmd_seed_examples, main
 
 
 def _make_args(**kwargs):
@@ -167,7 +167,7 @@ class TestCmdExport:
         with patch("src.db.cli.is_database_configured", return_value=True):
             with patch("src.db.cli.init_db"):
                 with patch("src.db.cli.get_db_session", mock_session_ctx):
-                    with patch("src.db.cli.ScanRepository") as MockScanRepo:
+                    with patch("src.db.exporter.ScanRepository") as MockScanRepo:
                         MockScanRepo.return_value.get_by_date_range.return_value = [mock_scan]
                         result = cmd_export(_make_args(output=output_file, days=30))
 
@@ -176,6 +176,43 @@ class TestCmdExport:
         with open(output_file) as f:
             data = json.load(f)
         assert data["summary"]["total_nodes"] == 1
+        assert data["summary"]["total_scans"] == 1
+        assert data["scans"][0]["id"] == 1
+
+
+class TestCmdEnrichGeo:
+    def test_returns_1_when_db_not_configured(self, capsys):
+        with patch("src.db.cli.is_database_configured", return_value=False):
+            result = cmd_enrich_geo(_make_args())
+        assert result == 1
+        assert "DATABASE_URL not configured" in capsys.readouterr().out
+
+    def test_returns_1_when_mmdb_missing(self, capsys):
+        with patch("src.db.cli.is_database_configured", return_value=True):
+            with patch("src.geoip.GeoIPService") as MockGeoIP:
+                MockGeoIP.return_value._available = False
+                result = cmd_enrich_geo(_make_args())
+        assert result == 1
+        assert "MaxMind GeoLite2 databases not found" in capsys.readouterr().out
+
+    def test_enriches_and_prints_summary(self, capsys):
+        counts = {"total": 3, "updated": 2, "skipped": 1, "no_match": 0}
+        with patch("src.db.cli.is_database_configured", return_value=True), \
+             patch("src.db.cli.init_db"), \
+             patch("src.geoip.GeoIPService") as MockGeoIP, \
+             patch("src.db.cli.get_db_session") as mock_session_ctx, \
+             patch("src.db.geo_enrichment.enrich_nodes_geo", return_value=counts) as mock_enrich:
+            MockGeoIP.return_value._available = True
+            mock_session_ctx.return_value.__enter__.return_value = MagicMock()
+            result = cmd_enrich_geo(_make_args())
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "GEO ENRICHMENT COMPLETE" in out
+        assert "Updated:      2" in out
+        mock_enrich.assert_called_once()
+        # The CLI passes a progress callback; the web job passes none.
+        assert mock_enrich.call_args.kwargs["progress"] is not None
 
 
 class TestCmdImport:

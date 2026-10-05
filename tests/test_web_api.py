@@ -1384,6 +1384,21 @@ class TestBackgroundGeoEnrichmentJob:
         db_session.expire_all()
         assert db_session.get(ScanJob, job_id).status == "pending"
 
+    def test_progress_callback_invoked_per_batch(self, db_session):
+        from src.db.geo_enrichment import enrich_nodes_geo
+
+        db_session.add(_make_node("10.0.5.1"))
+        db_session.commit()
+
+        calls = []
+        fake_geoip = _make_fake_geoip({"10.0.5.1": _full_geo_record()})()
+        result = enrich_nodes_geo(
+            db_session, fake_geoip, progress=lambda done, total: calls.append((done, total))
+        )
+
+        assert result == {"total": 1, "updated": 1, "skipped": 0, "no_match": 0}
+        assert calls == [(1, 1)]
+
 
 class TestBackgroundScanJob:
     def test_run_scan_job_maps_statistics_into_summary(self, db_engine, db_session, monkeypatch):

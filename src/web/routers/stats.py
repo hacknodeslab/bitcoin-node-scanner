@@ -1,10 +1,9 @@
 """
 GET /api/v1/stats — aggregate scan statistics.
 
-`period_stats` mirrors the CLI `db-stats` output
-(HistoricalAnalyzer.get_summary_statistics, src/db/analysis.py) over the
-last `days` days. It is computed against the injected session — the analyzer
-opens its own session via get_db_session(), which tests cannot override.
+`period_stats` mirrors the CLI `stats` output over the last `days` days; the
+computation is shared with the CLI via
+src/db/analysis.py:compute_summary_statistics.
 """
 import os
 from datetime import datetime, timedelta, timezone
@@ -14,10 +13,9 @@ from typing import Annotated, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query
 from ..auth import require_api_key
 from pydantic import BaseModel
-from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from ...db.models import Node
+from ...db.analysis import compute_summary_statistics
 from ...db.repositories import NodeRepository, ScanRepository
 from .nodes import get_db
 
@@ -106,48 +104,10 @@ class StatsOut(BaseModel):
 
 
 def _compute_period_stats(db: Session, days: int) -> PeriodStats:
-    """Replicates HistoricalAnalyzer.get_summary_statistics on a given session."""
+    """Period-scoped stats via the shared compute_summary_statistics()."""
     end_date = datetime.now(timezone.utc).replace(tzinfo=None)
     start_date = end_date - timedelta(days=days)
-    in_period = and_(Node.last_seen >= start_date, Node.last_seen <= end_date)
-
-    total_nodes = db.query(Node).filter(in_period).count()
-    vulnerable_nodes = db.query(Node).filter(in_period, Node.is_vulnerable == True).count()
-    critical_nodes = db.query(Node).filter(in_period, Node.risk_level == "CRITICAL").count()
-    exposed_rpc = db.query(Node).filter(in_period, Node.has_exposed_rpc == True).count()
-    dev_versions = db.query(Node).filter(in_period, Node.is_dev_version == True).count()
-    new_nodes = db.query(Node).filter(
-        and_(Node.first_seen >= start_date, Node.first_seen <= end_date)
-    ).count()
-    unique_countries = db.query(func.count(func.distinct(Node.country_code))).filter(
-        in_period
-    ).scalar()
-
-    top_asns = db.query(
-        Node.asn,
-        func.count(Node.id),
-    ).filter(
-        in_period,
-        Node.asn.isnot(None),
-    ).group_by(Node.asn).order_by(
-        func.count(Node.id).desc()
-    ).limit(5).all()
-
-    return PeriodStats(
-        period=f"{start_date.date()} to {end_date.date()}",
-        days=days,
-        total_nodes=total_nodes,
-        vulnerable_nodes=vulnerable_nodes,
-        critical_nodes=critical_nodes,
-        new_nodes=new_nodes,
-        exposed_rpc=exposed_rpc,
-        dev_versions=dev_versions,
-        unique_countries=unique_countries,
-        vulnerability_rate=(vulnerable_nodes / total_nodes * 100) if total_nodes > 0 else 0,
-        exposed_rpc_rate=(exposed_rpc / total_nodes * 100) if total_nodes > 0 else 0,
-        dev_version_rate=(dev_versions / total_nodes * 100) if total_nodes > 0 else 0,
-        top_asns=[TopAsn(asn=asn, count=count) for asn, count in top_asns],
-    )
+    return PeriodStats(days=days, **compute_summary_statistics(db, start_date, end_date))
 
 
 @router.get("/stats", response_model=StatsOut, dependencies=[Depends(require_api_key)])
