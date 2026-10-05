@@ -3,7 +3,7 @@ Repository for Scan database operations.
 """
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from sqlalchemy import select, and_
@@ -36,7 +36,7 @@ class ScanRepository:
             The created Scan object
         """
         scan = Scan(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             queries_executed=json.dumps(queries_executed) if queries_executed else None,
             status=status,
         )
@@ -107,7 +107,7 @@ class ScanRepository:
             The created Scan object.
         """
         scan = Scan(
-            timestamp=timestamp or datetime.utcnow(),
+            timestamp=timestamp or datetime.now(timezone.utc).replace(tzinfo=None),
             queries_executed=f"json-import:{file_name}",
             status="completed",
             total_nodes=total_nodes,
@@ -172,7 +172,7 @@ class ScanRepository:
             List of Scan objects
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         conditions = [
             Scan.timestamp >= start_date,
@@ -203,7 +203,7 @@ class ScanRepository:
         from sqlalchemy import func
 
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Get completed scans in range
         scans = self.get_by_date_range(start_date, end_date, status="completed")

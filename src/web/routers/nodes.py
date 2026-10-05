@@ -4,7 +4,8 @@ GET /api/v1/nodes/countries  — distinct country_name values for filter dropdow
 GET /api/v1/nodes/{id}/geo   — full geo detail for a single node.
 """
 import json
-from typing import Annotated, Any, List, Optional
+from datetime import timedelta
+from typing import Annotated, Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict
@@ -12,8 +13,10 @@ from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from ...db.connection import get_session_factory
-from ...db.models import CVEEntry, Node, NodeVulnerability
-from ...db.repositories import NodeRepository, VulnerabilityRepository
+from ...db.models import CVEEntry, IpReputation, Node, NodeVulnerability, _utcnow
+from ...db.repositories import NodeRepository, ReputationRepository, VulnerabilityRepository
+from ...enrichers.blocklists import BLOCKLISTS
+from ...enrichers.service import stale_days_from_env
 from ..auth import require_api_key
 
 router = APIRouter()
@@ -89,8 +92,20 @@ class NodeOut(BaseModel):
     top_cve: Optional[CVESummary] = None
 
 
+class ReputationOut(BaseModel):
+    abuse_confidence_score: Optional[int] = None
+    abuse_total_reports: Optional[int] = None
+    abuse_last_reported_at: Optional[str] = None
+    blocklists: Optional[List[str]] = None
+    reputation_enriched_at: Optional[str] = None
+    stale: bool = False
+    sources: Dict[str, str] = {}
+
+
 class NodeDetailOut(NodeOut):
     cves: List[CVELink] = []
+    # Passive IP reputation; null when the IP was never enriched.
+    reputation: Optional[ReputationOut] = None
 
 
 class NodeGeoOut(BaseModel):
@@ -168,6 +183,25 @@ def _node_out_kwargs(n: Node) -> dict:
     )
 
 
+def _reputation_out(db: Session, ip: str) -> Optional[ReputationOut]:
+    row = ReputationRepository(db).get_by_ip(ip)
+    if row is None:
+        return None
+    enriched = row.reputation_enriched_at
+    cutoff = _utcnow() - timedelta(days=stale_days_from_env())
+    sources = ReputationRepository.sources_of(row)
+    return ReputationOut(
+        abuse_confidence_score=row.abuse_confidence_score,
+        abuse_total_reports=row.abuse_total_reports,
+        abuse_last_reported_at=row.abuse_last_reported_at.isoformat() if row.abuse_last_reported_at else None,
+        blocklists=ReputationRepository.blocklists_of(row),
+        reputation_enriched_at=enriched.isoformat() if enriched else None,
+        stale=enriched is None or enriched < cutoff,
+        # Status only — raw source payloads stay server-side.
+        sources={name: str(entry.get("status", "error")) for name, entry in sources.items()},
+    )
+
+
 def _make_node_out(
     n: Node,
     cve_count: int = 0,
@@ -240,6 +274,10 @@ def list_nodes(
     is_example: Annotated[Optional[bool], Query(description="Filter by is_example flag. Omit to include both example and real nodes.")] = None,
     port: Annotated[Optional[int], Query(description="Filter by exact port number")] = None,
     ip: Annotated[Optional[str], Query(description="Filter by exact IP address")] = None,
+    blocklisted: Annotated[Optional[bool], Query(description="Only nodes whose IP is on at least one public blocklist. Only `true` is supported.")] = None,
+    blocklist: Annotated[Optional[str], Query(description="Only nodes whose IP is on this blocklist id (e.g. spamhaus_drop)")] = None,
+    abuse_min: Annotated[Optional[int], Query(ge=0, le=100, description="Only nodes whose IP has an AbuseIPDB confidence score >= this value")] = None,
+    reported: Annotated[Optional[bool], Query(description="Only nodes whose IP has at least one AbuseIPDB report. Only `true` is supported.")] = None,
     sort_by: Annotated[Optional[str], Query(description="Column to sort by")] = None,
     sort_dir: Annotated[Optional[str], Query(description="Sort direction: asc_or_desc")] = "desc",
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
@@ -258,6 +296,25 @@ def list_nodes(
             detail="tor=false is not supported in v0; omit the filter or use tor=true.",
         )
 
+    if blocklisted is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="blocklisted=false is not supported; omit the filter or use blocklisted=true.",
+        )
+    if reported is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="reported=false is not supported; omit the filter or use reported=true.",
+        )
+    if blocklist is not None and blocklist not in BLOCKLISTS:
+        # Closed set: also keeps the LIKE pattern below free of user wildcards.
+        raise HTTPException(
+            # Numeric: HTTP_422_UNPROCESSABLE_CONTENT needs Starlette >= 0.48,
+            # newer than the declared fastapi floor allows.
+            status_code=422,
+            detail=f"Unknown blocklist '{blocklist}'. Expected one of: {', '.join(BLOCKLISTS)}.",
+        )
+
     conds = []
     if risk_level:
         conds.append(Node.risk_level == risk_level.upper())
@@ -274,6 +331,23 @@ def list_nodes(
         conds.append(Node.port == port)
     if ip:
         conds.append(Node.ip == ip)
+    if blocklisted or blocklist:
+        # Reputation lives per IP in ip_reputation; blocklists_json is a JSON
+        # list ('[]' when clean), so a hit is a non-empty list / a quoted id.
+        rep_cond = (
+            IpReputation.blocklists_json.like(f'%"{blocklist}"%')
+            if blocklist
+            else IpReputation.blocklists_json.notin_(["[]", ""])
+        )
+        conds.append(Node.ip.in_(select(IpReputation.ip).where(rep_cond)))
+    if abuse_min is not None:
+        conds.append(Node.ip.in_(
+            select(IpReputation.ip).where(IpReputation.abuse_confidence_score >= abuse_min)
+        ))
+    if reported:
+        conds.append(Node.ip.in_(
+            select(IpReputation.ip).where(IpReputation.abuse_total_reports > 0)
+        ))
 
     total = db.scalar(select(func.count()).select_from(Node).where(*conds)) or 0
     response.headers["X-Total-Count"] = str(total)
@@ -343,6 +417,7 @@ def get_node_detail(
         cve_count=len(active_links),
         top_cve=top,
         cves=cve_links,
+        reputation=_reputation_out(db, node.ip),
     )
 
 

@@ -208,9 +208,11 @@ class TestBitcoinNodeScanner:
 
     def test_parse_node_data_missing_fields(self, tmp_path):
         scanner, _ = self._make_scanner(tmp_path)
-        result = {'ip_str': '5.6.7.8', 'port': 8333}
+        # RFC 5737 documentation IP: no Shodan location and no MaxMind entry,
+        # so geo fields must stay empty instead of being geo-enriched.
+        result = {'ip_str': '192.0.2.8', 'port': 8333}
         node = scanner.parse_node_data(result, 'test')
-        assert node['ip'] == '5.6.7.8'
+        assert node['ip'] == '192.0.2.8'
         assert node['product'] == ''
         assert node['version'] == ''
         assert node['country'] == ''

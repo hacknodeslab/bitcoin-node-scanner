@@ -145,7 +145,7 @@ python -m src.db db-trends --days 30 --granularity week
 
 ### Export Data
 ```bash
-python -m src.db db-export --output export.json
+python -m src.db db-export --output output/export.json
 python -m src.db db-export --days 90
 ```
 

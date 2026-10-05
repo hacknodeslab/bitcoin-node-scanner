@@ -2,7 +2,7 @@
 Unit tests for NVDService — cache logic (fresh, stale, empty).
 """
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -39,7 +39,7 @@ def _sample_cve_entry(cve_id: str = "CVE-2023-0001", fetched_at: datetime = None
         cvss_score=7.5,
         description="Test vulnerability",
         affected_versions=json.dumps(["cpe:2.3:a:bitcoin:bitcoin:0.21.0:*"]),
-        fetched_at=fetched_at or datetime.utcnow(),
+        fetched_at=fetched_at or datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 
@@ -60,7 +60,7 @@ def _mock_client_entries() -> list:
 class TestNVDServiceCache:
     def test_fresh_cache_skips_fetch(self, db_session):
         """When cache is fresh, NVD API should NOT be called."""
-        db_session.add(_sample_cve_entry(fetched_at=datetime.utcnow()))
+        db_session.add(_sample_cve_entry(fetched_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         db_session.commit()
 
         with patch("src.nvd.service.NVDClient") as MockClient:
@@ -72,7 +72,7 @@ class TestNVDServiceCache:
 
     def test_stale_cache_triggers_fetch(self, db_session):
         """When cache is older than TTL, NVD API should be called."""
-        old_time = datetime.utcnow() - timedelta(hours=25)
+        old_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25)
         db_session.add(_sample_cve_entry(fetched_at=old_time))
         db_session.commit()
 
@@ -100,7 +100,7 @@ class TestNVDServiceCache:
         """Refresh should update an existing CVE entry rather than duplicate it."""
         db_session.add(_sample_cve_entry(
             cve_id="CVE-2023-0001",
-            fetched_at=datetime.utcnow() - timedelta(hours=25),
+            fetched_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=25),
         ))
         db_session.commit()
 
@@ -125,18 +125,18 @@ class TestNVDServiceCache:
 
     def test_sort_order_cvss_desc_nulls_last(self, db_session):
         """Results must be sorted by cvss_score DESC with NULLs last."""
-        db_session.add(_sample_cve_entry("CVE-A", fetched_at=datetime.utcnow()))
+        db_session.add(_sample_cve_entry("CVE-A", fetched_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         db_session.query(CVEEntryModel).filter_by(cve_id="CVE-A").update({"cvss_score": 5.0})
 
         e_high = CVEEntryModel(
             cve_id="CVE-B", severity="CRITICAL", cvss_score=9.8,
             description="High", affected_versions="[]",
-            fetched_at=datetime.utcnow(),
+            fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         e_null = CVEEntryModel(
             cve_id="CVE-C", severity="UNKNOWN", cvss_score=None,
             description="No score", affected_versions="[]",
-            fetched_at=datetime.utcnow(),
+            fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )
         db_session.add_all([e_high, e_null])
         db_session.commit()

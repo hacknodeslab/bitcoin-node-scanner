@@ -101,3 +101,20 @@ When the user presses `↵` on a focused command, the palette SHALL execute the 
 - **WHEN** the user activates `node: open <ip>` in the palette
 - **THEN** the palette SHALL close, the node detail drawer SHALL open for that IP, and focus SHALL move to the drawer's first focusable element
 
+### Requirement: Blocklist filter commands
+The palette SHALL offer, in the `NODES` group, `node: filter blocklisted (any list)`, which sets the query to `blocklisted=true`, and one `node: filter blocklist <id>` command per known blocklist id, which sets the query to `blocklist=<id>`. All of them SHALL map to `GET /api/v1/nodes` for REST parity.
+
+#### Scenario: Any-list command
+- **WHEN** the user runs `node: filter blocklisted (any list)`
+- **THEN** the explorer query SHALL become `blocklisted=true`
+
+#### Scenario: Per-list command
+- **WHEN** the user runs `node: filter blocklist spamhaus_drop`
+- **THEN** the explorer query SHALL become `blocklist=spamhaus_drop`
+
+### Requirement: AbuseIPDB filter commands
+The palette SHALL offer, in the `NODES` group, `node: filter abuse score ≥ 25 (abuseipdb)` (query `abuse_min=25`), `node: filter abuse score ≥ 75 (abuseipdb)` (query `abuse_min=75`) and `node: filter reported (abuseipdb)` (query `reported=true`), matching the drawer's warn/alert score thresholds. All SHALL map to `GET /api/v1/nodes`.
+
+#### Scenario: High-score command
+- **WHEN** the user runs `node: filter abuse score ≥ 75 (abuseipdb)`
+- **THEN** the explorer query SHALL become `abuse_min=75`

@@ -13,9 +13,12 @@ from datetime import datetime, timedelta
 from collections import Counter
 import argparse
 import os
+import re
 from typing import List, Dict, Set, Optional
 import yaml
 from dotenv import load_dotenv, find_dotenv
+
+from src.safe_paths import UnsafePathError
 
 # Load environment variables from .env file
 load_dotenv(find_dotenv(), override=True)
@@ -37,6 +40,11 @@ def _load_config_yaml() -> Dict:
     return {}
 
 _CONFIG_YAML = _load_config_yaml()
+
+# --ips provenance: tag added to imported nodes (`--source-tag`). Neutral by
+# default — only the operator knows whether a list came from peer-observer.
+DEFAULT_IP_LIST_TAG = "ip-list"
+_SOURCE_TAG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 
 class Config:
@@ -649,6 +657,155 @@ class BitcoinNodeScanner:
         self.log("SCAN COMPLETED")
         self.log("="*80)
 
+    # ------------------------------------------------------------------
+    # IP-list mode (--ips): look up a caller-provided list of node IPs via
+    # Shodan host lookups instead of search queries. Host lookups consume no
+    # query/scan credits; the run is bounded by the API rate limit (paced via
+    # `rate`) and an optional `max_ips` cap.
+    # ------------------------------------------------------------------
+
+    def scan_from_ip_list(
+        self,
+        path: str,
+        max_ips: Optional[int] = None,
+        rate: float = 1.0,
+        source_tag: str = DEFAULT_IP_LIST_TAG,
+    ) -> Dict:
+        """Look up each IP from `path` in Shodan and collect Bitcoin services.
+
+        Reuses `parse_node_data` so records are identical to query-based scans.
+        IPs not in Shodan are skipped (no on-demand scanning). Each record
+        carries `source_tag` (where the list came from, e.g. `peer-observer`),
+        which `db-import` adds to the node's tags. Returns a summary dict of
+        counts. Populates `self.results` / `self.unique_ips`.
+        """
+        if not _SOURCE_TAG_RE.match(source_tag):
+            raise ValueError("source_tag must match [a-z0-9][a-z0-9_-]{0,39}")
+        from src.ip_list import read_ip_list  # noqa: PLC0415
+
+        if rate < 0:
+            raise ValueError("rate must be >= 0")
+        if max_ips is not None and max_ips < 0:
+            raise ValueError("max_ips must be >= 0")
+
+        entries, counts = read_ip_list(path)
+        self.log(
+            f"IP-list: {counts['raw']} lines, {counts['unique']} unique IPs, "
+            f"{counts['invalid']} invalid skipped"
+        )
+
+        accept_default = set(Config.BITCOIN_PORTS)
+        found = not_found = no_service = errors = lookups = 0
+        start = time.time()
+
+        for idx, (ip, expected_ports) in enumerate(entries):
+            if max_ips is not None and lookups >= max_ips:
+                self.log(
+                    f"Reached --max-ips cap ({max_ips}); "
+                    f"{len(entries) - idx} IPs left unprocessed.",
+                    'WARNING'
+                )
+                break
+
+            try:
+                host = self.api.host(ip)
+            except shodan.APIError as e:
+                lookups += 1
+                msg = str(e).lower()
+                if 'no information' in msg or 'not found' in msg or 'invalid ip' in msg:
+                    not_found += 1
+                else:
+                    errors += 1
+                    self.log(f"Lookup error for {ip}: {e}", 'WARNING')
+                if rate:
+                    time.sleep(rate)
+                continue
+
+            lookups += 1
+            accept = accept_default | set(expected_ports)
+            matched = 0
+            for banner in host.get('data', []):
+                if banner.get('port') not in accept:
+                    continue
+                # Per-service banner; fall back to host-root fields it omits.
+                merged = dict(banner)
+                for k in ('asn', 'org', 'isp', 'hostnames', 'domains', 'os'):
+                    if not merged.get(k) and host.get(k):
+                        merged[k] = host[k]
+                if not merged.get('location'):
+                    merged['location'] = {
+                        'country_name': host.get('country_name', ''),
+                        'country_code': host.get('country_code', ''),
+                        'city': host.get('city', ''),
+                    }
+                node = self.parse_node_data(merged, f"ip-list:{os.path.basename(path)}")
+                node['source_tag'] = source_tag
+                self.results.append(node)
+                self.unique_ips.add(ip)
+                matched += 1
+
+            if matched:
+                found += 1
+            else:
+                no_service += 1  # in Shodan, but no Bitcoin-relevant port
+            if rate:
+                time.sleep(rate)
+
+        return {
+            'total_read': counts['raw'],
+            'unique': counts['unique'],
+            'invalid': counts['invalid'],
+            'found': found,
+            'not_found': not_found,
+            'no_service': no_service,
+            'errors': errors,
+            'lookups': lookups,
+            'elapsed_sec': round(time.time() - start, 1),
+        }
+
+    def run_ip_list_scan(
+        self,
+        path: str,
+        max_ips: Optional[int] = None,
+        rate: float = 1.0,
+        source_tag: str = DEFAULT_IP_LIST_TAG,
+    ) -> Dict:
+        """Full IP-list run: look up IPs, write the JSON dump, print a summary."""
+        self.log("=" * 80)
+        self.log("STARTING IP-LIST SCAN")
+        self.log("=" * 80)
+        self.get_account_info()
+
+        summary = self.scan_from_ip_list(path, max_ips=max_ips, rate=rate, source_tag=source_tag)
+
+        # The JSON dump is written even for an empty run (the run completed;
+        # an empty list is its result). Stats/report only when there is data.
+        self.save_raw_data()
+        if self.results:
+            stats = self.generate_statistics()
+            self.save_statistics(stats)
+            self.generate_report(stats)
+        else:
+            self.log("No Bitcoin nodes found from the IP list — wrote an empty dump.", 'WARNING')
+
+        self.log("\n" + "=" * 80)
+        self.log("IP-LIST SCAN SUMMARY")
+        self.log(f"  IPs read (non-blank): {summary['total_read']}")
+        self.log(f"  unique IPs:           {summary['unique']} ({summary['invalid']} invalid skipped)")
+        self.log(f"  found in Shodan:      {summary['found']}")
+        self.log(f"  not in Shodan:        {summary['not_found']}")
+        self.log(f"  no Bitcoin service:   {summary['no_service']}")
+        self.log(f"  lookup errors:        {summary['errors']}")
+        self.log(f"  lookups performed:    {summary['lookups']}")
+        self.log(f"  elapsed:              {summary['elapsed_sec']}s")
+        self.log("=" * 80)
+        if self.results:
+            self.log(
+                f"Import with: python -m src.db.cli db-import "
+                f"{Config.RAW_DATA_DIR}/nodes_{self.timestamp}.json"
+            )
+        return summary
+
 # ============================================================================
 # OPTIMIZED SCANNER
 # ============================================================================
@@ -1019,8 +1176,6 @@ class OptimizedBitcoinScanner(BitcoinNodeScanner):
 
 def main():
     """Main function for optimized scanner"""
-    import argparse
-    
     parser = argparse.ArgumentParser(
         description='Optimized Bitcoin Node Scanner - Credit Efficient',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1032,15 +1187,18 @@ Credit-Saving Features:
   - Selective enrichment (only critical nodes)
   
 Usage examples:
-  
+
   # Quick scan with all optimizations
-  python optimized_scanner.py --quick
-  
+  python -m src.scanner --quick
+
   # Full scan without cache
-  python optimized_scanner.py --no-cache
-  
+  python -m src.scanner --no-cache
+
   # Scan with limited enrichment
-  python optimized_scanner.py --max-enrich 50
+  python -m src.scanner --max-enrich 50
+
+  # Credit-free host lookups from an IP list
+  python -m src.scanner --ips data/peers/peers.txt
         """
     )
     
@@ -1055,7 +1213,19 @@ Usage examples:
                        help='Quick scan (cache + limited enrichment)')
     parser.add_argument('--check-credits', action='store_true',
                        help='Check credits and exit')
-    
+    parser.add_argument('--ips', metavar='FILE',
+                       help='Scan a provided list of node IPs via Shodan host lookups '
+                            '(host:port, [ipv6]:port, CSV, or IP-per-line) instead of search '
+                            'queries. Host lookups consume no query/scan credits.')
+    parser.add_argument('--max-ips', type=int, default=None,
+                       help='Cap the number of IPs looked up in an --ips run')
+    parser.add_argument('--source-tag', default=DEFAULT_IP_LIST_TAG, metavar='TAG',
+                       help='Tag added to every node from an --ips run on db-import, naming '
+                            f'where the list came from (e.g. peer-observer). Default: {DEFAULT_IP_LIST_TAG}')
+    parser.add_argument('--rate', type=float, default=1.0,
+                       help='Seconds between host lookups in --ips mode '
+                            '(default 1.0 ≈ Shodan rate limit)')
+
     args = parser.parse_args()
     
     try:
@@ -1067,12 +1237,19 @@ Usage examples:
         if args.check_credits:
             scanner.get_account_info()
             return 0
-        
+
+        # IP-list mode: look up a provided list of IPs (credit-free host lookups)
+        if args.ips:
+            scanner.run_ip_list_scan(
+                args.ips, max_ips=args.max_ips, rate=args.rate, source_tag=args.source_tag
+            )
+            return 0
+
         # Quick mode
         if args.quick:
             scanner.run_optimized_scan(
                 use_cache=True,
-                enrich=True,
+                enrich=not args.no_enrich,  # --quick --no-enrich must not enrich
                 max_enrichments=50  # Limit to 50 for quick scans
             )
         else:
@@ -1083,7 +1260,11 @@ Usage examples:
             )
         
         return 0
-        
+
+    except (UnsafePathError, FileNotFoundError) as e:
+        # Bad --ips path: a clear one-line message, no traceback.
+        print(f"ERROR: {e}")
+        return 1
     except Exception as e:
         print(f"ERROR: {e}")
         import traceback

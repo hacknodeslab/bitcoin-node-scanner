@@ -60,6 +60,62 @@ python -m src.db.cli db-import output/raw_data/nodes_<ts>.json
 See the [Usage Guide](USAGE.md) and [Methodology](METHODOLOGY.md) for the full
 workflow, query tuning, and risk-assessment rationale.
 
+### Scan from a provided IP list (`--ips`)
+
+Instead of discovering nodes via Shodan search queries, you can feed a list of
+node IPs — e.g. exported from [b10c's peer-observer](https://github.com/0xB10C/peer-observer)
+or `bitcoin-cli getnodeaddresses 0` — and look each one up in Shodan:
+
+```bash
+python -m src.scanner --ips data/peers/peers.txt
+python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
+```
+
+Input is tolerant: peer-observer's `host:port` (IPv4 `1.2.3.4:8333`, IPv6
+`[2001:db8::1]:8333`), a plain IP per line, or CSV `ip,port`; blank lines and
+`#` comments are ignored and IPs deduped (IPv6 spellings are normalized first).
+
+`bitcoin-cli getnodeaddresses 0` returns **JSON**, not that line format — saved as-is,
+every row is rejected. Convert it first, keeping only clearnet addresses
+(onion/i2p/cjdns can't be looked up in Shodan):
+
+```bash
+bitcoin-cli getnodeaddresses 0 | jq -r '.[]
+  | select(.network == "ipv4" or .network == "ipv6")
+  | if .network == "ipv6" then "[\(.address)]:\(.port)" else "\(.address):\(.port)" end' > data/peers/peers.txt
+```
+
+**Where the list must live.** The `--ips` path must be inside `INPUT_DIR` (default
+`data/`, e.g. `data/peers/peers.txt`); anything outside — absolute paths, `../`,
+symlinks pointing elsewhere — is refused, so an automated agent can't be steered
+into reading arbitrary files. Likewise `db-import` only reads dumps under
+`OUTPUT_DIR` (default `output/`). Set either variable in `.env` to use another
+directory.
+
+**Provenance tag.** `db-import` adds a tag to every node from an `--ips` run so they
+stay distinguishable from query-discovered nodes. It defaults to the neutral
+`ip-list`; name the source with `--source-tag` (lowercase, `[a-z0-9_-]`, ≤ 40 chars):
+
+```bash
+python -m src.scanner --ips data/peers/peers.txt --source-tag peer-observer
+python -m src.scanner --ips data/peers/peers.txt --source-tag getnodeaddresses
+```
+
+Nodes imported before this flag existed keep their existing `peer-observer` tag.
+
+- **Cost: none.** Shodan host lookups (`/shodan/host/{ip}`) consume **no query
+  credits and no scan credits** — so this works even on the one-time Membership
+  tier. The only limit is the API rate (~1 req/s, so ~3.5 h for ~12k IPs).
+  `--max-ips` caps a run; `--rate` tunes the pacing.
+- **IPs not in Shodan are skipped** (no on-demand scanning) and counted in the
+  summary alongside IPs found and IPs with no Bitcoin service.
+- Like the query-based scan, this **writes a JSON dump to `output/`** (an empty
+  list when nothing matched) and does not persist; load it with `db-import`.
+
+```bash
+python -m src.db.cli db-import output/raw_data/nodes_<ts>.json
+```
+
 ---
 
 ## MaxMind GeoIP Setup
@@ -107,19 +163,66 @@ already in the database, processing them in batches of 500.
 
 ---
 
+## IP reputation enrichment
+
+Passive reputation context for node IPs, stored once per IP in `ip_reputation`
+(shared by every `(ip, port)` row) and shown in the dashboard drawer's `host` tab.
+Nothing is sent to the nodes themselves.
+
+```bash
+python -m src.db.cli db-enrich-ips --dry-run     # offline plan: candidates per risk, quota stop point
+python -m src.db.cli db-enrich-ips --limit 500   # highest risk first (CRITICAL → HIGH → MEDIUM → LOW)
+python -m src.db.cli db-enrich-ips --source blocklists
+```
+
+Staleness is tracked per source (`<source>_checked_at`): an IP is a candidate while any
+available source has never checked it or checked it more than `REPUTATION_STALE_DAYS`
+ago, and each source is only called for the IPs it still owes — a `--source blocklists`
+run never makes IPs look done for AbuseIPDB. Re-running resumes where the last run
+stopped. A rejected AbuseIPDB key (401/403) stops that source for the run without
+spending the day's quota. Example IPs
+(`is_example`) are never enriched.
+
+| Source | What it gives | Limits | Disclosure |
+|--------|---------------|--------|------------|
+| `abuseipdb` | Abuse confidence score, total reports, last reported | 1,000 lookups/day (free), tracked per UTC day in `enrichment_quota`; HTTP 429 stops the source until the next day | Sends each node IP to AbuseIPDB — opt-in via `ABUSEIPDB_API_KEY` |
+| `blocklists` | Which public lists the IP is on | None — lists cached 24h under `BLOCKLIST_CACHE_DIR` | None — matched locally |
+
+Blocklists (select with `BLOCKLISTS`, comma-separated):
+
+| Id | Source | Terms |
+|----|--------|-------|
+| `firehol_level1` | [FireHOL level1](https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/firehol_level1.netset) | Aggregate of freely redistributable lists (includes bogons) |
+| `spamhaus_drop` | [Spamhaus DROP](https://www.spamhaus.org/drop/drop.txt) + [DROPv6](https://www.spamhaus.org/drop/dropv6.txt) | Free to use; some commercial use needs a Spamhaus agreement — remove it from `BLOCKLISTS` if that applies |
+| `feodo` | [abuse.ch Feodo Tracker](https://feodotracker.abuse.ch/downloads/ipblocklist.txt) (botnet C2) | CC0 |
+| `tor_exit` | [Tor bulk exit list](https://check.torproject.org/torbulkexitlist) | Public |
+
+In the dashboard, filter with `blocklisted=true`, `blocklist=<id>`, `abuse_min=<0-100>` or
+`reported=true` in the query bar, or the palette commands `node: filter blocklisted (any list)`,
+`node: filter blocklist <id>`, `node: filter abuse score ≥ 25|75 (abuseipdb)` and
+`node: filter reported (abuseipdb)`. Paste an IP into the query bar (or `ip=<addr>`) to find a node.
+
+The same run can be started from the API with `POST /api/v1/enrichment/run`
+(body `{"limit": 1-1000, "source": "abuseipdb" | "blocklists"}`); progress is read
+from `GET /api/v1/scans/{job_id}` (`job_type: "enrichment"`).
+
+---
+
 ## API
 
 Bitcoin endpoints (under the shared API-key / CSRF auth — see the [API reference](API.md)):
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `sort_by`, `sort_dir`, `limit`, `offset`) |
+| GET | `/api/v1/nodes` | List scanned nodes (`risk_level`, `country`, `exposed`, `tor`, `is_example`, `ip`, `blocklisted=true`, `blocklist=<id>`, `abuse_min=<0-100>`, `reported=true`, `sort_by`, `sort_dir`, `limit`, `offset`) |
 | GET | `/api/v1/nodes/countries` | Distinct country names |
 | GET | `/api/v1/nodes/{id}/geo` | Geo + ASN detail for a single node |
 | GET | `/api/v1/stats` | Aggregate statistics (TOTAL / EXPOSED / STALE / TOR / OK + by_risk_level, by_country) |
 | GET | `/api/v1/vulnerabilities` | CVE catalogue (from the NVD) |
 | POST | `/api/v1/scans` | Trigger a background scan; returns `job_id` |
-| GET | `/api/v1/scans/{job_id}` | Job status (`pending`/`running`/`completed`/`failed`) |
+| GET | `/api/v1/nodes/{id}` | Node detail incl. CVEs and `reputation` (null if never enriched) |
+| GET | `/api/v1/scans/{job_id}` | Job status (`pending`/`running`/`completed`/`failed`) and `job_type` (`scan`/`enrichment`) |
+| POST | `/api/v1/enrichment/run` | Start a bounded IP-reputation batch (`limit` 1–1000, optional `source`); 409 if one is running |
 
 ---
 
@@ -139,6 +242,12 @@ vulnerable-version database, output directories, and risk-assessment thresholds.
 | `MAX_RESULTS_NORMAL` | No | Per-query result cap for non-critical queries (default `500`) |
 | `MAX_RESULTS_CRITICAL` | No | Cap for critical/RPC queries (default `1000`) |
 | `MAX_QUERY_CREDITS_PER_SCAN` | No | Hard ceiling on Shodan search pages per scan run (default `50`) |
+| `ABUSEIPDB_API_KEY` | No | Enables the AbuseIPDB reputation source (skipped when unset) |
+| `ABUSEIPDB_DAILY_QUOTA` | No | AbuseIPDB lookups per UTC day (default `1000`) |
+| `ABUSEIPDB_MIN_INTERVAL` | No | Seconds between AbuseIPDB requests (default `1`) |
+| `REPUTATION_STALE_DAYS` | No | Re-enrich IPs whose reputation is older than this (default `7`) |
+| `BLOCKLISTS` | No | Comma-separated blocklist ids (default all: `firehol_level1,spamhaus_drop,feodo,tor_exit`) |
+| `BLOCKLIST_CACHE_DIR` | No | Blocklist download cache (default `.blocklist_cache`, refreshed every 24h) |
 
 > **Risk level enum**: always `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` (defined in
 > `analyzer.py`) — never numeric scores.

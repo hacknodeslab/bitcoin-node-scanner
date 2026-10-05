@@ -60,8 +60,22 @@ export interface NodeOut {
   top_cve: CVESummary | null;
 }
 
+/** Passive IP reputation (AbuseIPDB score + public blocklist hits). */
+export interface ReputationOut {
+  abuse_confidence_score: number | null;
+  abuse_total_reports: number | null;
+  abuse_last_reported_at: string | null;
+  /** Matched blocklist ids; `[]` = checked and clean, null = never checked. */
+  blocklists: string[] | null;
+  reputation_enriched_at: string | null;
+  stale: boolean;
+  sources: Record<string, string>;
+}
+
 export interface NodeDetailOut extends NodeOut {
   cves: CVELink[];
+  /** null when the IP has never been enriched. */
+  reputation?: ReputationOut | null;
 }
 
 export interface NodeGeoOut {
@@ -181,6 +195,14 @@ export interface NodeListParams {
   offset?: number;
   port?: number;
   ip?: string;
+  /** Only nodes whose IP is on at least one public blocklist (true only). */
+  blocklisted?: boolean;
+  /** Only nodes whose IP is on this blocklist id. */
+  blocklist?: string;
+  /** Only nodes whose IP has an AbuseIPDB confidence score >= this (0-100). */
+  abuse_min?: number;
+  /** Only nodes whose IP has at least one AbuseIPDB report (true only). */
+  reported?: boolean;
 }
 
 /**

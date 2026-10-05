@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Drawer,
   DrawerCloseButton,
@@ -15,7 +15,8 @@ import { Button } from "@/components/ui/Button";
 import { useNodeDetail } from "@/lib/hooks";
 import { fetchL402Example } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
-import type { NodeOut } from "@/lib/api/types";
+import { blocklistLookupUrl } from "@/lib/blocklists";
+import type { NodeOut, ReputationOut } from "@/lib/api/types";
 
 function severityToCveSeverity(severity: string | null | undefined): CveSeverity {
   switch ((severity ?? "").toUpperCase()) {
@@ -142,6 +143,105 @@ function buildHostMetadataRows(node: {
     });
   }
   return rows;
+}
+
+/** Coarse "Nd ago" / "Nh ago" age for reputation timestamps. */
+function relativeAge(value: string | null | undefined, now: number = Date.now()): string | null {
+  if (!value) return null;
+  // Backend timestamps are naive UTC; anchor them so the browser TZ can't skew them.
+  const iso = /[zZ]|[+-]\d{2}:?\d{2}$/.test(value) ? value : `${value}Z`;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return null;
+  const minutes = Math.max(0, Math.round((now - t) / 60000));
+  if (minutes < 60) return minutes <= 1 ? "just now" : `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function ReputationCard({ reputation, ip }: { reputation: ReputationOut; ip: string }) {
+  const rows: { key: string; value: ReactNode }[] = [];
+  if (reputation.abuse_confidence_score !== null) {
+    rows.push({
+      key: "ABUSE SCORE",
+      value: <Pill kind="ABUSE" score={reputation.abuse_confidence_score} />,
+    });
+  }
+  if (reputation.abuse_total_reports !== null) {
+    const last = relativeAge(reputation.abuse_last_reported_at);
+    rows.push({
+      key: "REPORTS",
+      value: `${reputation.abuse_total_reports}${last ? ` · last ${last}` : ""}`,
+    });
+  }
+  if (reputation.blocklists !== null) {
+    rows.push({
+      key: "BLOCKLISTS",
+      value:
+        reputation.blocklists.length === 0 ? (
+          <span className="text-dim">none</span>
+        ) : (
+          <span className="flex flex-wrap gap-[4px]">
+            {reputation.blocklists.map((list) => {
+              const href = blocklistLookupUrl(list, ip);
+              return href ? (
+                <a
+                  key={list}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`Look up ${ip} on ${list}`}
+                  data-testid={`blocklist-link-${list}`}
+                  className="hover:opacity-80 focus-visible:outline focus-visible:outline-1 focus-visible:outline-primary"
+                >
+                  <Pill kind="BLOCKLIST" list={list} className="underline-offset-2 hover:underline" />
+                </a>
+              ) : (
+                <Pill key={list} kind="BLOCKLIST" list={list} />
+              );
+            })}
+          </span>
+        ),
+    });
+  }
+  const enriched = relativeAge(reputation.reputation_enriched_at);
+  if (enriched) {
+    rows.push({
+      key: "ENRICHED",
+      value: (
+        <>
+          {enriched}
+          {reputation.stale ? <span className="text-warn"> · data may be stale</span> : null}
+        </>
+      ),
+    });
+  }
+
+  // A row whose every source failed carries no data — don't render an empty card.
+  if (rows.length === 0) return null;
+
+  return (
+    <Card data-testid="card-reputation">
+      <CardLabel>reputation</CardLabel>
+      <div className="flex flex-col">
+        {rows.map((row, i) => (
+          <div
+            key={row.key}
+            className={cn(
+              "flex items-baseline gap-[12px] px-[12px] py-[6px] text-body-sm",
+              i < rows.length - 1 ? "border-b border-border-dim" : "",
+            )}
+            data-testid={`reputation-row-${row.key.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+          >
+            <span className="text-muted text-meta uppercase tracking-[0.3px] w-[120px] shrink-0">
+              {row.key}
+            </span>
+            <span className="text-text-dim break-all">{row.value}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
 }
 
 async function copyToClipboard(text: string) {
@@ -394,7 +494,7 @@ export function NodeDetailDrawer({
                 </Card>
               </TabsContent>
 
-              <TabsContent value="host">
+              <TabsContent value="host" className="flex flex-col gap-[12px]">
                 <Card data-testid="card-host">
                   <CardLabel>host metadata</CardLabel>
                   {hostRows.length === 0 ? (
@@ -419,6 +519,7 @@ export function NodeDetailDrawer({
                     </div>
                   )}
                 </Card>
+                {node?.reputation ? <ReputationCard reputation={node.reputation} ip={node.ip} /> : null}
               </TabsContent>
             </div>
           </Tabs>

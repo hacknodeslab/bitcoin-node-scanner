@@ -3,11 +3,21 @@ Shared pytest fixtures for Bitcoin Node Scanner tests.
 """
 import os
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+
+@pytest.fixture(autouse=True)
+def _confine_cli_paths_to_tmp(tmp_path, monkeypatch):
+    """CLI file paths are confined to INPUT_DIR / OUTPUT_DIR (src/safe_paths.py).
+
+    Tests build their fixture files under tmp_path, so make it both roots.
+    """
+    monkeypatch.setenv("INPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path))
 
 
 # Database fixtures for DB tests
@@ -143,7 +153,7 @@ def populated_db_session(db_session):
     """Database session with pre-populated test data."""
     from src.db.models import Node, Scan, CVEEntry, NodeVulnerability
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Create nodes
     nodes = []

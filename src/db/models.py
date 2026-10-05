@@ -93,8 +93,8 @@ class Node(Base):
     )
 
     # Timestamps
-    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     # Relationships
     scans: Mapped[List["Scan"]] = relationship(
@@ -127,7 +127,7 @@ class Scan(Base):
     __tablename__ = 'scans'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Scan configuration
     queries_executed: Mapped[Optional[str]] = mapped_column(Text)  # JSON list of queries
@@ -173,7 +173,7 @@ class CVEEntry(Base):
     cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     affected_versions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list of {cpe, version, start_inc, start_exc, end_inc, end_exc}
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
     affected_nodes: Mapped[List["NodeVulnerability"]] = relationship(
         "NodeVulnerability",
@@ -198,7 +198,7 @@ class NodeVulnerability(Base):
     node_id: Mapped[int] = mapped_column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
     cve_id: Mapped[str] = mapped_column(String(20), ForeignKey('cve_entries.cve_id', ondelete='CASCADE'), nullable=False)
 
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     detected_version: Mapped[Optional[str]] = mapped_column(String(100))
 
@@ -296,15 +296,88 @@ class ScanJob(Base):
     __tablename__ = 'scan_jobs'
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    # 'scan' (Shodan scan) or 'enrichment' (IP reputation run); single-flight is per type.
+    job_type: Mapped[str] = mapped_column(String(20), nullable=False, default='scan', server_default='scan')
     status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, running, completed, failed
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     __table_args__ = (
         Index('idx_scan_jobs_status', 'status'),
+        # At most one active job per type, enforced by the DB so two concurrent
+        # POSTs can't both pass the get_active_job() check (the loser gets 409).
+        Index(
+            'uq_scan_jobs_active_per_type', 'job_type', unique=True,
+            sqlite_where=sa.text("status IN ('pending', 'running')"),
+            postgresql_where=sa.text("status IN ('pending', 'running')"),
+        ),
     )
 
     def __repr__(self) -> str:
         return f"<ScanJob(id={self.id}, status={self.status})>"
+
+
+class IpReputation(Base):
+    """Passive reputation data for one IP (AbuseIPDB score, blocklist hits).
+
+    One row per IP, shared by every `(ip, port)` node row with that address.
+    Deliberately no FK to `nodes`: reputation outlives node-row churn and the
+    join (`nodes.ip`) is on a non-unique column.
+    """
+    __tablename__ = 'ip_reputation'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str] = mapped_column(String(45), nullable=False)
+
+    # AbuseIPDB
+    abuse_confidence_score: Mapped[Optional[int]] = mapped_column(Integer)
+    abuse_total_reports: Mapped[Optional[int]] = mapped_column(Integer)
+    abuse_last_reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Public blocklists: JSON list of matched list ids; '[]' = checked & clean,
+    # NULL = never checked.
+    blocklists_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    # JSON: {source: {status: ok|error|skipped, fetched_at, error?, data?}}
+    sources_json: Mapped[Optional[str]] = mapped_column(Text)
+
+    # Per-source "last successful check" — drives candidate selection, so an IP
+    # one source covered stays pending for the others. Column name convention:
+    # `<source name>_checked_at` (see ReputationRepository.CHECKED_AT).
+    abuseipdb_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    blocklists_checked_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    # Last success of any source (display only; not used for selection).
+    reputation_enriched_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    first_enriched_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+    __table_args__ = (
+        Index('idx_ip_reputation_ip', 'ip', unique=True),
+        Index('idx_ip_reputation_enriched_at', 'reputation_enriched_at'),
+    )
+
+    def __repr__(self) -> str:
+        return f"<IpReputation(ip={self.ip}, score={self.abuse_confidence_score})>"
+
+
+class EnrichmentQuota(Base):
+    """Per-source, per-UTC-day call counter so enrichment quotas survive restarts."""
+    __tablename__ = 'enrichment_quota'
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    day_utc: Mapped[str] = mapped_column(String(10), nullable=False)  # YYYY-MM-DD
+    calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    exhausted: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=expression.false()
+    )
+
+    __table_args__ = (
+        Index('idx_enrichment_quota_source_day', 'source', 'day_utc', unique=True),
+    )
+
+    def __repr__(self) -> str:
+        return f"<EnrichmentQuota(source={self.source}, day={self.day_utc}, calls={self.calls})>"

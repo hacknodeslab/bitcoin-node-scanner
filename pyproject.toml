@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "A comprehensive security assessment tool for Bitcoin nodes"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 authors = [
     { name = "HackNodes Lab", email = "security@hacknodes.com" },
 ]
@@ -18,10 +18,11 @@ classifiers = [
     "Intended Audience :: Information Technology",
     "Topic :: Security",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
     "shodan>=1.31.0",
@@ -32,6 +33,14 @@ dependencies = [
     "tabulate>=0.9.0",
     "matplotlib>=3.8.0",
     "pandas>=2.1.0",
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    "alembic>=1.13.0",
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+    "geoip2>=4.8.0",
+    "httpx>=0.23.0",
 ]
 
 [project.optional-dependencies]
@@ -46,11 +55,12 @@ nostr = [
 ]
 
 [project.scripts]
-bitcoin-scanner = "scanner:main"
+bitcoin-scanner = "src.scanner:main"
 bitcoin-scanner-web = "src.web.main:start"
 
 [project.urls]
 Homepage = "https://github.com/hacknodes-lab/bitcoin-node-scanner"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["src*"]

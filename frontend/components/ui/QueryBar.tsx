@@ -19,6 +19,10 @@ const ALERT_RULES: Array<(t: QueryToken) => boolean> = [
   (t) => t.key === "exposed" && t.value === "true",
   (t) => t.key === "stale" && t.value === "true",
   (t) => t.key === "risk" && /^(critical|high)$/i.test(t.value),
+  (t) => t.key === "blocklisted" && t.value === "true",
+  (t) => t.key === "blocklist",
+  (t) => t.key === "reported" && t.value === "true",
+  (t) => t.key === "abuse_min",
 ];
 
 const OK_RULES: Array<(t: QueryToken) => boolean> = [
@@ -41,21 +45,41 @@ function valueToneClass(t: QueryToken): string {
  *   - `key="quoted value"` — value may contain spaces; surrounding double
  *     quotes are stripped from the captured value.
  *
- * Bareword segments without `=` are dropped — the grammar requires explicit
- * fields. The regex anchors on `\w+=` so a stray `=` inside a bareword
- * (`foo=bar=baz`) keeps everything after the first `=` as the value.
+ * A bareword that is an IP address is shorthand for `ip=<addr>`, so pasting
+ * an IP just works. Other barewords are not tokens: `splitQuery` reports them
+ * so the grammar bridge can warn instead of silently ignoring them. The regex
+ * anchors on `\w+=` so a stray `=` inside a bareword (`foo=bar=baz`) keeps
+ * everything after the first `=` as the value.
  */
-const TOKEN_RE = /(\w+)=(?:"([^"]*)"|(\S+))/g;
+const TOKEN_RE = /(\w+)=(?:"([^"]*)"|(\S+))|(\S+)/g;
 
-export function parseQuery(input: string): QueryToken[] {
+const IPV4_RE = /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
+const IPV6_RE = /^[0-9a-f]*:[0-9a-f:.]*$/i;
+
+export function looksLikeIp(value: string): boolean {
+  return IPV4_RE.test(value) || (IPV6_RE.test(value) && value.includes(":"));
+}
+
+export function splitQuery(input: string): { tokens: QueryToken[]; bareWords: string[] } {
   const tokens: QueryToken[] = [];
+  const bareWords: string[] = [];
   let m: RegExpExecArray | null;
   TOKEN_RE.lastIndex = 0;
   while ((m = TOKEN_RE.exec(input)) !== null) {
+    if (m[4] !== undefined) {
+      const word = m[4].replace(/^\[|\]$/g, "");
+      if (looksLikeIp(word)) tokens.push({ key: "ip", value: word });
+      else bareWords.push(m[4]);
+      continue;
+    }
     const value = m[2] !== undefined ? m[2] : m[3];
     tokens.push({ key: m[1], value });
   }
-  return tokens;
+  return { tokens, bareWords };
+}
+
+export function parseQuery(input: string): QueryToken[] {
+  return splitQuery(input).tokens;
 }
 
 export interface QueryBarProps {

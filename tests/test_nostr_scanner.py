@@ -179,6 +179,13 @@ def _fake_openpyxl(rows):
     return mod
 
 
+def _xlsx(tmp_path):
+    """A placeholder workbook path inside INPUT_DIR (openpyxl itself is faked)."""
+    p = tmp_path / "x.xlsx"
+    p.write_bytes(b"")
+    return str(p)
+
+
 class TestExtractRelays:
     def test_no_flags_dedupes(self, tmp_path):
         rows = [
@@ -190,7 +197,7 @@ class TestExtractRelays:
         ]
         dst = tmp_path / "out.txt"
         with patch.dict(sys.modules, {"openpyxl": _fake_openpyxl(rows)}):
-            count = extract_relays.extract("x.xlsx", str(dst))
+            count = extract_relays.extract(_xlsx(tmp_path), str(dst))
         assert count == 2
         assert dst.read_text().split() == ["wss://a", "wss://b"]
 
@@ -202,7 +209,7 @@ class TestExtractRelays:
         ]
         dst = tmp_path / "out.txt"
         with patch.dict(sys.modules, {"openpyxl": _fake_openpyxl(rows)}):
-            count = extract_relays.extract("x.xlsx", str(dst), only_online=True)
+            count = extract_relays.extract(_xlsx(tmp_path), str(dst), only_online=True)
         assert count == 1
         assert dst.read_text().strip() == "wss://a"
 
@@ -214,7 +221,7 @@ class TestExtractRelays:
         ]
         dst = tmp_path / "out.txt"
         with patch.dict(sys.modules, {"openpyxl": _fake_openpyxl(rows)}):
-            count = extract_relays.extract("x.xlsx", str(dst), only_clearnet=True)
+            count = extract_relays.extract(_xlsx(tmp_path), str(dst), only_clearnet=True)
         assert count == 1
         assert dst.read_text().strip() == "wss://a"
 
@@ -223,7 +230,7 @@ class TestExtractRelays:
         rows = [("url",), ("wss://x",)]
         dst = tmp_path / "out.txt"
         with patch.dict(sys.modules, {"openpyxl": _fake_openpyxl(rows)}):
-            count = extract_relays.extract("x.xlsx", str(dst))
+            count = extract_relays.extract(_xlsx(tmp_path), str(dst))
         assert count == 1
 
     def test_main_usage_error(self, capsys):

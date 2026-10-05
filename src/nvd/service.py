@@ -64,7 +64,7 @@ class NVDService:
         if last_fetched.tzinfo is not None:
             last_fetched = last_fetched.astimezone(timezone.utc).replace(tzinfo=None)
 
-        return datetime.utcnow() - last_fetched > self._ttl
+        return datetime.now(timezone.utc).replace(tzinfo=None) - last_fetched > self._ttl
 
     def _refresh(self) -> None:
         """Fetch fresh CVE data from NVD and upsert into the database."""
@@ -79,7 +79,7 @@ class NVDService:
             ).all()
         }
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         stored = 0
         changed_cves = 0
         for entry in entries:

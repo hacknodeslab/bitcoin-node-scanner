@@ -14,7 +14,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -22,6 +22,7 @@ from typing import Dict, List, Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.db.connection import get_db_session, is_database_configured, init_db
+from src.safe_paths import UnsafePathError, safe_output_dir, safe_output_file
 from src.db.repositories import NodeRepository, ScanRepository
 
 
@@ -84,11 +85,19 @@ class JSONImporter:
         if not os.path.exists(file_path):
             self.log(f"File not found: {file_path}")
             return file_stats
+        # Dumps are only read from under OUTPUT_DIR (the path is CLI-supplied).
+        try:
+            safe_path = safe_output_file(file_path)
+        except (UnsafePathError, OSError) as e:
+            self.log(f"Refusing to import {file_path}: {e}")
+            file_stats["errors"] += 1
+            self.stats["errors"] += 1
+            return file_stats
 
         self.log(f"\nImporting: {file_path}")
 
         try:
-            with open(file_path, "r") as f:
+            with open(safe_path, "r") as f:
                 data = json.load(f)
         except json.JSONDecodeError as e:
             self.log(f"Error parsing JSON: {e}")
@@ -223,17 +232,44 @@ class JSONImporter:
         db_data["has_exposed_rpc"] = port == 8332
         db_data["is_dev_version"] = ".99." in node_data.get("version", "")
 
+        # Provenance marker: records from the --ips host-lookup mode carry a
+        # `query` of "ip-list:<file>" and the operator-supplied `source_tag`
+        # (`--source-tag`, e.g. "peer-observer"). Add that tag so these nodes stay
+        # distinguishable from query-discovered ones (the Node table has no
+        # dedicated source column). Dumps written before `source_tag` existed
+        # fall back to the neutral "ip-list". Tags are merged, never clobbered.
+        prov_tag = None
+        if str(node_data.get("query", "")).startswith("ip-list:"):
+            prov_tag = str(node_data.get("source_tag") or "ip-list")
+
         if existing:
             # Update existing node, preserve first_seen
             for key, value in db_data.items():
                 if key not in ("id", "first_seen") and value is not None:
                     setattr(existing, key, value)
-            existing.last_seen = file_timestamp or datetime.utcnow()
+            if prov_tag:
+                existing.tags_json = self._merge_tag(existing.tags_json, prov_tag)
+            existing.last_seen = file_timestamp or datetime.now(timezone.utc).replace(tzinfo=None)
             return "updated", db_data["risk_level"], db_data["is_vulnerable"]
         else:
             # Create new node
+            if prov_tag:
+                db_data["tags_json"] = json.dumps([prov_tag])
             node_repo.upsert(db_data)
             return "imported", db_data["risk_level"], db_data["is_vulnerable"]
+
+    @staticmethod
+    def _merge_tag(tags_json: str, tag: str) -> str:
+        """Return tags_json with `tag` added (idempotent, preserves existing)."""
+        try:
+            tags = json.loads(tags_json) if tags_json else []
+            if not isinstance(tags, list):
+                tags = []
+        except (ValueError, TypeError):
+            tags = []
+        if tag not in tags:
+            tags.append(tag)
+        return json.dumps(tags)
 
     def _analyze_risk_level(self, node_data: Dict) -> str:
         """Determine risk level for a node."""
@@ -289,7 +325,7 @@ class JSONImporter:
         except (ValueError, IndexError):
             pass
 
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
     def import_directory(self, dir_path: str, pattern: str = "*.json") -> Dict[str, int]:
         """
@@ -302,9 +338,14 @@ class JSONImporter:
         Returns:
             Aggregated statistics
         """
-        path = Path(dir_path)
-        if not path.exists():
+        if not Path(dir_path).exists():
             self.log(f"Directory not found: {dir_path}")
+            return self.stats
+        try:
+            path = safe_output_dir(dir_path)
+        except UnsafePathError as e:
+            self.log(f"Refusing to import from {dir_path}: {e}")
+            self.stats["errors"] += 1
             return self.stats
 
         files = list(path.glob(pattern))

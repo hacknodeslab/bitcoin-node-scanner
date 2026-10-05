@@ -2,7 +2,7 @@
 GET /api/v1/stats — aggregate scan statistics.
 """
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -88,7 +88,7 @@ def get_stats(db: Session = Depends(get_db)):
     vulnerable_count = node_repo.count_vulnerable()
 
     threshold_days = _stale_threshold_days()
-    stale_before = datetime.utcnow() - timedelta(days=threshold_days)
+    stale_before = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=threshold_days)
     exposed_count = node_repo.count_exposed()
     stale_count = node_repo.count_stale(stale_before)
     tor_count = node_repo.count_tor()

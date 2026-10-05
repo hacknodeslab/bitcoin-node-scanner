@@ -2,7 +2,7 @@
 Tests for database models.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -105,7 +105,7 @@ class TestScanModel:
     def test_create_scan(self, session):
         """Test creating a scan."""
         scan = Scan(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc).replace(tzinfo=None),
             total_nodes=100,
             status="completed",
         )
@@ -196,7 +196,7 @@ class TestNodeVulnerabilityModel:
         session.add(node_vuln)
         session.commit()
 
-        node_vuln.resolved_at = datetime.utcnow()
+        node_vuln.resolved_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.commit()
 
         assert node_vuln.resolved_at is not None

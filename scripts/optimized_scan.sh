@@ -2,327 +2,70 @@
 
 ################################################################################
 # Bitcoin Node Security Scanner - Optimized Scan Script
-# Credit-efficient scanning with automatic tracking
+# Thin wrapper around `python -m src.scanner`: loads .env, activates the venv,
+# forwards all arguments, and shows the credit-tracker report after a scan.
 ################################################################################
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-export BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# Configuration
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-OPTIMIZED_SCANNER="$PROJECT_ROOT/src/optimized_scanner.py"
-CREDIT_TRACKER="$PROJECT_ROOT/src/credit_tracker.py"
 VENV_DIR="$PROJECT_ROOT/venv"
 
-################################################################################
-# Functions
-################################################################################
+cd "$PROJECT_ROOT"
 
-print_banner() {
-    echo -e "${CYAN}"
-    cat << "EOF"
-╔════════════════════════════════════════════════════════════════╗
-║      Bitcoin Node Scanner - OPTIMIZED (Credit-Efficient)       ║
-║                    HackNodes Lab                               ║
-╚════════════════════════════════════════════════════════════════╝
-EOF
-    echo -e "${NC}"
-    return 0
-}
-
-log_info() {
-    local message="${1:-No message provided}"
-    echo -e "${GREEN}[✓]${NC} $message"
-    return 0
-}
-
-log_warning() {
-    local message="${1:-Warning}"
-    echo -e "${YELLOW}[!]${NC} $message"
-    return 0
-}
-
-log_error() {
-    local message="${1:-Unknown error}"
-    echo -e "${RED}[✗]${NC} $message"
-    return 0
-}
-
-
-print_usage() {
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     cat << EOF
-Usage: $0 [OPTIONS]
+Usage: $0 [SCANNER_OPTIONS]
 
-Optimization Features:
-  ✅ Optimized queries (5 vs 9 - saves 44%)
-  ✅ Smart caching (saves 70-80% on re-scans)
-  ✅ Selective enrichment (only critical nodes)
-  ✅ Automatic credit tracking
+All arguments are forwarded to: python -m src.scanner
 
-Options:
-    -h, --help              Show this help
-    -q, --quick             Quick scan (cache + 50 enrichments)
-    -m, --medium            Medium scan (cache + 75 enrichments)
-    -f, --full              Full scan (cache + 100 enrichments)
-    -c, --check-credits     Check credits and usage stats
-    --no-cache              Disable caching
-    --max-enrich NUM        Max enrichments (default: 100)
-    -k, --api-key KEY       Shodan API key
+Common options:
+    --quick             Quick scan (cache + enrichment limited to 50 nodes)
+    --no-cache          Disable the node cache
+    --no-enrich         Skip host enrichment (cheapest)
+    --max-enrich NUM    Max nodes to enrich (default: 100)
+    --check-credits     Show remaining Shodan credits and exit
+    --ips FILE          Credit-free host lookups from an IP list
+    --api-key KEY       Shodan API key (overrides SHODAN_API_KEY)
 
 Examples:
-    $0 --quick              # Fast, efficient scan
-    $0 --full               # Comprehensive scan
-    $0 --check-credits      # View credits and usage
-    $0 --no-cache           # Fresh scan (no cache)
+    $0 --quick
+    $0 --no-cache --max-enrich 100
+    $0 --check-credits
+    $0 --ips data/peers/peers.txt
 
-Credit Savings:
-    Without optimization:   ~9 query + ~900 scan credits
-    With optimization:      ~5 query + ~50-100 scan credits
-    Savings:                ~44% query, ~90% scan credits
-
+After a scan, the Shodan credit usage report is shown
+(src/credit_tracker.py). See OPTIMIZATIONS_README.md for details.
 EOF
-    return 0
-}
-
-check_credits() {
-    log_info "Checking Shodan credits..."
-    
-    # shellcheck source=/dev/null
-    source "$VENV_DIR/bin/activate"
-    python "$OPTIMIZED_SCANNER" --check-credits
-    return 0
-}
-
-run_optimized_scan() {
-    local scan_mode=$1
-    local use_cache=$2
-    local max_enrich=$3
-    
-    log_info "Starting optimized scan..."
-    log_info "Mode: $scan_mode"
-    log_info "Cache: $use_cache"
-    log_info "Max enrichments: $max_enrich"
-    echo ""
-    
-    # Activate venv
-    # shellcheck source=/dev/null
-    source "$VENV_DIR/bin/activate"
-    
-    # Build command
-    local cmd="python $OPTIMIZED_SCANNER --max-enrich $max_enrich"
-    
-    if [[ "$use_cache" = "false" ]]; then
-        cmd="$cmd --no-cache"
-    fi
-    
-    if [[ "$scan_mode" = "quick" ]]; then
-        cmd="$cmd --quick"
-    fi
-    
-    if [[ -n "$API_KEY_ARG" ]]; then
-        cmd="$cmd --api-key $API_KEY_ARG"
-    fi
-    
-    # Show credit estimate
-    echo -e "${CYAN}Estimated Credit Usage:${NC}"
-    if [[ "$scan_mode" = "quick" ]]; then
-        echo "  Query credits:  ~5"
-        echo "  Scan credits:   ~50"
-    elif [[ "$scan_mode" = "medium" ]]; then
-        echo "  Query credits:  ~5"
-        echo "  Scan credits:   ~75"
-    else
-        echo "  Query credits:  ~5"
-        echo "  Scan credits:   ~100"
-    fi
-    echo ""
-    
-    # Run scanner
-    log_info "Executing: $cmd"
-    echo ""
-    
-    read -ra cmd_array <<< "$cmd"
-    if "${cmd_array[@]}"; then
-    #if eval $cmd; then
-        echo ""
-        log_info "Scan completed successfully ✓"
-        
-        # Log usage to tracker
-        log_info "Logging credit usage..."
-        
-        # Extract credits from last scan (simplified)
-        local query_credits=5
-        local scan_credits=$max_enrich
-        
-        python "$CREDIT_TRACKER" --log \
-            --query-credits "$query_credits" \
-            --scan-credits "$scan_credits" \
-            --type "$scan_mode" \
-            --notes "Optimized scan via script"
-        
-        # Show updated usage report
-        echo ""
-        python "$CREDIT_TRACKER" --report
-        
-        show_results
-    else
-        echo ""
-        log_error "Scan failed"
-        exit 1
-    fi
-    return 0
-}
-
-show_results() {
-    log_info "Scan results location:"
-    echo ""
-    
-    local output_dir="$PROJECT_ROOT/output"
-    
-    # Find latest files
-    if [[ -d "$output_dir/reports" ]]; then
-        local latest_report
-        latest_report=$(find "$output_dir/reports" -name 'report_*.txt' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-        if [[ -n "$latest_report" ]]; then
-            echo "  📄 Report: $latest_report"
-        fi
-
-        local latest_critical
-        latest_critical=$(find "$output_dir/reports" -name 'critical_nodes_*.json' -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-        if [[ -n "$latest_critical" ]]; then
-            echo "  ⚠️  Critical Nodes: $latest_critical"
-        fi
-    fi
-
-    echo ""
-
-    # Show cache stats
-    if [[ -f "$PROJECT_ROOT/cache/nodes_cache.json" ]]; then
-        local cache_size
-        cache_size=$(wc -l < "$PROJECT_ROOT/cache/nodes_cache.json" 2>/dev/null || echo "0")
-        log_info "Cache: $cache_size cached nodes"
-    fi
-    return 0
-}
-
-load_env_file() {
-    local env_file="$PROJECT_ROOT/.env"
-    
-    if [[ -f "$env_file" ]]; then
-        log_info "Loading environment from .env file"
-        # Load .env file (export each line that doesn't start with # and contains =)
-        set -a  # automatically export all variables
-        # shellcheck source=/dev/null
-        source "$env_file"
-        set +a  # disable automatic export
-    else
-        log_warning "No .env file found at $env_file"
-    fi
-    return 0
-}
-
-setup_environment() {
-    # Load environment variables from .env file
-    load_env_file
-    
-    # Check virtualenv
-    if [[ ! -d "$VENV_DIR" ]]; then
-        log_error "Virtual environment not found"
-        log_info "Run: ./scripts/setup.sh"
-        exit 1
-    fi
-    
-    # Check API key
-    if [[ -z "$SHODAN_API_KEY" ]] && [[ -z "$API_KEY_ARG" ]]; then
-        log_error "SHODAN_API_KEY not set"
-        log_info "Set it with: export SHODAN_API_KEY='your_key'"
-        log_info "Or add it to .env file: SHODAN_API_KEY=your_key"
-        exit 1
-    fi
-    
-    # Create cache directory
-    mkdir -p "$PROJECT_ROOT/cache"
-    return 0
-}
-
-################################################################################
-# Main
-################################################################################
-
-# Default values
-MODE="medium"
-USE_CACHE="true"
-MAX_ENRICH=100
-CHECK_CREDITS_ONLY="false"
-API_KEY_ARG=""
-
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -h|--help)
-            print_usage
-            exit 0
-            ;;
-        -q|--quick)
-            MODE="quick"
-            MAX_ENRICH=50
-            shift
-            ;;
-        -m|--medium)
-            MODE="medium"
-            MAX_ENRICH=75
-            shift
-            ;;
-        -f|--full)
-            MODE="full"
-            MAX_ENRICH=100
-            shift
-            ;;
-        -c|--check-credits)
-            CHECK_CREDITS_ONLY="true"
-            shift
-            ;;
-        --no-cache)
-            USE_CACHE="false"
-            shift
-            ;;
-        --max-enrich)
-            MAX_ENRICH="$2"
-            shift 2
-            ;;
-        -k|--api-key)
-            API_KEY_ARG="$2"
-            shift 2
-            ;;
-        *)
-            log_error "Unknown option: $1"
-            print_usage
-            exit 1
-            ;;
-    esac
-done
-
-# Main execution
-print_banner
-
-log_info "Optimized scanner with credit-saving features"
-log_info "Working directory: $PROJECT_ROOT"
-echo ""
-
-setup_environment
-
-if [[ "$CHECK_CREDITS_ONLY" = "true" ]]; then
-    check_credits
-else
-    run_optimized_scan "$MODE" "$USE_CACHE" "$MAX_ENRICH"
+    exit 0
 fi
 
-log_info "Done!"
+# Load .env if present
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
+# Activate virtualenv if present
+if [[ -f "$VENV_DIR/bin/activate" ]]; then
+    # shellcheck source=/dev/null
+    source "$VENV_DIR/bin/activate"
+fi
+
+CHECK_CREDITS_ONLY="false"
+for arg in "$@"; do
+    if [[ "$arg" == "--check-credits" ]]; then
+        CHECK_CREDITS_ONLY="true"
+    fi
+done
+
+python -m src.scanner "$@"
+
+# Show credit usage report after a scan (not for --check-credits)
+if [[ "$CHECK_CREDITS_ONLY" == "false" ]]; then
+    echo ""
+    python -m src.credit_tracker --report || true
+fi

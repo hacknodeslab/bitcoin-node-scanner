@@ -1,7 +1,7 @@
 # HackNodes Recon Platform
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=hacknodeslab_bitcoin-node-scanner)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=hacknodeslab_bitcoin-node-scanner&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=hacknodeslab_bitcoin-node-scanner)
@@ -20,7 +20,7 @@ API, and UI.
 
 | Domain | What it measures | Data source | Docs |
 |--------|------------------|-------------|------|
-| **Bitcoin node scanner** | Vulnerable / misconfigured Bitcoin nodes exposed on the clearnet (bad versions, exposed RPC, risk level, geo) | Shodan API | [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md) |
+| **Bitcoin node scanner** | Vulnerable / misconfigured Bitcoin nodes exposed on the clearnet (bad versions, exposed RPC, risk level, geo) | Shodan API — search queries or a provided IP list (`--ips`, e.g. a peer-observer export) | [docs/bitcoin-scanner.md](docs/bitcoin-scanner.md) |
 | **Nostr relay CDN-recon** | Centralization — what % of Nostr relays sit behind a CDN (Cloudflare / CloudFront / Fastly) vs. exposing their origin | DNS + CDN CIDR ranges (no Shodan credits) | [docs/nostr-cdn-recon.md](docs/nostr-cdn-recon.md) |
 
 Both domains feed the same dashboard and REST API; the Bitcoin engine adds NVD/CVE
@@ -117,7 +117,9 @@ Per-domain endpoints are documented in their respective docs; the full reference
 | `STALE_THRESHOLD_DAYS` | No | `7` | Age in days before a node is counted as STALE |
 
 Domain-specific variables (`SHODAN_API_KEY`, `MAXMIND_LICENSE_KEY`,
-`NOSTR_CDN_CACHE_DIR`, …) are listed in the per-domain docs.
+`NOSTR_CDN_CACHE_DIR`, the IP-reputation `ABUSEIPDB_*` / `REPUTATION_STALE_DAYS` /
+`BLOCKLISTS` / `BLOCKLIST_CACHE_DIR`, …) are listed in the per-domain docs and in
+`.env.example`.
 
 > **Security note**: do not expose the web server on a public interface without a
 > TLS-terminating reverse proxy (e.g. nginx). The API key provides authentication
@@ -153,7 +155,7 @@ cd frontend && pnpm typecheck && pnpm test
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.9+
 - Node + pnpm (for the dashboard)
 - A Shodan API key for Bitcoin scanning ([shodan.io](https://account.shodan.io/)) —
   not needed for Nostr recon
@@ -179,6 +181,9 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 - **Responsible Disclosure**: report 0-day vulnerabilities responsibly to the relevant security team
 - **No Active Exploitation**: this tool is for passive reconnaissance only
 - **Respect Privacy**: do not publish IP addresses of vulnerable nodes
+- **Third-party lookups**: IP-reputation enrichment via AbuseIPDB sends node IPs to
+  AbuseIPDB (opt-in via `ABUSEIPDB_API_KEY`); public blocklists are downloaded and
+  matched locally, so they disclose nothing
 - **GDPR Compliance**: handle European data in accordance with regulations
 
 ## Credits
@@ -196,7 +201,8 @@ and OSTIF & Quarkslab for their comprehensive security audit.
 ## Disclaimer
 
 This tool is for **security research and educational purposes only**. All data
-collected is from publicly available sources (Shodan, DNS & MaxMind GeoIP). Do not
+collected is from publicly available sources (Shodan, DNS, MaxMind GeoIP, AbuseIPDB
+and public IP blocklists). Do not
 perform active penetration testing without explicit authorization.
 
 ---

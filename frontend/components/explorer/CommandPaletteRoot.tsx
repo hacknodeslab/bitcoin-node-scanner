@@ -54,6 +54,14 @@ export function CommandPaletteRoot() {
           return () => cmds.setQuery("risk=LOW");
         case "node.filter.port.8333":
             return () => cmds.setQuery("port=8333");
+        case "node.filter.blocklisted":
+          return () => cmds.setQuery("blocklisted=true");
+        case "node.filter.abuse.25":
+          return () => cmds.setQuery("abuse_min=25");
+        case "node.filter.abuse.75":
+          return () => cmds.setQuery("abuse_min=75");
+        case "node.filter.reported":
+          return () => cmds.setQuery("reported=true");
         case "vuln.list":
           return () => router.push("/vulnerabilities");
         case "nav.explorer":
@@ -68,6 +76,10 @@ export function CommandPaletteRoot() {
         case "theme.system":
           return () => cmds.setThemeMode("system");
         default:
+          if (spec.id.startsWith("node.filter.blocklist.")) {
+            const list = spec.id.slice("node.filter.blocklist.".length);
+            return () => cmds.setQuery(`blocklist=${list}`);
+          }
           return () => {};
       }
     }

@@ -21,13 +21,15 @@ from typing import Dict, List
 
 from .cdn_ranges import build_provider_nets
 from .classifier import NON_CDN_VERDICTS, classify, normalize
+from ..safe_paths import safe_input_file, safe_output_write
 
 
 def read_hosts(path: str) -> List[str]:
     """Read and deduplicate normalized hosts from a relay-list file."""
     hosts: List[str] = []
     seen = set()
-    with open(path) as f:
+    # Confined to INPUT_DIR: the path comes straight from the CLI.
+    with open(safe_input_file(path)) as f:
         for line in f:
             h = normalize(line)
             if h and h not in seen:
@@ -117,7 +119,9 @@ def main(argv: List[str] | None = None) -> int:
     results = scan_hosts(hosts, nets, workers=args.workers, timeout=args.timeout)
     dump = summarize(results)
 
-    out_path = args.json_out or _default_output_path()
+    # An explicit --json target must stay under OUTPUT_DIR (no writing to
+    # arbitrary files such as shell rc files).
+    out_path = str(safe_output_write(args.json_out)) if args.json_out else _default_output_path()
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(dump, f, indent=2)

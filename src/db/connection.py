@@ -205,7 +205,22 @@ def _migrate_schema(conn) -> None:
     `init_db()`'s advisory lock covers it.
     """
     inspector = inspect(conn)
-    if "nodes" not in inspector.get_table_names():
+    tables = inspector.get_table_names()
+
+    if "scan_jobs" in tables:
+        job_cols = {col["name"] for col in inspector.get_columns("scan_jobs")}
+        if "job_type" not in job_cols:
+            # Same statement on SQLite and PostgreSQL; existing rows become 'scan'.
+            conn.execute(text(
+                "ALTER TABLE scan_jobs ADD COLUMN job_type VARCHAR(20) NOT NULL DEFAULT 'scan'"
+            ))
+            logger.info("Added job_type column to scan_jobs table")
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_scan_jobs_active_per_type "
+            "ON scan_jobs (job_type) WHERE status IN ('pending', 'running')"
+        ))
+
+    if "nodes" not in tables:
         return
 
     existing_cols = {col["name"] for col in inspector.get_columns("nodes")}

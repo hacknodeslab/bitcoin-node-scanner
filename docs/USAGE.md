@@ -4,36 +4,62 @@
 
 ### Quick Scan
 ```bash
-# Run default scan
-python src/scanner.py
+# Credit-efficient scan (cache + enrichment limited to 50 nodes)
+python -m src.scanner --quick
 
-# Or use quick scan script
+# Full scan with default settings
+python -m src.scanner
+
+# Or use the wrapper scripts
 ./scripts/quick_scan.sh
+./scripts/optimized_scan.sh --quick
 ```
 
 ### Check Shodan Credits
 ```bash
-python src/scanner.py --check-credits
+python -m src.scanner --check-credits
 ```
 
 ## Advanced Usage
 
-### Custom Number of Results
+### Scan from a provided IP list (`--ips`)
+
+Look up a list of node IPs (e.g. a peer-observer export) via Shodan host
+lookups instead of search queries. Host lookups consume **no query or scan
+credits**:
+
 ```bash
-# Scan with 2000 results per query
-python src/scanner.py --max-per-query 2000
+python -m src.scanner --ips data/peers/peers.txt
+
+# Cap the number of lookups and tune the request rate (seconds between calls)
+python -m src.scanner --ips data/peers/peers.txt --max-ips 500 --rate 1
 ```
 
-### Disable Host Enrichment
+Accepted formats: one `host:port` per line, `[ipv6]:port`, or CSV.
+`bitcoin-cli getnodeaddresses 0` outputs JSON — convert it first (recipe in
+[bitcoin-scanner.md](bitcoin-scanner.md#scan-from-a-provided-ip-list---ips)).
+Add `--source-tag <name>` (e.g. `peer-observer`) to tag the imported nodes with
+their source; the default tag is `ip-list`.
+
+### Limit Host Enrichment
 ```bash
-# Skip enrichment to save API credits
-python src/scanner.py --no-enrich
+# Enrich at most 25 nodes (saves scan credits)
+python -m src.scanner --max-enrich 25
+
+# Skip enrichment entirely (cheapest option)
+python -m src.scanner --no-enrich
+```
+
+### Disable the Node Cache
+```bash
+# Force a fresh scan, ignoring cached nodes
+python -m src.scanner --no-cache
 ```
 
 ### Custom API Key
 ```bash
-# Use specific API key
-python src/scanner.py --api-key YOUR_API_KEY
+# Use a specific API key instead of SHODAN_API_KEY from the environment
+python -m src.scanner --api-key YOUR_API_KEY
 ```
 
 ## Output Files
@@ -72,10 +98,10 @@ output/
 ## Example Workflow
 ```bash
 # 1. Check your API credits
-python src/scanner.py --check-credits
+python -m src.scanner --check-credits
 
 # 2. Run a quick scan without enrichment
-python src/scanner.py --max-per-query 500 --no-enrich
+python -m src.scanner --quick --no-enrich
 
 # 3. Review the report
 cat output/reports/report_*.txt
@@ -83,13 +109,16 @@ cat output/reports/report_*.txt
 # 4. Check critical nodes
 cat output/reports/critical_nodes_*.csv
 
-# 5. Run full scan with enrichment
-python src/scanner.py --max-per-query 1000
+# 5. Run a full scan with enrichment
+python -m src.scanner
 ```
 
 ## Tips
 
-- Start with `--no-enrich` to conserve API credits
-- Use `--max-per-query 100` for testing
+- Start with `--quick` or `--no-enrich` to conserve API credits
+- Use `--ips` with a peer list for credit-free scans of known nodes
+- Track monthly consumption with `python -m src.credit_tracker --report`
 - Review logs in `output/logs/` if issues occur
 - Critical nodes list is in both JSON and CSV formats
+- See [OPTIMIZATIONS_README.md](../OPTIMIZATIONS_README.md) for credit-saving
+  strategies and [bitcoin-scanner.md](bitcoin-scanner.md) for the full reference

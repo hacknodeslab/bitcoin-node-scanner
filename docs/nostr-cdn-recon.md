@@ -51,19 +51,19 @@ persistence is a separate step. **The scanner never writes to the database direc
 
 ```bash
 # 1. (optional) Derive a host list from a nostr.watch xlsx export
-python -m src.nostr.extract_relays nw-relays.xlsx relays.txt --online --clearnet
+python -m src.nostr.extract_relays data/nw-relays.xlsx data/relays.txt --online --clearnet
 #   --online    keep only relays in active rotation (in_rstate=true)
 #   --clearnet  drop tor/i2p relays
 
 # 2. Scan — classify every host, write output/nostr_relays_<ts>.json
-python -m src.nostr.scanner relays.txt
-python -m src.nostr.scanner relays.txt --workers 100 --timeout 4
+python -m src.nostr.scanner data/relays.txt
+python -m src.nostr.scanner data/relays.txt --workers 100 --timeout 4
 
 # 3. Load the dump into the database
 python -m src.db.cli db-import-nostr output/nostr_relays_<ts>.json
 ```
 
-`relays.txt` is one relay URL/host per line. Re-importing **upserts in place** —
+`relays.txt` is one relay URL/host per line. Input files (the relay list, the nostr.watch xlsx and the extracted list) must live under `INPUT_DIR` (default `data/`), and `db-import-nostr` / `--json` only read/write under `OUTPUT_DIR` (default `output/`) — paths outside are refused (`src/safe_paths.py`). Re-importing **upserts in place** —
 one row per host, no duplicates — and the list/stats queries always scope to the
 latest scan.
 
