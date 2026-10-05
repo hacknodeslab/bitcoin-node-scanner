@@ -93,8 +93,8 @@ class Node(Base):
     )
 
     # Timestamps
-    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    last_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     # Relationships
     scans: Mapped[List["Scan"]] = relationship(
@@ -127,7 +127,7 @@ class Scan(Base):
     __tablename__ = 'scans'
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     # Scan configuration
     queries_executed: Mapped[Optional[str]] = mapped_column(Text)  # JSON list of queries
@@ -173,7 +173,7 @@ class CVEEntry(Base):
     cvss_score: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     affected_versions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON list of {cpe, version, start_inc, start_exc, end_inc, end_exc}
-    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=_utcnow)
 
     affected_nodes: Mapped[List["NodeVulnerability"]] = relationship(
         "NodeVulnerability",
@@ -198,7 +198,7 @@ class NodeVulnerability(Base):
     node_id: Mapped[int] = mapped_column(Integer, ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
     cve_id: Mapped[str] = mapped_column(String(20), ForeignKey('cve_entries.cve_id', ondelete='CASCADE'), nullable=False)
 
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     detected_version: Mapped[Optional[str]] = mapped_column(String(100))
 
@@ -302,7 +302,7 @@ class ScanJob(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     result_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON string
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
     __table_args__ = (
         Index('idx_scan_jobs_status', 'status'),

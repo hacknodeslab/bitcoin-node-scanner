@@ -2,7 +2,7 @@
 Tests for database repositories.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -301,7 +301,7 @@ class TestScanRepository:
         repo = ScanRepository(session)
 
         # Create scans at different times
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         scan1 = Scan(timestamp=now - timedelta(days=5), status="completed")
         scan2 = Scan(timestamp=now - timedelta(days=2), status="completed")
         scan3 = Scan(timestamp=now + timedelta(days=1), status="completed")
@@ -317,7 +317,7 @@ class TestScanRepository:
         repo = ScanRepository(session)
 
         # Create completed scans
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         scan1 = Scan(
             timestamp=now - timedelta(days=1),
             status="completed",

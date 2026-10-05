@@ -5,7 +5,7 @@ Uses FastAPI TestClient with an in-memory SQLite database.
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -73,7 +73,7 @@ def _cached_cve(cve_id: str, cvss_score: float = 7.5) -> CVEEntryModel:
         cvss_score=cvss_score,
         description=f"Test vulnerability {cve_id}",
         affected_versions=json.dumps(["cpe:2.3:a:bitcoin:bitcoin:0.21.0:*"]),
-        fetched_at=datetime.utcnow(),
+        fetched_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 

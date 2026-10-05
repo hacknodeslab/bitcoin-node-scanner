@@ -14,7 +14,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any
 
@@ -236,7 +236,7 @@ class JSONImporter:
                     setattr(existing, key, value)
             if prov_tag:
                 existing.tags_json = self._merge_tag(existing.tags_json, prov_tag)
-            existing.last_seen = file_timestamp or datetime.utcnow()
+            existing.last_seen = file_timestamp or datetime.now(timezone.utc).replace(tzinfo=None)
             return "updated", db_data["risk_level"], db_data["is_vulnerable"]
         else:
             # Create new node
@@ -312,7 +312,7 @@ class JSONImporter:
         except (ValueError, IndexError):
             pass
 
-        return datetime.utcnow()
+        return datetime.now(timezone.utc).replace(tzinfo=None)
 
     def import_directory(self, dir_path: str, pattern: str = "*.json") -> Dict[str, int]:
         """

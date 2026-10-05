@@ -9,7 +9,7 @@ import importlib.util
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -356,9 +356,9 @@ class TestExtractTimestamp:
 
     def test_no_date_returns_recent_time(self):
         importer = JSONImporter(verbose=False)
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc).replace(tzinfo=None)
         result = importer._extract_timestamp("nodes.json")
-        after = datetime.utcnow()
+        after = datetime.now(timezone.utc).replace(tzinfo=None)
         assert before - timedelta(seconds=5) <= result <= after + timedelta(seconds=5)
 
 

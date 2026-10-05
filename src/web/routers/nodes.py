@@ -302,7 +302,7 @@ def list_nodes(
     if blocklist is not None and blocklist not in BLOCKLISTS:
         # Closed set: also keeps the LIKE pattern below free of user wildcards.
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown blocklist '{blocklist}'. Expected one of: {', '.join(BLOCKLISTS)}.",
         )
 

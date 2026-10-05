@@ -3,7 +3,7 @@ Shared pytest fixtures for Bitcoin Node Scanner tests.
 """
 import os
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
@@ -143,7 +143,7 @@ def populated_db_session(db_session):
     """Database session with pre-populated test data."""
     from src.db.models import Node, Scan, CVEEntry, NodeVulnerability
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Create nodes
     nodes = []

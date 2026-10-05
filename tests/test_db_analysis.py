@@ -2,7 +2,7 @@
 Tests for historical analysis module.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -31,7 +31,7 @@ def session(engine):
 @pytest.fixture
 def populated_db(session):
     """Populate database with test data."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Create nodes with various attributes
     nodes = [
@@ -92,7 +92,7 @@ class TestHistoricalAnalyzer:
     def test_get_vulnerability_trends_day(self, populated_db):
         """Test vulnerability trends with daily granularity."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=15)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=15)
 
         # Mock session by patching get_db_session
         with pytest.MonkeyPatch().context() as m:
@@ -114,7 +114,7 @@ class TestHistoricalAnalyzer:
     def test_get_vulnerability_trends_week(self, populated_db):
         """Test vulnerability trends with weekly granularity."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=30)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():
@@ -163,7 +163,7 @@ class TestHistoricalAnalyzer:
     def test_get_geographic_distribution(self, populated_db):
         """Test geographic distribution analysis."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=15)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=15)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():
@@ -222,7 +222,7 @@ class TestHistoricalAnalyzer:
     def test_get_summary_statistics(self, populated_db):
         """Test summary statistics generation."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=15)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=15)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():
@@ -245,7 +245,7 @@ class TestHistoricalAnalyzer:
     def test_get_asn_concentration(self, populated_db):
         """Test ASN concentration analysis."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=15)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=15)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():
@@ -265,7 +265,7 @@ class TestHistoricalAnalyzer:
     def test_get_churn_rate(self, populated_db):
         """Test churn rate calculation."""
         analyzer = HistoricalAnalyzer()
-        start_date = datetime.utcnow() - timedelta(days=15)
+        start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=15)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():
@@ -287,7 +287,7 @@ class TestHistoricalAnalyzer:
     def test_compare_periods(self, populated_db):
         """Test period comparison."""
         analyzer = HistoricalAnalyzer()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with pytest.MonkeyPatch().context() as m:
             def mock_session():

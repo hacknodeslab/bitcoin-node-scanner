@@ -2,7 +2,7 @@
 Extended tests for database repositories — covering methods not tested in test_db_repositories.py.
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -44,7 +44,7 @@ class TestNodeRepositoryExtended:
 
     def test_find_vulnerable_with_since_filter(self, session):
         repo = NodeRepository(session)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         node_old = Node(
             ip="10.1.0.1", port=8333, is_vulnerable=True,
@@ -66,9 +66,9 @@ class TestNodeRepositoryExtended:
     def test_find_by_risk_level(self, session):
         repo = NodeRepository(session)
         node1 = Node(ip="10.2.0.1", port=8333, risk_level="CRITICAL",
-                     first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+                     first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None))
         node2 = Node(ip="10.2.0.2", port=8333, risk_level="HIGH",
-                     first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+                     first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None))
         session.add_all([node1, node2])
         session.commit()
 
@@ -80,11 +80,11 @@ class TestNodeRepositoryExtended:
         repo = NodeRepository(session)
         session.add_all([
             Node(ip="10.3.0.1", port=8333, risk_level="CRITICAL",
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow()),
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None)),
             Node(ip="10.3.0.2", port=8333, risk_level="HIGH",
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow()),
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None)),
             Node(ip="10.3.0.3", port=8333, risk_level="LOW",
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow()),
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None)),
         ])
         session.commit()
 
@@ -96,7 +96,7 @@ class TestNodeRepositoryExtended:
 
     def test_find_not_seen_since(self, session):
         repo = NodeRepository(session)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         old_node = Node(ip="10.4.0.1", port=8333,
                         first_seen=now - timedelta(days=20),
                         last_seen=now - timedelta(days=20))
@@ -113,7 +113,7 @@ class TestNodeRepositoryExtended:
         repo = NodeRepository(session)
         session.add_all([
             Node(ip=f"10.5.0.{i}", port=8333,
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow())
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None))
             for i in range(5)
         ])
         session.commit()
@@ -123,9 +123,9 @@ class TestNodeRepositoryExtended:
         repo = NodeRepository(session)
         session.add_all([
             Node(ip="10.6.0.1", port=8333, is_vulnerable=True,
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow()),
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None)),
             Node(ip="10.6.0.2", port=8333, is_vulnerable=False,
-                 first_seen=datetime.utcnow(), last_seen=datetime.utcnow()),
+                 first_seen=datetime.now(timezone.utc).replace(tzinfo=None), last_seen=datetime.now(timezone.utc).replace(tzinfo=None)),
         ])
         session.commit()
         assert repo.count_vulnerable() == 1
@@ -198,7 +198,7 @@ class TestScanRepositoryExtended:
 
     def test_get_latest(self, session):
         repo = ScanRepository(session)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         scan1 = Scan(timestamp=now - timedelta(days=5), status="completed")
         scan2 = Scan(timestamp=now - timedelta(days=1), status="completed")
         session.add_all([scan1, scan2])
@@ -210,7 +210,7 @@ class TestScanRepositoryExtended:
 
     def test_get_by_date_range_with_status_filter(self, session):
         repo = ScanRepository(session)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         scan_ok = Scan(timestamp=now - timedelta(days=1), status="completed")
         scan_fail = Scan(timestamp=now - timedelta(days=1), status="failed")
         session.add_all([scan_ok, scan_fail])
@@ -222,13 +222,13 @@ class TestScanRepositoryExtended:
 
     def test_get_statistics_no_scans(self, session):
         repo = ScanRepository(session)
-        stats = repo.get_statistics(datetime.utcnow() - timedelta(days=7))
+        stats = repo.get_statistics(datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7))
         assert stats["total_scans"] == 0
         assert stats["total_nodes"] == 0
 
     def test_get_statistics_with_no_durations(self, session):
         repo = ScanRepository(session)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         scan = Scan(
             timestamp=now - timedelta(hours=1),
             status="completed",

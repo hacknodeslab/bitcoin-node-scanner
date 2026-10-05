@@ -3,7 +3,7 @@ Tests for DatabaseScannerMixin and scanner integration.
 """
 import os
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock, call
 
 from sqlalchemy import create_engine
@@ -434,7 +434,7 @@ class TestAnalysisNoDB:
 
         analyzer = HistoricalAnalyzer()
         with patch("src.db.analysis.get_db_session", null_session):
-            result = analyzer.get_vulnerability_trends(datetime.utcnow())
+            result = analyzer.get_vulnerability_trends(datetime.now(timezone.utc).replace(tzinfo=None))
         assert result == {"error": "Database not configured"}
 
     def test_compare_periods_no_db(self):
@@ -446,7 +446,7 @@ class TestAnalysisNoDB:
             yield None
 
         analyzer = HistoricalAnalyzer()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         with patch("src.db.analysis.get_db_session", null_session):
             result = analyzer.compare_periods(now, now, now, now)
         assert result == {"error": "Database not configured"}
@@ -500,7 +500,7 @@ class TestAnalysisNoDB:
 
         analyzer = HistoricalAnalyzer()
         with patch("src.db.analysis.get_db_session", null_session):
-            result = analyzer.get_geographic_distribution(datetime.utcnow())
+            result = analyzer.get_geographic_distribution(datetime.now(timezone.utc).replace(tzinfo=None))
         assert result == {}
 
     def test_get_asn_concentration_no_db(self):
@@ -513,7 +513,7 @@ class TestAnalysisNoDB:
 
         analyzer = HistoricalAnalyzer()
         with patch("src.db.analysis.get_db_session", null_session):
-            result = analyzer.get_asn_concentration(datetime.utcnow())
+            result = analyzer.get_asn_concentration(datetime.now(timezone.utc).replace(tzinfo=None))
         assert result == []
 
     def test_get_node_lifecycle_no_db(self):
@@ -552,7 +552,7 @@ class TestAnalysisNoDB:
 
         analyzer = HistoricalAnalyzer()
         with patch("src.db.analysis.get_db_session", null_session):
-            result = analyzer.get_churn_rate(datetime.utcnow())
+            result = analyzer.get_churn_rate(datetime.now(timezone.utc).replace(tzinfo=None))
         assert result == {}
 
     def test_get_summary_statistics_no_db(self):
@@ -565,7 +565,7 @@ class TestAnalysisNoDB:
 
         analyzer = HistoricalAnalyzer()
         with patch("src.db.analysis.get_db_session", null_session):
-            result = analyzer.get_summary_statistics(datetime.utcnow())
+            result = analyzer.get_summary_statistics(datetime.now(timezone.utc).replace(tzinfo=None))
         assert result == {}
 
     def test_normalize_version_edge_cases(self):
@@ -595,7 +595,7 @@ class TestAnalysisNoDB:
             finally:
                 s.close()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         s = Session()
         node = Node(
             ip="10.0.0.1", port=8333,
@@ -628,7 +628,7 @@ class TestAnalysisNoDB:
             finally:
                 s.close()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         s = Session()
         scan = Scan(timestamp=now, status="completed", total_nodes=1)
         node = Node(ip="10.0.0.1", port=8333, version="0.21.0",
@@ -657,7 +657,7 @@ class TestAnalysisNoDB:
             finally:
                 s.close()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         s = Session()
         old_node = Node(
             ip="10.0.0.99", port=8333, version="0.19.0",

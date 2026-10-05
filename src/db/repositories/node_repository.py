@@ -2,7 +2,7 @@
 Repository for Node database operations.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
 
 from sqlalchemy import select, and_, or_
@@ -48,13 +48,13 @@ class NodeRepository:
                 if hasattr(existing, key):
                     setattr(existing, key, value)
             existing.is_example = derived_is_example
-            existing.last_seen = datetime.utcnow()
+            existing.last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
             return existing
         else:
             # Create new node — start with required identity, then set any
             # other matching column from node_data so enrichment fields
             # (hostname, tags_json, geo_*, etc.) survive the initial insert.
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             node = Node(ip=ip, port=port, first_seen=now, last_seen=now)
             for key, value in node_data.items():
                 if key in ("id", "ip", "port", "first_seen", "last_seen", "is_example"):
@@ -96,7 +96,7 @@ class NodeRepository:
         if not batch:
             return 0
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
 
         # Prepare values for insert
         values = []

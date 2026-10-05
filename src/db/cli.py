@@ -19,7 +19,7 @@ import argparse
 import json
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 # Add project root to path
@@ -39,7 +39,7 @@ def cmd_stats(args):
     init_db()
 
     days = args.days or 30
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     analyzer = HistoricalAnalyzer()
     stats = analyzer.get_summary_statistics(start_date)
@@ -79,7 +79,7 @@ def cmd_trends(args):
 
     days = args.days or 30
     granularity = args.granularity or "day"
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     analyzer = HistoricalAnalyzer()
     trends = analyzer.get_vulnerability_trends(start_date, granularity=granularity)
@@ -122,7 +122,7 @@ def cmd_export(args):
 
     output_file = args.output or f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     days = args.days or 30
-    start_date = datetime.utcnow() - timedelta(days=days)
+    start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
     with get_db_session() as session:
         if session is None:
@@ -139,7 +139,7 @@ def cmd_export(args):
         nodes = session.query(Node).filter(
             and_(
                 Node.last_seen >= start_date,
-                Node.last_seen <= datetime.utcnow()
+                Node.last_seen <= datetime.now(timezone.utc).replace(tzinfo=None)
             )
         ).all()
 
@@ -147,10 +147,10 @@ def cmd_export(args):
         scans = scan_repo.get_by_date_range(start_date)
 
         export_data = {
-            "export_date": datetime.utcnow().isoformat(),
+            "export_date": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "period": {
                 "start": start_date.isoformat(),
-                "end": datetime.utcnow().isoformat(),
+                "end": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             },
             "summary": {
                 "total_nodes": len(nodes),

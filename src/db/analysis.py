@@ -5,7 +5,7 @@ Provides trend analysis, version tracking, and geographic distribution
 analysis over time.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple
 from collections import defaultdict
 
@@ -58,7 +58,7 @@ class HistoricalAnalyzer:
             Dictionary with trend data including counts by period
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
@@ -217,7 +217,7 @@ class HistoricalAnalyzer:
             Dictionary mapping version groups to counts
         """
         if date is None:
-            date = datetime.utcnow()
+            date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
@@ -281,7 +281,7 @@ class HistoricalAnalyzer:
             Dictionary mapping dates to adoption counts
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
         if start_date is None:
             start_date = end_date - timedelta(days=90)
 
@@ -328,7 +328,7 @@ class HistoricalAnalyzer:
             Dictionary with country distribution and changes
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
@@ -404,7 +404,7 @@ class HistoricalAnalyzer:
             List of ASN info with node counts
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
@@ -516,7 +516,7 @@ class HistoricalAnalyzer:
         Returns:
             List of stale node info
         """
-        threshold = datetime.utcnow() - timedelta(days=days)
+        threshold = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
         with get_db_session() as session:
             if session is None:
@@ -531,7 +531,7 @@ class HistoricalAnalyzer:
                     "ip": node.ip,
                     "port": node.port,
                     "last_seen": node.last_seen.isoformat() if node.last_seen else None,
-                    "days_ago": (datetime.utcnow() - node.last_seen).days if node.last_seen else None,
+                    "days_ago": (datetime.now(timezone.utc).replace(tzinfo=None) - node.last_seen).days if node.last_seen else None,
                     "version": node.version,
                     "country": node.country_code,
                 }
@@ -554,7 +554,7 @@ class HistoricalAnalyzer:
             Dictionary with churn metrics
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
@@ -611,7 +611,7 @@ class HistoricalAnalyzer:
             Dictionary with all key metrics for dashboards
         """
         if end_date is None:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc).replace(tzinfo=None)
 
         with get_db_session() as session:
             if session is None:
