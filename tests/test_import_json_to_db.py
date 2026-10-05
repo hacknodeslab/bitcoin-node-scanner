@@ -46,6 +46,7 @@ JSONImporter = _script.JSONImporter
 # ---------------------------------------------------------------------------
 
 import src.db.connection as _db_conn
+from src.db import importer as db_importer
 from src.db.models import Base
 from src.db.repositories import NodeRepository
 
@@ -482,3 +483,95 @@ class TestIpListProvenanceTag:
         self._import(make_node_dict("7.7.7.4", query="ip-list:a.txt", source_tag="peer-observer"))
         self._import(make_node_dict("7.7.7.4", query="ip-list:b.txt", source_tag="getnodeaddresses"))
         assert self._tags("7.7.7.4") == ["peer-observer", "getnodeaddresses"]
+    def test_reimport_merges_tags(self, db_setup):
+        self._import(make_node_dict("7.7.7.4", query="ip-list:a.txt", source_tag="peer-observer"))
+        self._import(make_node_dict("7.7.7.4", query="ip-list:b.txt", source_tag="getnodeaddresses"))
+        assert self._tags("7.7.7.4") == ["peer-observer", "getnodeaddresses"]
+
+
+# ===========================================================================
+# Section 9 — shared importer module (src/db/importer.py)
+# ===========================================================================
+
+class TestSharedImporterHelpers:
+    def test_merge_tag_invalid_json_resets(self):
+        assert json.loads(db_importer.merge_tag("{not json", "x")) == ["x"]
+
+    def test_merge_tag_non_list_json_resets(self):
+        assert json.loads(db_importer.merge_tag('{"a": 1}', "x")) == ["x"]
+
+    def test_merge_tag_existing_tag_not_duplicated(self):
+        assert json.loads(db_importer.merge_tag('["x"]', "x")) == ["x"]
+
+    def test_is_vulnerable_version_without_scanner_config(self, monkeypatch):
+        # Force the `from src.scanner import Config` ImportError branch; the
+        # fallback heuristic must still classify the version.
+        monkeypatch.setitem(sys.modules, "src.scanner", None)
+        assert db_importer.is_vulnerable_version("/Satoshi:0.18.1/") is True
+
+    def test_extract_nodes_single_object(self):
+        assert db_importer.extract_nodes({"ip": "1.2.3.4"}) == [{"ip": "1.2.3.4"}]
+
+    def test_extract_nodes_arbitrary_mapping(self):
+        data = {"a": {"ip": "1.1.1.1"}, "b": {"ip": "2.2.2.2"}}
+        assert db_importer.extract_nodes(data) == [{"ip": "1.1.1.1"}, {"ip": "2.2.2.2"}]
+
+    def test_extract_nodes_scalar_returns_empty(self):
+        assert db_importer.extract_nodes(42) == []
+
+
+class TestImportDump:
+    def test_empty_dump_returns_zero_stats_without_scan_row(self, db_setup):
+        from src.db.connection import get_db_session
+        from src.db.models import Scan
+
+        with get_db_session() as session:
+            stats = db_importer.import_dump({"nodes": []}, session)
+        assert stats == {"imported": 0, "updated": 0, "skipped": 0, "errors": 0}
+        with get_db_session() as session:
+            assert session.query(Scan).count() == 0
+
+    def test_vulnerable_nodes_counted_in_scan_row(self, db_setup):
+        from src.db.connection import get_db_session
+        from src.db.models import Scan
+
+        with get_db_session() as session:
+            stats = db_importer.import_dump(
+                {"nodes": [make_node_dict("1.2.3.4", version="/Satoshi:0.18.1/")]},
+                session,
+            )
+        assert stats["imported"] == 1
+        with get_db_session() as session:
+            scan = session.query(Scan).one()
+            assert scan.vulnerable_nodes == 1
+
+    def test_node_error_counted_and_import_continues(self, db_setup, monkeypatch):
+        from src.db.connection import get_db_session
+
+        monkeypatch.setattr(
+            db_importer, "import_node", MagicMock(side_effect=RuntimeError("boom"))
+        )
+        with get_db_session() as session:
+            stats = db_importer.import_dump(
+                {"nodes": [{"ip": "1.2.3.4"}, make_node_dict("5.6.7.8")]},
+                session,
+            )
+        assert stats == {"imported": 0, "updated": 0, "skipped": 0, "errors": 2}
+
+
+# ===========================================================================
+# Section 10 — __main__ entry point guard
+# ===========================================================================
+
+class TestMainGuard:
+    def test_dunder_main_executes_main(self, monkeypatch):
+        import runpy
+
+        monkeypatch.setattr("src.db.connection.is_database_configured", lambda: True)
+        monkeypatch.setattr("src.db.connection.init_db", lambda: True)
+        monkeypatch.setattr(sys, "argv", ["import_json_to_db.py"])
+
+        script_path = Path(__file__).resolve().parent.parent / "scripts" / "import_json_to_db.py"
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_path(str(script_path), run_name="__main__")
+        assert exc.value.code == 1
