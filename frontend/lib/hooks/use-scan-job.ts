@@ -37,5 +37,11 @@ export function useScanJob(initialJobId: string | null = null) {
     return created;
   }
 
-  return { job: data, error, isLoading, jobId, start, refresh: mutate };
+  // Point the poller at an existing job (e.g. `scan: status <job_id>` from
+  // the palette) without triggering a new scan.
+  function watch(id: string) {
+    setJobId(id);
+  }
+
+  return { job: data, error, isLoading, jobId, start, watch, refresh: mutate };
 }

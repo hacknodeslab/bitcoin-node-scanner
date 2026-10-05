@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from ..db.connection import init_db
 from . import l402
-from .routers import nodes, stats, scans, vulnerabilities, csrf, nostr, enrichment
+from .routers import credits, data, nodes, stats, scans, trends, vulnerabilities, csrf, nostr, enrichment
 
 # Validate required configuration at import time so the process fails fast
 # if misconfigured (e.g., launched by a process manager).
@@ -63,6 +63,9 @@ app.include_router(vulnerabilities.router, prefix="/api/v1")
 app.include_router(nostr.router, prefix="/api/v1")
 app.include_router(csrf.router, prefix="/api/v1")
 app.include_router(l402.router, prefix="/api/v1")
+app.include_router(trends.router, prefix="/api/v1")
+app.include_router(credits.router, prefix="/api/v1")
+app.include_router(data.router, prefix="/api/v1")
 
 @app.get("/", include_in_schema=False)
 def dashboard():

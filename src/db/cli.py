@@ -3,14 +3,14 @@
 Database CLI commands for Bitcoin Node Scanner.
 
 Provides subcommands for database operations:
-- db-stats: Show database statistics
+- stats: Show database statistics (`db-stats` remains as a deprecated alias)
 - db-trends: Analyze vulnerability trends
 - db-export: Export historical data
 - db-import: Import JSON data
 - db-enrich-ips: Passive IP-reputation enrichment
 
 Usage:
-    python -m src.db.cli db-stats
+    python -m src.db.cli stats
     python -m src.db.cli db-trends --days 30
     python -m src.db.cli db-export --output export.json
     python -m src.db.cli db-import path/to/file.json
@@ -630,9 +630,13 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # db-stats command
-    stats_parser = subparsers.add_parser("db-stats", help="Show database statistics")
+    # stats command (canonical); db-stats kept as a deprecated alias
+    stats_parser = subparsers.add_parser("stats", help="Show database statistics")
     stats_parser.add_argument("--days", "-d", type=int, default=30, help="Number of days to analyze")
+    db_stats_parser = subparsers.add_parser(
+        "db-stats", help="Deprecated alias for `stats` (will be removed in the next release)"
+    )
+    db_stats_parser.add_argument("--days", "-d", type=int, default=30, help="Number of days to analyze")
 
     # db-trends command
     trends_parser = subparsers.add_parser("db-trends", help="Analyze vulnerability trends")
@@ -711,7 +715,14 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "db-stats":
+    if args.command == "stats":
+        return cmd_stats(args)
+    elif args.command == "db-stats":
+        print(
+            "warning: `db-stats` is deprecated, use `stats` — "
+            "the alias will be removed in the next release",
+            file=sys.stderr,
+        )
         return cmd_stats(args)
     elif args.command == "db-trends":
         return cmd_trends(args)

@@ -116,3 +116,104 @@ def _execute_enrichment(limit: int, source: Optional[str]) -> dict:
 async def run_enrichment_job(job_id: str, limit: int, source: Optional[str] = None) -> None:
     """FastAPI BackgroundTask entry point for `POST /api/v1/enrichment/run`."""
     await _run_job(job_id, "enrichment", lambda: _execute_enrichment(limit, source))
+
+
+def _execute_geo_enrichment() -> dict:
+    """Retroactive MaxMind geo enrichment over all nodes (mirrors CLI `enrich-geo`)."""
+    import os
+
+    from sqlalchemy import select
+
+    from ..db.models import Node
+    from ..geoip import GeoIPService
+
+    db_dir = os.getenv("GEOIP_DB_DIR", "./geoip_dbs")
+    geoip = GeoIPService(db_dir=db_dir)
+    try:
+        # Trigger lazy init up front so a missing .mmdb fails the job fast
+        # instead of iterating the whole node table for nothing.
+        geoip._init_readers()
+        if not geoip._available:
+            raise RuntimeError(
+                f"MaxMind GeoLite2 databases not found in '{db_dir}'. "
+                "Run scripts/download_geoip_dbs.sh to download them."
+            )
+
+        factory = get_session_factory()
+        session = factory()
+        try:
+            batch_size = 500
+            total = session.query(Node).count()
+            updated = skipped = no_match = 0
+
+            offset = 0
+            while True:
+                batch = list(session.scalars(select(Node).offset(offset).limit(batch_size)).all())
+                if not batch:
+                    break
+
+                for node in batch:
+                    geo = geoip.lookup(node.ip)
+                    if geo is None:
+                        no_match += 1
+                        continue
+
+                    changed = False
+                    # Fill geo gaps (Shodan-provided values take precedence)
+                    if not node.country_code and geo.country_code:
+                        node.country_code = geo.country_code
+                        changed = True
+                    if not node.country_name and geo.country_name:
+                        node.country_name = geo.country_name
+                        changed = True
+                    if not node.city and geo.city:
+                        node.city = geo.city
+                        changed = True
+                    if not node.asn and geo.asn:
+                        node.asn = geo.asn
+                        changed = True
+                    if not node.asn_name and geo.asn_name:
+                        node.asn_name = geo.asn_name
+                        changed = True
+                    # Always use MaxMind for these (Shodan doesn't provide them)
+                    if geo.subdivision is not None:
+                        node.subdivision = geo.subdivision
+                        changed = True
+                    if geo.latitude is not None:
+                        node.latitude = geo.latitude
+                        node.longitude = geo.longitude
+                        changed = True
+                    # Always store MaxMind country separately (independent of Shodan)
+                    if geo.country_code is not None:
+                        node.geo_country_code = geo.country_code
+                        node.geo_country_name = geo.country_name
+                        changed = True
+
+                    if changed:
+                        updated += 1
+                    else:
+                        skipped += 1
+
+                session.flush()
+                offset += batch_size
+
+            session.commit()
+            return {
+                "kind": "geo",
+                "total": total,
+                "updated": updated,
+                "skipped": skipped,
+                "no_match": no_match,
+            }
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    finally:
+        geoip.close()
+
+
+async def run_geo_enrichment_job(job_id: str) -> None:
+    """FastAPI BackgroundTask entry point for `POST /api/v1/enrich-geo`."""
+    await _run_job(job_id, "geo-enrichment", _execute_geo_enrichment)

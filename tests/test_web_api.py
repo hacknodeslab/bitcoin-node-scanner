@@ -864,7 +864,7 @@ class TestJobAdmissionRace:
         # Simulate the race: an active job exists but the pre-check missed it.
         job_type = "enrichment" if "enrichment" in path else "scan"
         db_session.add(ScanJob(id=str(uuid.uuid4()), job_type=job_type, status="pending",
-                               created_at=datetime.utcnow()))
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         db_session.commit()
         headers = _csrf_headers(client)
         with patch("src.db.repositories.scan_job_repository.ScanJobRepository.get_active_job",
@@ -874,4 +874,281 @@ class TestJobAdmissionRace:
         assert r.status_code == 409
         run.assert_not_called()
         assert db_session.query(ScanJob).filter_by(job_type=job_type).count() == 1
+
+
+class TestTrendsEndpoint:
+    def test_returns_buckets_and_summary(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1", risk_level="CRITICAL"))
+        node = _make_node("2.2.2.2", risk_level="HIGH")
+        node.is_vulnerable = True
+        db_session.add(node)
+        db_session.commit()
+
+        r = client.get("/api/v1/trends?days=30&granularity=day", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["granularity"] == "day"
+        assert d["days"] == 30
+        assert d["summary"]["total_nodes"] == 2
+        assert d["summary"]["total_vulnerable"] == 1
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        assert d["data"][today] == {"total": 2, "vulnerable": 1, "critical": 1, "high": 1}
+
+    def test_defaults(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1"))
+        db_session.commit()
+        r = client.get("/api/v1/trends", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["granularity"] == "day"
+
+    def test_week_and_month_granularity(self, client, db_session):
+        db_session.add(_make_node("1.1.1.1"))
+        db_session.commit()
+        for gran, fmt in (("week", "%Y-W%W"), ("month", "%Y-%m")):
+            r = client.get(f"/api/v1/trends?granularity={gran}", headers=HEADERS)
+            assert r.status_code == 200
+            assert datetime.now(timezone.utc).strftime(fmt) in r.json()["data"]
+
+    def test_old_nodes_outside_window_excluded(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("1.1.1.1", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/trends?days=30", headers=HEADERS)
+        assert r.status_code == 200
+        assert r.json()["summary"]["total_nodes"] == 0
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/trends")
+        assert r.status_code == 401
+
+    def test_invalid_granularity_returns_422(self, client):
+        r = client.get("/api/v1/trends?granularity=hourly", headers=HEADERS)
+        assert r.status_code == 422
+
+    def test_invalid_days_returns_422(self, client):
+        assert client.get("/api/v1/trends?days=0", headers=HEADERS).status_code == 422
+        assert client.get("/api/v1/trends?days=abc", headers=HEADERS).status_code == 422
+
+
+class TestCreditsEndpoint:
+    def _write_log(self, tmp_path, entries):
+        log_file = tmp_path / "credit_usage.json"
+        log_file.write_text(json.dumps(entries))
+        return log_file
+
+    def test_returns_local_usage(self, client, tmp_path, monkeypatch):
+        now = datetime.now()
+        entries = [
+            {"timestamp": now.isoformat(), "query_credits_used": 5,
+             "scan_credits_used": 2, "scan_type": "quick", "notes": ""},
+            {"timestamp": now.isoformat(), "query_credits_used": 3,
+             "scan_credits_used": 0, "scan_type": "full", "notes": ""},
+        ]
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(self._write_log(tmp_path, entries)))
+
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["source"] == "local"
+        assert d["tracked_entries"] == 2
+        assert d["today"]["query_credits_used"] == 8
+        assert d["today"]["scan_credits_used"] == 2
+        assert d["month"]["query_credits_used"] == 8
+        assert d["month"]["total_scans"] == 2
+        assert d["month"]["scan_type_breakdown"] == {"quick": 1, "full": 1}
+        # Default plan limit 100, remaining derived locally (no Shodan call)
+        assert d["query_credits"]["remaining"] == 92
+        assert d["query_credits"]["limit"] == 100
+        assert d["scan_credits"]["remaining"] == 98
+        assert d["last_entry_at"] == entries[-1]["timestamp"]
+
+    def test_missing_log_returns_zeros(self, client, tmp_path, monkeypatch):
+        monkeypatch.setenv("CREDIT_USAGE_LOG", str(tmp_path / "nonexistent.json"))
+        r = client.get("/api/v1/credits", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["tracked_entries"] == 0
+        assert d["today"]["query_credits_used"] == 0
+        assert d["query_credits"]["remaining"] == 100
+        assert d["last_entry_at"] is None
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/credits")
+        assert r.status_code == 401
+
+
+class TestExportEndpoint:
+    def test_export_shape_matches_cli(self, client, db_session):
+        db_session.add(_make_node("9.9.9.9", risk_level="LOW"))
+        db_session.commit()
+
+        r = client.get("/api/v1/export", headers=HEADERS)
+        assert r.status_code == 200
+        assert "attachment" in r.headers.get("content-disposition", "")
+        d = r.json()
+        assert set(d.keys()) == {"export_date", "period", "summary", "nodes", "scans"}
+        assert set(d["period"].keys()) == {"start", "end"}
+        assert d["summary"] == {"total_nodes": 1, "total_scans": 0}
+        node = d["nodes"][0]
+        assert set(node.keys()) == {
+            "ip", "port", "country_code", "country_name", "city", "asn", "asn_name",
+            "version", "risk_level", "is_vulnerable", "has_exposed_rpc",
+            "first_seen", "last_seen",
+        }
+        assert node["ip"] == "9.9.9.9"
+
+    def test_days_param_limits_window(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("9.9.9.9", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/export?days=30", headers=HEADERS)
+        assert r.json()["summary"]["total_nodes"] == 0
+
+    def test_requires_api_key(self, client):
+        r = client.get("/api/v1/export")
+        assert r.status_code == 401
+
+
+class TestImportEndpoint:
+    def _dump(self, *ips):
+        return {
+            "export_date": datetime.now(timezone.utc).isoformat(),
+            "period": {"start": "2026-01-01", "end": "2026-01-02"},
+            "summary": {"total_nodes": len(ips), "total_scans": 0},
+            "nodes": [
+                {"ip": ip, "port": 8333, "country_name": "Germany",
+                 "asn_name": "Example Corp", "version": "/Satoshi:30.0.0/"}
+                for ip in ips
+            ],
+            "scans": [],
+        }
+
+    def test_imports_export_shaped_dump(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json=self._dump("8.8.8.8", "8.8.4.4"))
+        assert r.status_code == 200
+        d = r.json()
+        assert d == {"imported": 2, "updated": 0, "skipped": 0, "errors": 0}
+        # Export-shape field names (country_name/asn_name) are honoured.
+        from src.db.repositories import NodeRepository
+        node = NodeRepository(db_session).find_by_ip_port("8.8.8.8", 8333)
+        assert node.country_name == "Germany"
+        assert node.asn_name == "Example Corp"
+
+    def test_reimport_updates_existing(self, client, db_session):
+        headers = _csrf_headers(client)
+        client.post("/api/v1/import", headers=headers, json=self._dump("8.8.8.8"))
+        r = client.post("/api/v1/import", headers=headers, json=self._dump("8.8.8.8"))
+        assert r.status_code == 200
+        assert r.json()["updated"] == 1
+        assert r.json()["imported"] == 0
+
+    def test_records_provenance_scan_row(self, client, db_session):
+        from src.db.models import Scan
+        client.post("/api/v1/import", headers=_csrf_headers(client), json=self._dump("8.8.8.8"))
+        scans = db_session.query(Scan).all()
+        assert len(scans) == 1
+        assert scans[0].queries_executed == "json-import:api-import"
+        assert scans[0].status == "completed"
+
+    def test_bare_list_body_accepted(self, client, db_session):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client),
+                        json=[{"ip": "7.7.7.7", "port": 8333}])
+        assert r.status_code == 200
+        assert r.json()["imported"] == 1
+
+    def test_scalar_body_returns_400(self, client):
+        r = client.post("/api/v1/import", headers=_csrf_headers(client), json=42)
+        assert r.status_code == 400
+
+    def test_requires_api_key(self, client):
+        r = client.post("/api/v1/import", json=self._dump("8.8.8.8"))
+        assert r.status_code == 401
+
+    def test_requires_csrf(self, client, db_session):
+        r = client.post("/api/v1/import", headers=HEADERS, json=self._dump("8.8.8.8"))
+        assert r.status_code == 403
+        assert db_session.query(Node).count() == 0
+
+
+class TestStatsPeriodStats:
+    def test_period_stats_fields_present(self, client, db_session):
+        node = _make_node("1.1.1.1", risk_level="CRITICAL", has_exposed_rpc=True)
+        node.asn = "AS12345"
+        db_session.add(node)
+        db_session.commit()
+
+        r = client.get("/api/v1/stats", headers=HEADERS)
+        assert r.status_code == 200
+        ps = r.json()["period_stats"]
+        assert ps["days"] == 30
+        assert ps["total_nodes"] == 1
+        assert ps["critical_nodes"] == 1
+        assert ps["exposed_rpc"] == 1
+        assert ps["new_nodes"] == 1
+        assert ps["top_asns"] == [{"asn": "AS12345", "count": 1}]
+        for field in ("period", "vulnerable_nodes", "dev_versions", "unique_countries",
+                      "vulnerability_rate", "exposed_rpc_rate", "dev_version_rate"):
+            assert field in ps
+
+    def test_period_stats_zero_on_empty_db(self, client):
+        r = client.get("/api/v1/stats", headers=HEADERS)
+        assert r.status_code == 200
+        ps = r.json()["period_stats"]
+        assert ps["total_nodes"] == 0
+        assert ps["top_asns"] == []
+
+    def test_days_param(self, client, db_session):
+        old = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=60)
+        db_session.add(_make_node("1.1.1.1", last_seen=old))
+        db_session.commit()
+        r = client.get("/api/v1/stats?days=90", headers=HEADERS)
+        assert r.json()["period_stats"]["total_nodes"] == 1
+        r = client.get("/api/v1/stats?days=30", headers=HEADERS)
+        assert r.json()["period_stats"]["total_nodes"] == 0
+
+    def test_invalid_days_returns_422(self, client):
+        assert client.get("/api/v1/stats?days=0", headers=HEADERS).status_code == 422
+
+
+class TestEnrichGeoEndpoint:
+    def test_trigger_returns_202_with_job_id(self, client):
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock) as run:
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 202
+        d = r.json()
+        assert d["status"] == "pending"
+        assert d["job_type"] == "enrichment"
+        assert "job_id" in d
+        run.assert_awaited_once()
+
+    def test_409_when_enrichment_job_active(self, client, db_session):
+        # Shared single-flight with /enrichment/run: any active 'enrichment'
+        # job (reputation or geo) blocks a new geo run.
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="enrichment", status="running",
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 409
+
+    def test_running_scan_does_not_block_geo_enrichment(self, client, db_session):
+        db_session.add(ScanJob(id=str(uuid.uuid4()), job_type="scan", status="running",
+                               created_at=datetime.now(timezone.utc).replace(tzinfo=None)))
+        db_session.commit()
+        headers = _csrf_headers(client)
+        with patch("src.web.background.run_geo_enrichment_job", new_callable=AsyncMock):
+            r = client.post("/api/v1/enrich-geo", headers=headers)
+        assert r.status_code == 202
+
+    def test_requires_api_key(self, client):
+        r = client.post("/api/v1/enrich-geo")
+        assert r.status_code == 401
+
+    def test_requires_csrf(self, client, db_session):
+        r = client.post("/api/v1/enrich-geo", headers=HEADERS)
+        assert r.status_code == 403
+        assert db_session.query(ScanJob).count() == 0
 

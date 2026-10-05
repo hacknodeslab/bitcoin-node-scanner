@@ -12,6 +12,16 @@ export interface CommandItem {
   /** Optional shortcut hint shown right-aligned (e.g. "↵", "G N"). */
   shortcut?: string;
   onRun: () => void;
+  /**
+   * When true, running the item transitions the palette to an
+   * argument-input row (command name + input) instead of executing
+   * immediately. Enter there calls `onRunArg`; Esc returns to the list.
+   */
+  requiresArg?: boolean;
+  /** Placeholder for the argument input. */
+  argPlaceholder?: string;
+  /** Executor receiving the entered argument (used when `requiresArg`). */
+  onRunArg?: (arg: string) => void;
 }
 
 export interface CommandGroup {
@@ -47,6 +57,9 @@ function isTypingInInput(target: EventTarget | null): boolean {
  *   - grouped items with label headers, single-line entries
  *   - focused item: surface bg + 2px primary left border (no horizontal shift)
  *   - footer: kbd hints (`↑↓ navigate`, `↵ run`, `esc close`)
+ *   - argument-input mode: items with `requiresArg` swap the input row for
+ *     `<command label> <arg input>`; Enter runs `onRunArg`, Esc returns to
+ *     the command list (footer hints switch to `↵ run · esc back`)
  */
 export function CommandPalette({
   open,
@@ -57,6 +70,8 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const [argItem, setArgItem] = useState<CommandItem | null>(null);
+  const [argValue, setArgValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Filter items by case-insensitive substring match on label.
@@ -74,7 +89,13 @@ export function CommandPalette({
 
   // Auto-focus the input when opening, and reset state.
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) {
+      setQuery("");
+      setFocusedIndex(0);
+      setArgItem(null);
+      setArgValue("");
+      inputRef.current?.focus();
+    }
   }, [open]);
 
   // Optional global ⌘K / Ctrl+K listener.
@@ -93,14 +114,41 @@ export function CommandPalette({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onOpenChange, installShortcut]);
 
-  const runFocused = () => {
-    const item = flatItems[focusedIndex];
-    if (!item) return;
+  // Running an item either executes it (no-arg commands) or transitions
+  // the palette to the argument-input row (requiresArg commands).
+  const runItem = (item: CommandItem) => {
+    if (item.requiresArg) {
+      setArgItem(item);
+      setArgValue("");
+      inputRef.current?.focus();
+      return;
+    }
     item.onRun();
     onOpenChange(false);
   };
 
+  const submitArg = () => {
+    if (!argItem) return;
+    const arg = argValue.trim();
+    if (!arg) return;
+    if (argItem.onRunArg) {
+      argItem.onRunArg(arg);
+    } else {
+      argItem.onRun();
+    }
+    setArgItem(null);
+    setArgValue("");
+    onOpenChange(false);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (argItem) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitArg();
+      }
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusedIndex((i) => (i + 1) % Math.max(matchCount, 1));
@@ -109,7 +157,8 @@ export function CommandPalette({
       setFocusedIndex((i) => (i - 1 + matchCount) % Math.max(matchCount, 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      runFocused();
+      const item = flatItems[focusedIndex];
+      if (item) runItem(item);
     }
   };
 
@@ -123,61 +172,96 @@ export function CommandPalette({
             "w-full max-w-[560px] bg-bg border border-border outline-none",
           )}
           onKeyDown={onKeyDown}
+          onEscapeKeyDown={(e) => {
+            // In argument-input mode, Esc returns to the command list
+            // instead of closing the palette.
+            if (argItem) {
+              e.preventDefault();
+              setArgItem(null);
+              setArgValue("");
+              inputRef.current?.focus();
+            }
+          }}
         >
           <DialogTitle className="sr-only">Command palette</DialogTitle>
           <DialogDescription className="sr-only">
             Type to filter commands. Use arrow keys to navigate, Enter to run, Esc to close.
           </DialogDescription>
 
-          {/* Input row */}
+          {/* Input row (query, or argument input for requiresArg commands) */}
           <div className="flex items-center gap-[10px] px-[14px] py-[12px] border-b border-border">
             <Glyph name="chevron" className="text-primary" />
-            <input
-              ref={inputRef}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setFocusedIndex(0);
-              }}
-              placeholder={placeholder}
-              className="flex-1 bg-bg text-text outline-none text-body-sm placeholder:text-dim"
-            />
-            <span className="text-meta text-dim">{matchCount}</span>
-          </div>
-
-          {/* Groups */}
-          <div className="max-h-[420px] overflow-y-auto">
-            {filtered.length === 0 ? (
-              <div className="px-[14px] py-[12px] text-meta text-dim">
-                · no commands match
-              </div>
+            {argItem ? (
+              <>
+                <span className="text-body-sm text-dim whitespace-nowrap">
+                  {argItem.label}
+                </span>
+                <input
+                  ref={inputRef}
+                  value={argValue}
+                  onChange={(e) => setArgValue(e.target.value)}
+                  placeholder={argItem.argPlaceholder ?? "argument…"}
+                  className="flex-1 bg-bg text-text outline-none text-body-sm placeholder:text-dim"
+                />
+                <span className="text-meta text-dim">arg</span>
+              </>
             ) : (
-              filtered.map((g) => {
-                const before = filtered
-                  .slice(0, filtered.indexOf(g))
-                  .reduce((n, gg) => n + gg.items.length, 0);
-                return (
-                  <CommandGroupBlock
-                    key={g.label}
-                    group={g}
-                    indexOffset={before}
-                    focusedIndex={focusedIndex}
-                    onHover={setFocusedIndex}
-                    onRun={(item) => {
-                      item.onRun();
-                      onOpenChange(false);
-                    }}
-                  />
-                );
-              })
+              <>
+                <input
+                  ref={inputRef}
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setFocusedIndex(0);
+                  }}
+                  placeholder={placeholder}
+                  className="flex-1 bg-bg text-text outline-none text-body-sm placeholder:text-dim"
+                />
+                <span className="text-meta text-dim">{matchCount}</span>
+              </>
             )}
           </div>
+
+          {/* Groups (hidden while the argument-input row is active) */}
+          {!argItem ? (
+            <div className="max-h-[420px] overflow-y-auto">
+              {filtered.length === 0 ? (
+                <div className="px-[14px] py-[12px] text-meta text-dim">
+                  · no commands match
+                </div>
+              ) : (
+                filtered.map((g) => {
+                  const before = filtered
+                    .slice(0, filtered.indexOf(g))
+                    .reduce((n, gg) => n + gg.items.length, 0);
+                  return (
+                    <CommandGroupBlock
+                      key={g.label}
+                      group={g}
+                      indexOffset={before}
+                      focusedIndex={focusedIndex}
+                      onHover={setFocusedIndex}
+                      onRun={runItem}
+                    />
+                  );
+                })
+              )}
+            </div>
+          ) : null}
 
           {/* Footer */}
           <div className="flex justify-between items-center px-[14px] py-[8px] border-t border-border text-meta text-dim">
             <span>
-              <Kbd>↑</Kbd>
-              <Kbd>↓</Kbd> navigate · <Kbd>↵</Kbd> run · <Kbd>esc</Kbd> close
+              {argItem ? (
+                <>
+                  <Kbd>↵</Kbd> run · <Kbd>esc</Kbd> back
+                </>
+              ) : (
+                <>
+                  <Kbd>↑</Kbd>
+                  <Kbd>↓</Kbd> navigate · <Kbd>↵</Kbd> run · <Kbd>esc</Kbd> close
+                </>
+              )}
             </span>
           </div>
         </DialogPrimitive.Content>

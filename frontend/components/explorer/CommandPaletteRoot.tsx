@@ -19,10 +19,10 @@ const GROUP_ORDER = ["SCAN", "STATS", "NODES", "VULNERABILITIES", "NAV"] as cons
  * ExplorerCommandsContext for state setters; SWR keys are mutated directly
  * (no context plumbing needed for the read-only surface).
  *
- * Specs that point at endpoints needing argument prompts (`scan: status`,
- * `node: filter country <code>`, `node: open <ip>`) and drawer-bound
- * commands (`drawer: ...`) are intentionally absent from COMMAND_SPECS —
- * see lib/commands.ts for the rationale and the parity-debt list.
+ * Argument-taking specs (`scan: status <job_id>`, `node: filter country
+ * <code>`) resolve through `argActionFor` and run in the palette's
+ * argument-input mode; drawer-bound commands (`drawer: ...`) remain absent
+ * from COMMAND_SPECS — see lib/commands.ts for the parity-debt list.
  */
 export function CommandPaletteRoot() {
   const [open, setOpen] = useState(false);
@@ -84,6 +84,19 @@ export function CommandPaletteRoot() {
       }
     }
 
+    function argActionFor(spec: CommandSpec): (arg: string) => void {
+      switch (spec.id) {
+        case "scan.status":
+          // Surface the job in the footer's existing status indicator via
+          // the shared useScanJob instance (no new page needed).
+          return (arg) => cmds.showScanStatus(arg.trim());
+        case "node.filter.country":
+          return (arg) => cmds.setQuery(`country=${arg.trim()}`);
+        default:
+          return () => {};
+      }
+    }
+
     const byGroup = new Map<string, CommandItem[]>();
     for (const spec of COMMAND_SPECS) {
       const item: CommandItem = {
@@ -92,6 +105,11 @@ export function CommandPaletteRoot() {
         shortcut: spec.shortcut,
         onRun: actionFor(spec),
       };
+      if (spec.requiresArg) {
+        item.requiresArg = true;
+        item.argPlaceholder = spec.argPlaceholder;
+        item.onRunArg = argActionFor(spec);
+      }
       const list = byGroup.get(spec.group) ?? [];
       list.push(item);
       byGroup.set(spec.group, list);

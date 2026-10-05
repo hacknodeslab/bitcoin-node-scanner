@@ -6,12 +6,13 @@
  * `COMMAND_SPECS`, skips `NAV`, and asserts each `restEndpoint` exists in
  * `REST_ENDPOINTS`. NAV entries are frontend-only and exempt by design.
  *
- * v0 ships a subset of the D10 list: arg-needing commands
- * (`scan: status <job_id>`, `node: filter country <code>`, `node: open <ip>`)
- * and drawer-bound commands (`drawer: close`, `drawer: copy ip`) are
- * deferred — they're not invocable without UI we haven't shipped yet (§10
- * for the drawer, future palette modes for argument prompts). They are
- * tracked as parity debt alongside the existing CLI parity work.
+ * v0 ships the full D10 command set except the drawer-bound commands
+ * (`drawer: close`, `drawer: copy ip`) — deferred until §10 ships, tracked
+ * as parity debt alongside the existing CLI parity work. Argument-taking
+ * commands (`scan: status <job_id>`, `node: filter country <code>`) are
+ * shipped via the palette's argument-input mode (spec `requiresArg`).
+ * (`node: open <ip>` was dropped: the QueryBar already covers IP lookup
+ * via `GET /api/v1/nodes?ip=`.)
  */
 
 import { BLOCKLIST_IDS } from "@/lib/blocklists";
@@ -31,6 +32,13 @@ export interface CommandSpec {
   restEndpoint: string | null;
   /** Optional right-aligned hint. */
   shortcut?: string;
+  /**
+   * When true, running the command opens the palette's argument-input row
+   * instead of executing immediately; Enter there executes with the arg.
+   */
+  requiresArg?: boolean;
+  /** Placeholder shown in the argument-input row. */
+  argPlaceholder?: string;
 }
 
 /**
@@ -49,11 +57,24 @@ export const REST_ENDPOINTS: ReadonlySet<string> = new Set([
   "GET /api/v1/scans/{job_id}",
   "GET /api/v1/vulnerabilities",
   "GET /api/v1/l402/example",
+  "GET /api/v1/trends",
+  "GET /api/v1/credits",
+  "GET /api/v1/export",
+  "POST /api/v1/import",
+  "POST /api/v1/enrich-geo",
 ]);
 
 export const COMMAND_SPECS: readonly CommandSpec[] = [
   // SCAN
   { id: "scan.start", group: "SCAN", label: "scan: start", restEndpoint: "POST /api/v1/scans" },
+  {
+    id: "scan.status",
+    group: "SCAN",
+    label: "scan: status <job_id>",
+    restEndpoint: "GET /api/v1/scans/{job_id}",
+    requiresArg: true,
+    argPlaceholder: "job id…",
+  },
 
   // STATS
   { id: "stats.refresh", group: "STATS", label: "stats: refresh", restEndpoint: "GET /api/v1/stats" },
@@ -61,6 +82,14 @@ export const COMMAND_SPECS: readonly CommandSpec[] = [
   // NODES
   { id: "node.list", group: "NODES", label: "node: list", restEndpoint: "GET /api/v1/nodes" },
   { id: "node.clearFilters", group: "NODES", label: "node: clear filters", restEndpoint: "GET /api/v1/nodes" },
+  {
+    id: "node.filter.country",
+    group: "NODES",
+    label: "node: filter country <code>",
+    restEndpoint: "GET /api/v1/nodes",
+    requiresArg: true,
+    argPlaceholder: "country code (e.g. US)…",
+  },
   {
     id: "node.filter.risk.critical",
     group: "NODES",

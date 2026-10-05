@@ -23,6 +23,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.db.connection import get_db_session, is_database_configured, init_db
 from src.safe_paths import UnsafePathError, safe_output_dir, safe_output_file
+from src.db.importer import (
+    analyze_risk_level,
+    import_node,
+    is_vulnerable_version,
+    merge_tag,
+)
 from src.db.repositories import NodeRepository, ScanRepository
 
 
@@ -203,112 +209,21 @@ class JSONImporter:
         Returns a tuple of (result, risk_level, is_vulnerable) where
         result is 'imported', 'updated', or 'skipped'.
         """
-        ip = node_data.get("ip")
-        if not ip:
-            return "skipped", None, False
-
-        port = node_data.get("port", 8333)
-
-        # Check if node exists
-        existing = node_repo.find_by_ip_port(ip, port)
-
-        # Prepare data
-        db_data = {
-            "ip": ip,
-            "port": port,
-            "country_code": node_data.get("country_code"),
-            "country_name": node_data.get("country"),
-            "city": node_data.get("city"),
-            "asn": node_data.get("asn"),
-            "asn_name": node_data.get("organization") or node_data.get("isp"),
-            "version": node_data.get("version"),
-            "user_agent": node_data.get("product"),
-            "banner": node_data.get("banner"),
-        }
-
-        # Determine risk level
-        db_data["risk_level"] = self._analyze_risk_level(node_data)
-        db_data["is_vulnerable"] = self._is_vulnerable_version(node_data.get("version", ""))
-        db_data["has_exposed_rpc"] = port == 8332
-        db_data["is_dev_version"] = ".99." in node_data.get("version", "")
-
-        # Provenance marker: records from the --ips host-lookup mode carry a
-        # `query` of "ip-list:<file>" and the operator-supplied `source_tag`
-        # (`--source-tag`, e.g. "peer-observer"). Add that tag so these nodes stay
-        # distinguishable from query-discovered ones (the Node table has no
-        # dedicated source column). Dumps written before `source_tag` existed
-        # fall back to the neutral "ip-list". Tags are merged, never clobbered.
-        prov_tag = None
-        if str(node_data.get("query", "")).startswith("ip-list:"):
-            prov_tag = str(node_data.get("source_tag") or "ip-list")
-
-        if existing:
-            # Update existing node, preserve first_seen
-            for key, value in db_data.items():
-                if key not in ("id", "first_seen") and value is not None:
-                    setattr(existing, key, value)
-            if prov_tag:
-                existing.tags_json = self._merge_tag(existing.tags_json, prov_tag)
-            existing.last_seen = file_timestamp or datetime.now(timezone.utc).replace(tzinfo=None)
-            return "updated", db_data["risk_level"], db_data["is_vulnerable"]
-        else:
-            # Create new node
-            if prov_tag:
-                db_data["tags_json"] = json.dumps([prov_tag])
-            node_repo.upsert(db_data)
-            return "imported", db_data["risk_level"], db_data["is_vulnerable"]
+        # Shared with POST /api/v1/import — see src/db/importer.py.
+        return import_node(node_repo, node_data, file_timestamp)
 
     @staticmethod
     def _merge_tag(tags_json: str, tag: str) -> str:
         """Return tags_json with `tag` added (idempotent, preserves existing)."""
-        try:
-            tags = json.loads(tags_json) if tags_json else []
-            if not isinstance(tags, list):
-                tags = []
-        except (ValueError, TypeError):
-            tags = []
-        if tag not in tags:
-            tags.append(tag)
-        return json.dumps(tags)
+        return merge_tag(tags_json, tag)
 
     def _analyze_risk_level(self, node_data: Dict) -> str:
         """Determine risk level for a node."""
-        if node_data.get("port") == 8332:
-            return "CRITICAL"
-
-        risk_factors = 0
-        if self._is_vulnerable_version(node_data.get("version", "")):
-            risk_factors += 1
-        if ".99." in node_data.get("version", ""):
-            risk_factors += 1
-
-        if risk_factors >= 2:
-            return "HIGH"
-        elif risk_factors == 1:
-            return "MEDIUM"
-        return "LOW"
+        return analyze_risk_level(node_data)
 
     def _is_vulnerable_version(self, version: str) -> bool:
         """Check if version is known vulnerable."""
-        # Load vulnerable versions from config
-        try:
-            from src.scanner import Config
-            for vuln_version in Config.VULNERABLE_VERSIONS.keys():
-                if vuln_version in version:
-                    return True
-        except ImportError:
-            pass
-
-        # Basic check for old versions
-        if "Satoshi:0." in version:
-            try:
-                ver_num = version.split(":")[1].split(".")[1]
-                if int(ver_num) < 21:
-                    return True
-            except (IndexError, ValueError):
-                pass
-
-        return False
+        return is_vulnerable_version(version)
 
     def _extract_timestamp(self, filename: str) -> datetime:
         """Extract timestamp from filename like nodes_20240115_120000.json"""

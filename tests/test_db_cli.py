@@ -272,28 +272,49 @@ class TestMain:
             result = main()
         assert result == 1
 
-    def test_db_stats_command(self, capsys):
-        stats = {
-            "period": "...",
-            "total_nodes": 0,
-            "vulnerable_nodes": 0,
-            "vulnerability_rate": 0,
-            "critical_nodes": 0,
-            "new_nodes": 0,
-            "exposed_rpc": 0,
-            "exposed_rpc_rate": 0,
-            "dev_versions": 0,
-            "dev_version_rate": 0,
-            "unique_countries": 0,
-            "top_asns": [],
-        }
-        with patch("sys.argv", ["cli", "db-stats", "--days", "7"]):
+    _STATS = {
+        "period": "...",
+        "total_nodes": 0,
+        "vulnerable_nodes": 0,
+        "vulnerability_rate": 0,
+        "critical_nodes": 0,
+        "new_nodes": 0,
+        "exposed_rpc": 0,
+        "exposed_rpc_rate": 0,
+        "dev_versions": 0,
+        "dev_version_rate": 0,
+        "unique_countries": 0,
+        "top_asns": [],
+    }
+
+    def _run_stats_main(self, argv):
+        with patch("sys.argv", argv):
             with patch("src.db.cli.is_database_configured", return_value=True):
                 with patch("src.db.cli.init_db"):
                     with patch("src.db.cli.HistoricalAnalyzer") as MockAnalyzer:
-                        MockAnalyzer.return_value.get_summary_statistics.return_value = stats
-                        result = main()
+                        MockAnalyzer.return_value.get_summary_statistics.return_value = self._STATS
+                        return main()
+
+    def test_stats_command(self, capsys):
+        result = self._run_stats_main(["cli", "stats", "--days", "7"])
         assert result == 0
+        captured = capsys.readouterr()
+        assert "DATABASE STATISTICS" in captured.out
+        assert captured.err == ""
+
+    def test_db_stats_command(self, capsys):
+        result = self._run_stats_main(["cli", "db-stats", "--days", "7"])
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "DATABASE STATISTICS" in captured.out
+        assert "`db-stats` is deprecated, use `stats`" in captured.err
+
+    def test_db_stats_alias_output_matches_stats(self, capsys):
+        assert self._run_stats_main(["cli", "stats", "--days", "7"]) == 0
+        canonical_out = capsys.readouterr().out
+        assert self._run_stats_main(["cli", "db-stats", "--days", "7"]) == 0
+        alias_out = capsys.readouterr().out
+        assert alias_out == canonical_out
 
     def test_db_trends_command(self, capsys):
         trends = {
