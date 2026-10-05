@@ -87,13 +87,23 @@ export function CommandPalette({
   const flatItems = filtered.flatMap((g) => g.items);
   const matchCount = flatItems.length;
 
-  // Auto-focus the input when opening, and reset state.
-  useEffect(() => {
+  // Reset state during render when `open` flips to true (React's documented
+  // "adjust state when props change" pattern — avoids cascading renders from
+  // setState inside an effect).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setQuery("");
       setFocusedIndex(0);
       setArgItem(null);
       setArgValue("");
+    }
+  }
+
+  // Auto-focus the input when opening (DOM side effect stays in an effect).
+  useEffect(() => {
+    if (open) {
       inputRef.current?.focus();
     }
   }, [open]);
