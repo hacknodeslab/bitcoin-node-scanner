@@ -150,3 +150,43 @@ class TestEntryPointsRefuseOutsidePaths:
              patch("src.db.cli.init_db"):
             assert cmd_import_nostr(argparse.Namespace(file=str(outside / "dump.json"))) == 1
         assert "OUTPUT_DIR" in capsys.readouterr().out
+
+
+class TestDbExportAndImportCommands:
+    def _cli_patches(self):
+        from unittest.mock import patch
+        return (patch("src.db.cli.is_database_configured", return_value=True),
+                patch("src.db.cli.init_db"))
+
+    def test_db_export_refuses_output_outside(self, roots, capsys):
+        import argparse
+        from src.db.cli import cmd_export
+        _, _, outside = roots
+        p1, p2 = self._cli_patches()
+        with p1, p2:
+            rc = cmd_export(argparse.Namespace(output=str(outside / "x.json"), days=30))
+        assert rc == 1
+        assert "OUTPUT_DIR" in capsys.readouterr().out
+        assert not (outside / "x.json").exists()
+
+    def test_db_import_refuses_outside_and_option_like_values(self, roots, capsys):
+        import argparse
+        from unittest.mock import patch
+        from src.db.cli import cmd_import
+        _, _, outside = roots
+        (outside / "nodes.json").write_text("[]")
+        with patch("subprocess.run") as run:
+            assert cmd_import(argparse.Namespace(file=str(outside / "nodes.json"))) == 1
+            assert cmd_import(argparse.Namespace(file="--all")) == 1
+        run.assert_not_called()
+
+    def test_db_import_passes_absolute_path_after_double_dash(self, roots):
+        import argparse
+        from unittest.mock import MagicMock, patch
+        from src.db.cli import cmd_import
+        _, out, _ = roots
+        (out / "nodes.json").write_text("[]")
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as run:
+            assert cmd_import(argparse.Namespace(file=str(out / "nodes.json"))) == 0
+        argv = run.call_args.args[0]
+        assert argv[-2:] == ["--", str((out / "nodes.json").resolve())]

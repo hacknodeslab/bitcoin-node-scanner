@@ -185,11 +185,13 @@ class TestCmdImport:
         captured = capsys.readouterr()
         assert "No file specified" in captured.out
 
-    def test_delegates_to_subprocess(self):
+    def test_delegates_to_subprocess(self, tmp_path):
+        dump = tmp_path / "test.json"  # tmp_path is OUTPUT_DIR (conftest)
+        dump.write_text("[]")
         mock_result = MagicMock()
         mock_result.returncode = 0
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            result = cmd_import(_make_args(file="test.json"))
+            result = cmd_import(_make_args(file=str(dump)))
         assert result == 0
         mock_run.assert_called_once()
 
@@ -308,10 +310,12 @@ class TestMain:
                         result = main()
         assert result == 0
 
-    def test_db_import_command(self):
+    def test_db_import_command(self, tmp_path):
+        dump = tmp_path / "test.json"  # tmp_path is OUTPUT_DIR (conftest)
+        dump.write_text("[]")
         mock_result = MagicMock()
         mock_result.returncode = 0
-        with patch("sys.argv", ["cli", "db-import", "test.json"]):
+        with patch("sys.argv", ["cli", "db-import", str(dump)]):
             with patch("subprocess.run", return_value=mock_result):
                 result = main()
         assert result == 0

@@ -120,7 +120,16 @@ def cmd_export(args):
 
     init_db()
 
-    output_file = args.output or f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    from src.safe_paths import UnsafePathError, output_root, safe_output_write
+
+    # --output is CLI-supplied: only write under OUTPUT_DIR (default output/),
+    # which is also where the default export file now lands.
+    default_name = f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    try:
+        output_file = str(safe_output_write(args.output or str(output_root() / default_name)))
+    except UnsafePathError as exc:
+        print(f"Error: {exc}")
+        return 1
     days = args.days or 30
     start_date = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
 
@@ -200,10 +209,20 @@ def cmd_import(args):
         print("Error: No file specified")
         return 1
 
+    from src.safe_paths import UnsafePathError, safe_output_file
+
+    # Validate before delegating: only dumps under OUTPUT_DIR, passed as an
+    # absolute path after `--` so a value like `--all` can't become an option.
+    try:
+        dump_path = str(safe_output_file(args.file))
+    except (UnsafePathError, FileNotFoundError) as exc:
+        print(f"Error: {exc}")
+        return 1
+
     # Delegate to the import script
     import subprocess  # nosec B404
     result = subprocess.run(  # nosec B603
-        [sys.executable, "scripts/import_json_to_db.py", args.file],
+        [sys.executable, "scripts/import_json_to_db.py", "--", dump_path],
         cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
     return result.returncode

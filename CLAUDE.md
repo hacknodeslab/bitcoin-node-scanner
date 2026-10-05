@@ -53,7 +53,7 @@ python -m src.nostr.extract_relays data/nw-relays.xlsx data/relays.txt --online 
 # Database CLI
 python -m src.db.cli db-stats --days 30
 python -m src.db.cli db-trends --days 30 --granularity week
-python -m src.db.cli db-export --output export.json
+python -m src.db.cli db-export --output output/export.json
 python -m src.db.cli db-import output/raw_data/nodes_<ts>.json  # Load a scanner JSON dump into the DB
 python -m src.db.cli db-import-nostr output/nostr_relays_<ts>.json  # Load a Nostr CDN-recon dump into the DB
 python -m src.db.cli enrich-geo          # Retroactively enrich geo data
