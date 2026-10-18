@@ -260,6 +260,8 @@ class TestPathsAndCli:
         real_client = ab.AltBitnodesClient
         monkeypatch.setattr(ab, "AltBitnodesClient",
                             lambda **kw: real_client(http=api, sleep=lambda s: None))
+        # The CLI reads the wall clock; pin it to the fixtures' NOW.
+        monkeypatch.setattr(ab.time, "time", lambda: NOW)
         assert fetch.main(["alt-bitnodes", "--days", "8"]) == 0
         out = capsys.readouterr().out
         assert "IPv4 1, IPv6 1" in out
