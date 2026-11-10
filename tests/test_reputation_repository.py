@@ -150,6 +150,7 @@ class TestScanJobTypes:
     def test_finished_jobs_do_not_count(self, db_session):
         repo = ScanJobRepository(db_session)
         job = repo.create(job_type="scan")
+        repo.update_status(job, "running")
         repo.update_status(job, "completed")
         db_session.commit()
         repo.create(job_type="scan")

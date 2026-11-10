@@ -38,13 +38,24 @@ def enrich_nodes_geo(
         Counts: {"total", "updated", "skipped", "no_match"}.
     """
     total = session.query(Node).count()
-    updated = skipped = no_match = 0
+    updated = skipped = no_match = processed = 0
 
-    offset = 0
+    # Keyset pagination on Node.id: an OFFSET cursor has no stable order
+    # (no ORDER BY) and silently skips rows when a concurrent writer inserts
+    # mid-run — see docs/state-machines.md §7.
+    last_id = 0
     while True:
-        batch = list(session.scalars(select(Node).offset(offset).limit(batch_size)).all())
+        batch = list(
+            session.scalars(
+                select(Node)
+                .where(Node.id > last_id)
+                .order_by(Node.id)
+                .limit(batch_size)
+            ).all()
+        )
         if not batch:
             break
+        last_id = batch[-1].id
 
         for node in batch:
             geo = geoip.lookup(node.ip)
@@ -89,8 +100,8 @@ def enrich_nodes_geo(
                 skipped += 1
 
         session.flush()
-        offset += batch_size
+        processed += len(batch)
         if progress:
-            progress(min(offset, total), total)
+            progress(min(processed, total), total)
 
     return {"total": total, "updated": updated, "skipped": skipped, "no_match": no_match}

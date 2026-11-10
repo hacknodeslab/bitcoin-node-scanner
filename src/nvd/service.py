@@ -5,8 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select, text
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import CVEEntry as CVEEntryModel
@@ -91,29 +90,21 @@ class NVDService:
             if prev_affected is None or prev_affected != new_affected_json:
                 changed_cves += 1
 
-            stmt = sqlite_insert(CVEEntryModel).values(
-                cve_id=entry.cve_id,
-                published=entry.published,
-                last_modified=entry.last_modified,
-                severity=entry.severity,
-                cvss_score=entry.cvss_score,
-                description=entry.description,
-                affected_versions=new_affected_json,
-                fetched_at=now,
+            # session.merge() upserts by primary key on every supported
+            # dialect. (The previous sqlite-specific ON CONFLICT upsert broke
+            # on PostgreSQL — see docs/state-machines.md §4.)
+            self._session.merge(
+                CVEEntryModel(
+                    cve_id=entry.cve_id,
+                    published=entry.published,
+                    last_modified=entry.last_modified,
+                    severity=entry.severity,
+                    cvss_score=entry.cvss_score,
+                    description=entry.description,
+                    affected_versions=new_affected_json,
+                    fetched_at=now,
+                )
             )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["cve_id"],
-                set_={
-                    "published": stmt.excluded.published,
-                    "last_modified": stmt.excluded.last_modified,
-                    "severity": stmt.excluded.severity,
-                    "cvss_score": stmt.excluded.cvss_score,
-                    "description": stmt.excluded.description,
-                    "affected_versions": stmt.excluded.affected_versions,
-                    "fetched_at": stmt.excluded.fetched_at,
-                },
-            )
-            self._session.execute(stmt)
             stored += 1
 
         self._session.commit()

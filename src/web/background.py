@@ -59,6 +59,14 @@ def _update_job_status(job_id: str, status: str, summary: Optional[dict]) -> Non
         session.close()
 
 
+def _mark_failed_best_effort(job_id: str, kind: str, error: str) -> None:
+    """Try to record a terminal 'failed' state; never raise from here."""
+    try:
+        _update_job_status(job_id, "failed", {"error": error})
+    except Exception:
+        logger.exception("Could not mark %s job %s as failed.", kind, job_id)
+
+
 async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
     """Mark the job running, execute ``work`` in a thread pool, record the outcome."""
     factory = get_session_factory()
@@ -66,8 +74,15 @@ async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
         logger.error("Cannot run %s job %s: DATABASE_URL not configured.", kind, job_id)
         return
 
-    # Mark as running
-    _update_job_status(job_id, "running", None)
+    # Mark as running. If this fails the job must NOT be left 'pending'
+    # forever — the single-flight unique index would reject every future job
+    # of this type — so record 'failed' best-effort and bail.
+    try:
+        _update_job_status(job_id, "running", None)
+    except Exception as exc:
+        logger.exception("%s job %s could not start: %s", kind.capitalize(), job_id, exc)
+        _mark_failed_best_effort(job_id, kind, f"could not mark job running: {exc}")
+        return
 
     # Run in a thread so the async event loop is not blocked
     loop = asyncio.get_event_loop()
@@ -80,11 +95,16 @@ async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
         logger.exception("%s job %s failed: %s", kind.capitalize(), job_id, exc)
         error_summary = {"error": str(exc)}
 
-    # Mark as completed or failed
-    if error_summary:
-        _update_job_status(job_id, "failed", error_summary)
-    else:
-        _update_job_status(job_id, "completed", result_summary)
+    # Mark as completed or failed. A failure here (e.g. DB lock) must not
+    # propagate unhandled and leave the job 'running' with no terminal mark;
+    # the stale-job reaper in ScanJobRepository covers that residue.
+    try:
+        if error_summary:
+            _update_job_status(job_id, "failed", error_summary)
+        else:
+            _update_job_status(job_id, "completed", result_summary)
+    except Exception:
+        logger.exception("%s job %s: could not record terminal status", kind, job_id)
 
 
 async def run_scan_job(job_id: str) -> None:

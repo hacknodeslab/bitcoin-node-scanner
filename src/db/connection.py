@@ -220,6 +220,16 @@ def _migrate_schema(conn) -> None:
             "ON scan_jobs (job_type) WHERE status IN ('pending', 'running')"
         ))
 
+    if "node_vulnerabilities" in tables:
+        nv_indexes = {idx["name"] for idx in inspector.get_indexes("node_vulnerabilities")}
+        if "uq_node_vuln_active" not in nv_indexes:
+            # Same statement on SQLite and PostgreSQL; resolves at most one
+            # ACTIVE (resolved_at IS NULL) link per (node_id, cve_id).
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_node_vuln_active "
+                "ON node_vulnerabilities (node_id, cve_id) WHERE resolved_at IS NULL"
+            ))
+
     if "nodes" not in tables:
         return
 

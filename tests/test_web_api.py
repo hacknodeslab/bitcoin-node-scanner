@@ -1491,7 +1491,7 @@ class TestUpdateJobStatus:
         from src.web.background import _update_job_status
 
         session = MagicMock()
-        session.get.return_value = MagicMock()  # a "job"
+        session.get.return_value = MagicMock(status="pending")  # a "job"
         session.commit.side_effect = RuntimeError("db gone")
         monkeypatch.setattr("src.web.background.get_session_factory", lambda: lambda: session)
 
