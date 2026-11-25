@@ -60,11 +60,12 @@ pre-existing DBs in `src/db/connection.py:218-221`).
    executor. If a scan legitimately ran longer than
    `SCAN_JOB_STALE_RUNNING_MINUTES` (12 h default; realistic scans take tens of
    minutes), the reaper frees the active slot and a second scan can start while
-   the first still writes. Mitigations in place: the conditional UPDATE only
-   fires when nothing has touched the row; the old executor's terminal write is
-   rejected by the transition table (logged, no silent overwrite); the cutoff
-   default is ~50× the worst expected runtime. The complete fix is a
-   heartbeat/lease the reaper checks — deferred as disproportionate today.
+   the first still writes. Mitigations in place: both sides of the race are
+   conditional now — the reap only fires when nothing has touched the row, and
+   the worker's terminal write raises instead of overwriting a reap's `failed`
+   (zero-row check in `update_status`); the cutoff default is ~50× the worst
+   expected runtime. The complete fix is a heartbeat/lease the reaper checks —
+   deferred as disproportionate today.
 
 ---
 

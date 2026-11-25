@@ -1508,6 +1508,7 @@ class TestUpdateJobStatus:
 
         session = MagicMock()
         session.get.return_value = MagicMock(status="pending")  # a "job"
+        session.execute.return_value.rowcount = 1  # conditional UPDATE matched
         session.commit.side_effect = RuntimeError("db gone")
         monkeypatch.setattr("src.web.background.get_session_factory", lambda: lambda: session)
 

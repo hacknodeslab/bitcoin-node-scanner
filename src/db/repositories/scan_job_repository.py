@@ -148,19 +148,35 @@ class ScanJobRepository:
         """Update job status, enforcing the lifecycle transition table.
 
         Terminal states are final: re-driving a completed/failed job raises
-        ValueError instead of silently resetting timestamps.
+        ValueError instead of silently resetting timestamps. The write is
+        conditional on the row still holding the expected status — a
+        concurrent reap (or start) between load and write makes the UPDATE
+        match zero rows, and we raise instead of overwriting their change.
         """
         if job.status == status == _RUNNING:
             return job  # idempotent re-mark
         if status not in _ALLOWED_TRANSITIONS.get(job.status, set()):
             raise ValueError(f"invalid ScanJob transition: {job.status!r} -> {status!r}")
-        job.status = status
+        expected = job.status
+        values: Dict[str, Any] = {"status": status}
         if status == _RUNNING:
-            job.started_at = _utcnow()
+            values["started_at"] = _utcnow()
         elif status in (_COMPLETED, _FAILED):
-            job.finished_at = _utcnow()
+            values["finished_at"] = _utcnow()
         if result_summary is not None:
-            job.result_summary = json.dumps(result_summary)
+            values["result_summary"] = json.dumps(result_summary)
+        stmt = (
+            update(ScanJob)
+            .where(ScanJob.id == job.id, ScanJob.status == expected)
+            .values(**values)
+            .execution_options(synchronize_session=False)
+        )
+        if self.session.execute(stmt).rowcount != 1:
+            raise ValueError(
+                f"ScanJob {job.id} changed concurrently: expected status {expected!r}"
+            )
+        for key, value in values.items():
+            setattr(job, key, value)
         return job
 
     def get_active_job(self, job_type: str = 'scan') -> Optional[ScanJob]:

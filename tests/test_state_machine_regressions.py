@@ -650,3 +650,69 @@ class TestMigrationDuplicateRepair:
 
         # Clean DBs are untouched: the surviving active row is the oldest one.
         assert active[0][0] == 1
+
+
+class TestUpdateStatusConcurrency:
+    def test_terminal_write_does_not_overwrite_concurrent_reap(self, tmp_path, monkeypatch):
+        """The worker loaded a stale running job; a concurrent session reaps
+        it to 'failed'. The worker's terminal write must raise instead of
+        overwriting 'failed' with 'completed'."""
+        monkeypatch.setenv("SCAN_JOB_STALE_RUNNING_MINUTES", "0")
+        Session = _file_session(tmp_path)
+
+        sA = Session()
+        repoA = ScanJobRepository(sA)
+        jobA = repoA.create(job_type="scan")
+        sA.commit()
+        repoA.update_status(jobA, "running")
+        jobA.started_at = _utcnow() - timedelta(hours=2)
+        sA.commit()
+        job_id = jobA.id
+
+        # B loads the running job (worker view), then a third session reaps it.
+        sB = Session()
+        repoB = ScanJobRepository(sB)
+        jobB = repoB.get_by_id(job_id)
+        sReap = Session()
+        assert ScanJobRepository(sReap).reap_stale() == 1
+        sReap.commit()
+        sReap.close()
+
+        with pytest.raises(ValueError, match="changed concurrently"):
+            repoB.update_status(jobB, "completed", {"total_nodes": 1})
+        sB.rollback()
+
+        with Session() as s:
+            assert ScanJobRepository(s).get_by_id(job_id).status == "failed"
+
+    def test_uncontended_terminal_write_still_works(self, db_session):
+        repo = ScanJobRepository(db_session)
+        job = repo.create(job_type="scan")
+        db_session.commit()
+        repo.update_status(job, "running")
+        repo.update_status(job, "completed", {"total_nodes": 2})
+        db_session.commit()
+        job = repo.get_by_id(job.id)
+        assert job.status == "completed"
+        assert job.finished_at is not None
+
+
+class TestLinkToNodeFlushOrder:
+    def test_link_to_node_with_unflushed_node_returns_link(self, db_session):
+        """The early flush must precede the query: with `node.id is None` the
+        statement would bake in an `IS NULL` predicate and return None after
+        insert."""
+        db_session.add(CVEEntry(
+            cve_id="CVE-FLUSH-1", severity="HIGH", cvss_score=7.0,
+            affected_versions=json.dumps([{"version": "0.20.0"}]),
+        ))
+        db_session.commit()
+        new_node = Node(ip="10.7.7.7", port=8333, version="0.20.0")
+        db_session.add(new_node)  # NOT flushed
+
+        link = VulnerabilityRepository(db_session).link_to_node(
+            new_node, db_session.get(CVEEntry, "CVE-FLUSH-1")
+        )
+        assert link is not None
+        assert link.cve_id == "CVE-FLUSH-1"
+        assert link.node_id == new_node.id
