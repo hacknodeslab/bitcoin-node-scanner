@@ -10,12 +10,12 @@ The `frontend-deployment` spec is also stale: it still describes building the Ne
 
 - **New workflow `.github/workflows/deploy.yml`** ("Deploy to production"), environment **`PRO`**:
   - Triggered by `workflow_run` when the existing **CI Pipeline** completes **successfully on `main`** (so only green commits deploy), plus `workflow_dispatch` for manual redeploys.
-  - Skips the deploy when every file changed since the commit currently live on the host is docs-only (`docs/**`, `openspec/**`, `*.md`); a manual dispatch always deploys.
+  - Skips the deploy when every file changed since the last successfully deployed commit is docs-only (`docs/**`, `openspec/**`, `*.md`). The host records that commit only after the smoke tests pass, so a failed deploy is never mistaken for a live one. A manual dispatch always deploys.
   - Installs `cloudflared`, SSHes to `ssh-audit.hacknodes.xyz` with `ProxyCommand cloudflared access ssh --hostname %h` and the service token, and runs `scripts/deploy.sh` on the host (pull → deps → `alembic upgrade head` → restart → frontend build → restart → smoke tests). The job fails if `deploy.sh` fails.
   - `concurrency: deploy-prod` (never two deploys at once, never cancel one mid-way).
   - Writes the deployed commit and smoke-test result to the job summary.
 - **Least-privilege CI key**: a dedicated SSH key for CI, installed in `deploy`'s `authorized_keys` with a **forced command** that can only run the deploy (no shell, no forwarding). The `deploy` user has `NOPASSWD: ALL` sudo, so a general-purpose key would be equivalent to root on the CT.
-- **`scripts/deploy.sh`**: refuses to deploy over uncommitted changes with a clear message (instead of failing inside `git pull`), and its header no longer claims there is no CI path. No `git reset --hard`: host edits are never silently discarded.
+- **`scripts/deploy.sh`**: when pulling, refuses to deploy over uncommitted changes with a clear message (instead of failing inside `git pull`); `--no-pull` still deploys the working tree as-is. After the smoke tests pass it records the deployed commit in `.deployed-sha`. Its header no longer claims there is no CI path. No `git reset --hard`: host edits are never silently discarded.
 - **Operator setup (one-off, Cloudflare + host)**, documented step by step in `docs/deploy-frodo.md`: public hostname `ssh-audit.hacknodes.xyz → ssh://localhost:22` on the existing tunnel; Zero Trust Access self-hosted app with a *Service Auth* policy and a service token; CI key + forced command; host key captured from the LAN; GitHub environment `PRO` (branch `main` only) with the secrets.
 - **Spec**: `frontend-deployment` updated to the on-host build and the CI deploy path; the EC2/rsync requirements are removed.
 
@@ -30,7 +30,7 @@ The `frontend-deployment` spec is also stale: it still describes building the Ne
 ## Impact
 
 - **New**: `.github/workflows/deploy.yml`; `scripts/ci-deploy-command.sh` (the forced-command wrapper).
-- **Modified**: `scripts/deploy.sh` (dirty-tree guard, header), `docs/deploy-frodo.md` (new section + "current state"), `CLAUDE.md`, `openspec/specs/frontend-deployment` (via delta).
+- **Modified**: `scripts/deploy.sh` (dirty-tree guard, deployed-commit marker, header), `.gitignore` (`.deployed-sha`), `docs/deploy-frodo.md` (new section + "current state"), `CLAUDE.md`, `openspec/specs/frontend-deployment` (via delta).
 - **External / manual**: Cloudflare dashboard (tunnel public hostname, Access app + service token), host (`authorized_keys`), GitHub (environment `PRO`, secrets). These can only be done by the owner; the workflow is inert until the secrets exist.
 - **Unchanged**: application code, database, the manual `deploy.sh` path (still works for hot fixes and `--no-pull`).
 - **Out of scope**: rollbacks from CI (still manual, per the runbook), deploying branches other than `main`, notifications beyond the job summary, scheduling the daily enrichment/alt-bitnodes jobs (operator crontab).
