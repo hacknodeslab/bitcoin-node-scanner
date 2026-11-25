@@ -67,6 +67,29 @@ def _mark_failed_best_effort(job_id: str, kind: str, error: str) -> None:
         logger.exception("Could not mark %s job %s as failed.", kind, job_id)
 
 
+async def _record_terminal_status(job_id: str, kind: str, status: str,
+                                  summary: Optional[dict]) -> None:
+    """Write the terminal status with a few retries, then give up to the reaper.
+
+    A transient failure (e.g. 'database is locked' on SQLite) must not leave
+    the job 'running' for the whole running-staleness cutoff, blocking new
+    jobs of its type with 409s — so retry briefly with backoff. If all
+    attempts fail, log; ScanJobRepository.reap_stale cleans the residue.
+    """
+    for attempt in range(3):
+        try:
+            _update_job_status(job_id, status, summary)
+            return
+        except Exception:
+            if attempt == 2:
+                logger.exception(
+                    "%s job %s: could not record terminal status after 3 attempts",
+                    kind, job_id,
+                )
+                return
+            await asyncio.sleep(2 ** attempt)
+
+
 async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
     """Mark the job running, execute ``work`` in a thread pool, record the outcome."""
     factory = get_session_factory()
@@ -95,16 +118,10 @@ async def _run_job(job_id: str, kind: str, work: Callable[[], dict]) -> None:
         logger.exception("%s job %s failed: %s", kind.capitalize(), job_id, exc)
         error_summary = {"error": str(exc)}
 
-    # Mark as completed or failed. A failure here (e.g. DB lock) must not
-    # propagate unhandled and leave the job 'running' with no terminal mark;
-    # the stale-job reaper in ScanJobRepository covers that residue.
-    try:
-        if error_summary:
-            _update_job_status(job_id, "failed", error_summary)
-        else:
-            _update_job_status(job_id, "completed", result_summary)
-    except Exception:
-        logger.exception("%s job %s: could not record terminal status", kind, job_id)
+    if error_summary:
+        await _record_terminal_status(job_id, kind, "failed", error_summary)
+    else:
+        await _record_terminal_status(job_id, kind, "completed", result_summary)
 
 
 async def run_scan_job(job_id: str) -> None:

@@ -4,6 +4,7 @@ Database connection management for Bitcoin Node Scanner.
 import logging
 import os
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Generator, Optional
 
 from sqlalchemy import create_engine, event, inspect, text
@@ -223,8 +224,17 @@ def _migrate_schema(conn) -> None:
     if "node_vulnerabilities" in tables:
         nv_indexes = {idx["name"] for idx in inspector.get_indexes("node_vulnerabilities")}
         if "uq_node_vuln_active" not in nv_indexes:
-            # Same statement on SQLite and PostgreSQL; resolves at most one
-            # ACTIVE (resolved_at IS NULL) link per (node_id, cve_id).
+            # Repair first: a DB already hit by the pre-fix concurrent-relink
+            # race has duplicate ACTIVE rows and the unique index would fail.
+            # Keep the oldest active row per (node, CVE), resolve the surplus
+            # (resolved history is untouched). Same SQL on both dialects.
+            conn.execute(text(
+                "UPDATE node_vulnerabilities SET resolved_at = :now "
+                "WHERE resolved_at IS NULL AND id NOT IN ("
+                "  SELECT MIN(id) FROM node_vulnerabilities"
+                "  WHERE resolved_at IS NULL GROUP BY node_id, cve_id"
+                ")"
+            ), {"now": datetime.now(timezone.utc).replace(tzinfo=None)})
             conn.execute(text(
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_node_vuln_active "
                 "ON node_vulnerabilities (node_id, cve_id) WHERE resolved_at IS NULL"

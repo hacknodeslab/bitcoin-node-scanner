@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from ..models import ScanJob
@@ -76,15 +76,8 @@ class ScanJobRepository:
         """Get a scan job by ID."""
         return self.session.get(ScanJob, job_id)
 
-    def reap_stale(self) -> int:
-        """Mark active jobs past their staleness cutoff as failed.
-
-        Covers jobs orphaned by a process crash/restart between POST and
-        background-task execution, and jobs whose 'running' mark failed. The
-        single-flight unique index counts `pending`/`running` rows, so an
-        orphaned row would otherwise 409 every future request of that type
-        forever. Flushes but does not commit — the caller owns the transaction.
-        """
+    def _stale_candidates(self) -> list:
+        """Active jobs past their staleness cutoff, based on current state."""
         cutoffs = _stale_cutoffs()
         now = _utcnow()
         stale = []
@@ -94,13 +87,57 @@ class ScanJobRepository:
             anchor = job.created_at if job.status == _PENDING else (job.started_at or job.created_at)
             if anchor is not None and now - anchor > cutoffs[job.status]:
                 stale.append(job)
-        for job in stale:
-            self.update_status(job, _FAILED, result_summary={
-                "error": f"job reaped: stuck in '{job.status}' past the staleness cutoff",
-            })
-        if stale:
+        return stale
+
+    def _reap_one(self, job: ScanJob) -> bool:
+        """Fail one stale job, only if nothing moved it since we looked.
+
+        The WHERE repeats the status and the timestamp that made the job
+        stale, so a concurrent transition (start, terminal write) makes the
+        UPDATE match zero rows instead of being overwritten — a completed
+        job keeps its result, and a job another session just started keeps
+        its active slot. Returns True when this session did the reaping.
+        """
+        now = _utcnow()
+        if job.status == _PENDING or job.started_at is None:
+            anchor_col, anchor = ScanJob.created_at, job.created_at
+        else:
+            anchor_col, anchor = ScanJob.started_at, job.started_at
+        stmt = (
+            update(ScanJob)
+            .where(
+                ScanJob.id == job.id,
+                ScanJob.status == job.status,
+                anchor_col == anchor,
+            )
+            .values(
+                status=_FAILED,
+                finished_at=now,
+                result_summary=json.dumps(
+                    {"error": f"job reaped: stuck in '{job.status}' past the staleness cutoff"}
+                ),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return self.session.execute(stmt).rowcount == 1
+
+    def reap_stale(self) -> int:
+        """Mark active jobs past their staleness cutoff as failed.
+
+        Covers jobs orphaned by a process crash/restart between POST and
+        background-task execution, and jobs whose 'running' mark failed. The
+        single-flight unique index counts `pending`/`running` rows, so an
+        orphaned row would otherwise 409 every future request of that type
+        forever. Executes immediately (no commit) — the caller owns the
+        transaction.
+        """
+        reaped = 0
+        for job in self._stale_candidates():
+            if self._reap_one(job):
+                reaped += 1
+        if reaped:
             self.session.flush()
-        return len(stale)
+        return reaped
 
     def update_status(
         self,

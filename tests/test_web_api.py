@@ -376,6 +376,22 @@ class TestScansEndpoint:
         r = client.get(f"/api/v1/scans/{uuid.uuid4()}", headers=HEADERS)
         assert r.status_code == 404
 
+    def test_get_job_status_reaps_stale_pending_job(self, client, db_session, monkeypatch):
+        """Polling a job orphaned 'pending' (worker died before starting)
+        returns 'failed' once it passes the staleness cutoff, not 'pending'
+        forever."""
+        monkeypatch.setenv("SCAN_JOB_STALE_PENDING_MINUTES", "30")
+        job_id = str(uuid.uuid4())
+        stale = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+        db_session.add(ScanJob(id=job_id, status="pending", created_at=stale))
+        db_session.commit()
+
+        r = client.get(f"/api/v1/scans/{job_id}", headers=HEADERS)
+        assert r.status_code == 200
+        d = r.json()
+        assert d["status"] == "failed"
+        assert "reaped" in d["result_summary"]["error"]
+
     def test_requires_api_key(self, client):
         r = client.post("/api/v1/scans")
         assert r.status_code == 401

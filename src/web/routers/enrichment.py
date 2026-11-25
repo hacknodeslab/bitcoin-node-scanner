@@ -56,6 +56,9 @@ def trigger_enrichment(
 
     active = repo.get_active_job("enrichment")
     if active:
+        # Persist any stale-job reaping done inside get_active_job — a 409
+        # rollback must not undo the orphan cleanup.
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"An enrichment run is already {active.status} (job_id={active.id}).",
@@ -99,6 +102,9 @@ def trigger_geo_enrichment(
 
     active = repo.get_active_job("enrichment")
     if active:
+        # Persist any stale-job reaping done inside get_active_job — a 409
+        # rollback must not undo the orphan cleanup.
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"An enrichment run is already {active.status} (job_id={active.id}).",

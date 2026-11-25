@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -150,6 +150,64 @@ class TestStaleJobReaping:
         assert repo.get_active_job("scan").id == active.id
         db_session.commit()
         assert repo.get_by_id(active.id).status == "pending"  # untouched
+
+    def test_reap_does_not_overwrite_concurrent_terminal_transition(self, tmp_path, monkeypatch):
+        """Session B selects a stale candidate; session A completes the job
+        before B reaps. B's conditional update must match zero rows."""
+        monkeypatch.setenv("SCAN_JOB_STALE_PENDING_MINUTES", "30")
+        Session = _file_session(tmp_path)
+
+        sA = Session()
+        repoA = ScanJobRepository(sA)
+        job = repoA.create(job_type="scan")
+        job.created_at = _utcnow() - timedelta(hours=2)
+        sA.commit()
+        job_id = job.id
+
+        # B looks first and sees the stale pending job.
+        sB = Session()
+        repoB = ScanJobRepository(sB)
+        candidates = repoB._stale_candidates()
+        assert len(candidates) == 1
+
+        # A wins the race: starts and completes the job.
+        repoA.update_status(job, "running")
+        repoA.update_status(job, "completed", {"total_nodes": 42})
+        sA.commit()
+
+        # B's reap must not overwrite A's completed state or result.
+        assert repoB._reap_one(candidates[0]) is False
+        sB.rollback()
+
+        with Session() as s:
+            final = ScanJobRepository(s).get_by_id(job_id)
+            assert final.status == "completed"
+            assert json.loads(final.result_summary) == {"total_nodes": 42}
+
+    def test_reap_does_not_overwrite_concurrent_start(self, tmp_path, monkeypatch):
+        """A stale pending job another session just started must keep its
+        active slot — reaping it would admit a second concurrent job."""
+        monkeypatch.setenv("SCAN_JOB_STALE_PENDING_MINUTES", "30")
+        Session = _file_session(tmp_path)
+
+        sA = Session()
+        repoA = ScanJobRepository(sA)
+        job = repoA.create(job_type="scan")
+        job.created_at = _utcnow() - timedelta(hours=2)
+        sA.commit()
+        job_id = job.id
+
+        sB = Session()
+        repoB = ScanJobRepository(sB)
+        candidates = repoB._stale_candidates()
+
+        repoA.update_status(job, "running")  # worker picked it up meanwhile
+        sA.commit()
+
+        assert repoB._reap_one(candidates[0]) is False
+        sB.rollback()
+        with Session() as s:
+            assert ScanJobRepository(s).get_by_id(job_id).status == "running"
 
 
 # ---------------------------------------------------------------------------
@@ -366,14 +424,47 @@ class TestNVDRefreshUpsert:
         assert rows["CVE-OLD-1"].severity == "CRITICAL"
         assert rows["CVE-OLD-1"].cvss_score == 9.9
 
-    def test_service_has_no_sqlite_only_dml(self):
-        """Guard: the refresh path must not depend on a single dialect's DML."""
+    def test_refresh_upsert_is_dialect_aware(self):
+        """Guard: the refresh upsert must dispatch per dialect (atomic ON
+        CONFLICT on SQLite/PostgreSQL) rather than a single-dialect statement
+        or the non-atomic merge() path."""
         import inspect
         import src.nvd.service as service_mod
 
         source = inspect.getsource(service_mod)
-        assert "dialects.sqlite" not in source
-        assert "on_conflict_do_update" not in source
+        assert "dialects.sqlite" in source
+        assert "dialects.postgresql" in source
+        assert "on_conflict_do_update" in source
+        assert "get_bind().dialect" in source
+
+    def test_refresh_twice_is_idempotent_update(self, session, monkeypatch):
+        """Two refreshes writing the same cve_id complete: the second updates
+        instead of raising (the concurrent-refresh race)."""
+        monkeypatch.setenv("NVD_AUTO_RELINK", "false")
+        entry = NVDEntry(
+            cve_id="CVE-TWICE-1", published=None, last_modified=None,
+            severity="LOW", cvss_score=2.0, description="first",
+            affected_versions=[{"version": "0.19.0"}],
+        )
+        with self._fetched([entry]):
+            NVDService(session).get_vulnerabilities()
+
+        # Force staleness, then refresh the same cve with changed fields.
+        session.query(CVEEntry).update(
+            {"fetched_at": _utcnow() - timedelta(hours=48)}
+        )
+        session.commit()
+        entry2 = NVDEntry(
+            cve_id="CVE-TWICE-1", published=None, last_modified=None,
+            severity="HIGH", cvss_score=8.0, description="second",
+            affected_versions=[{"version": "0.19.0"}],
+        )
+        with self._fetched([entry2]):
+            NVDService(session).get_vulnerabilities()
+
+        rows = session.query(CVEEntry).filter_by(cve_id="CVE-TWICE-1").all()
+        assert len(rows) == 1
+        assert rows[0].severity == "HIGH"
 
 
 # ---------------------------------------------------------------------------
@@ -435,3 +526,127 @@ class TestGeoEnrichmentCursor:
         result = enrich_nodes_geo(db_session, _FakeGeoIPService(), batch_size=3)
         assert result["updated"] == 7
         assert result["total"] == 7
+
+
+class TestTerminalWriteRetry:
+    def test_transient_failure_retried_until_success(self, tmp_path):
+        """A transient 'database is locked' on the terminal write is retried
+        instead of leaving the job 'running' for the staleness cutoff."""
+        Session = _file_session(tmp_path)
+        with patch("src.web.background.get_session_factory", return_value=Session):
+            from src.web import background
+
+            with Session() as s:
+                job = ScanJobRepository(s).create(job_type="scan")
+                s.commit()
+                job_id = job.id
+
+            real_update = background._update_job_status
+            attempts = {"completed": 0}
+
+            def flaky(jid, status, summary):
+                if status == "completed" and attempts["completed"] < 2:
+                    attempts["completed"] += 1
+                    raise RuntimeError("database is locked")
+                return real_update(jid, status, summary)
+
+            with patch("src.web.background._update_job_status", side_effect=flaky):
+                _run(background._run_job(job_id, "scan", lambda: {"total_nodes": 1}))
+
+            with Session() as s:
+                job = ScanJobRepository(s).get_by_id(job_id)
+                assert job.status == "completed"
+            assert attempts["completed"] == 2  # two transient failures, third succeeded
+
+
+class TestNewNodeFlushGuard:
+    def test_sync_links_with_unflushed_new_node(self, db_session):
+        """sync_node_links must flush a brand-new node first (sessions are
+        autoflush=False; NodeRepository.upsert does not flush)."""
+        db_session.add(CVEEntry(
+            cve_id="CVE-NEW-9", severity="HIGH", cvss_score=7.0,
+            affected_versions=json.dumps([{"version": "0.20.0"}]),
+        ))
+        db_session.commit()
+        new_node = Node(ip="10.5.5.5", port=8333, version="0.20.0")
+        db_session.add(new_node)  # NOT flushed: id is None
+        assert new_node.id is None
+
+        added, resolved = VulnerabilityRepository(db_session).sync_node_links(
+            new_node, {"CVE-NEW-9"}
+        )
+        assert (added, resolved) == (1, 0)
+        assert new_node.id is not None
+        links = db_session.query(NodeVulnerability).filter_by(
+            node_id=new_node.id, cve_id="CVE-NEW-9", resolved_at=None
+        ).all()
+        assert len(links) == 1
+
+
+class TestMigrationDuplicateRepair:
+    def test_init_db_repairs_duplicate_active_links_before_indexing(self, tmp_path, monkeypatch):
+        """A DB already hit by the pre-fix race has duplicate ACTIVE rows;
+        init_db must resolve the surplus (keeping the oldest) and then create
+        the unique index, instead of failing on it."""
+        db_url = f"sqlite:///{tmp_path}/legacy.db"
+        engine = create_engine(db_url)
+        Base.metadata.create_all(engine)
+        with engine.begin() as conn:
+            conn.execute(sa_text("DROP INDEX IF EXISTS uq_node_vuln_active"))
+            # Legacy state: two ACTIVE rows for the same pair (the race's
+            # residue), one clean pair, one resolved history row.
+            conn.execute(sa_text(
+                "INSERT INTO nodes (ip, port, is_example, is_vulnerable, "
+                "has_exposed_rpc, is_dev_version, first_seen, last_seen) VALUES "
+                "('10.0.0.9', 8333, 0, 0, 0, 0, '2026-01-01 00:00:00', '2026-01-01 00:00:00')"
+            ))
+            conn.execute(sa_text(
+                "INSERT INTO cve_entries (cve_id, severity, fetched_at) "
+                "VALUES ('CVE-DUP-1', 'HIGH', '2026-01-01 00:00:00')"
+            ))
+            conn.execute(sa_text(
+                "INSERT INTO node_vulnerabilities (node_id, cve_id, detected_at) "
+                "VALUES (1, 'CVE-DUP-1', '2026-01-01 00:00:00')"
+            ))
+            conn.execute(sa_text(
+                "INSERT INTO node_vulnerabilities (node_id, cve_id, detected_at) "
+                "VALUES (1, 'CVE-DUP-1', '2026-01-02 00:00:00')"
+            ))
+            conn.execute(sa_text(
+                "INSERT INTO node_vulnerabilities (node_id, cve_id, detected_at, resolved_at) "
+                "VALUES (1, 'CVE-DUP-1', '2026-01-01 00:00:00', '2026-01-01 00:00:00')"
+            ))
+        engine.dispose()
+
+        monkeypatch.setenv("DATABASE_URL", db_url)
+        from src.db.connection import close_db, init_db
+
+        close_db()  # reset cached engine from any earlier test
+        try:
+            init_db()
+        finally:
+            close_db()
+
+        engine = create_engine(db_url)
+        with engine.connect() as conn:
+            active = conn.execute(sa_text(
+                "SELECT id FROM node_vulnerabilities WHERE resolved_at IS NULL"
+            )).fetchall()
+            resolved = conn.execute(sa_text(
+                "SELECT id, resolved_at FROM node_vulnerabilities "
+                "WHERE resolved_at IS NOT NULL ORDER BY id"
+            )).fetchall()
+            idx = conn.execute(sa_text(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name='uq_node_vuln_active'"
+            )).fetchall()
+        engine.dispose()
+
+        assert len(active) == 1, "exactly one active link must survive"
+        assert len(resolved) == 2, "the surplus active row was resolved; history kept"
+        # The pre-existing resolved history row keeps its original timestamp.
+        assert resolved[1][1] == "2026-01-01 00:00:00"
+        assert len(idx) == 1
+
+        # Clean DBs are untouched: the surviving active row is the oldest one.
+        assert active[0][0] == 1

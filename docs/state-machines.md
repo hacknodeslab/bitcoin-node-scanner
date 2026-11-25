@@ -53,6 +53,19 @@ pre-existing DBs in `src/db/connection.py:218-221`).
    re-invoking `_run_job` for the same `job_id` (duplicate background task,
    manual retry) drove `completed → running → completed`, violating I2/I3/I4.
 
+### Residual risk (accepted, documented)
+
+3. **Age-based reaping vs a still-alive executor [CONFIRMED, remote window].**
+   The reaper marks a `running` job `failed` on age alone; it cannot stop the
+   executor. If a scan legitimately ran longer than
+   `SCAN_JOB_STALE_RUNNING_MINUTES` (12 h default; realistic scans take tens of
+   minutes), the reaper frees the active slot and a second scan can start while
+   the first still writes. Mitigations in place: the conditional UPDATE only
+   fires when nothing has touched the row; the old executor's terminal write is
+   rejected by the transition table (logged, no silent overwrite); the cutoff
+   default is ~50× the worst expected runtime. The complete fix is a
+   heartbeat/lease the reaper checks — deferred as disproportionate today.
+
 ---
 
 ## 2. Scan (scan session) — `scans` table
@@ -110,8 +123,11 @@ creates a *new* row (history is kept by design).
 
 ### Invariants
 
-- I1: at most one *active* row per (node_id, cve_id) — **not DB-enforced
-  before Issue 2**.
+- I1: at most one *active* row per (node_id, cve_id) — DB-enforced by the
+  partial unique index `uq_node_vuln_active` on SQLite and PostgreSQL (the
+  two supported backends). On any other dialect the index would be created
+  without its `WHERE resolved_at IS NULL` predicate and break re-detection;
+  such dialects are not supported for this table.
 - I2: `resolved_at` set at most once per row (no row is resurrected).
 - I3: `node.is_vulnerable` mirrors "has ≥1 active link" (kept in sync by
   `src/nvd/service.py:125-150` and `src/db/scanner_integration.py`).
@@ -157,10 +173,14 @@ a refresh upserts by `cve_id` (idempotent, no duplicates); when
    fails on the PostgreSQL deployments the schema and engine setup otherwise
    support (`src/db/connection.py:76-86`, `postgresql_where` in models). On PG,
    every TTL refresh raised; `/api/v1/vulnerabilities` only catches `NVDAPIError`
-   so a stale cache + PG = unhandled 500.
+   so a stale cache + PG = unhandled 500. An intermediate fix used
+   `session.merge()`, which is dialect-agnostic but **not atomic**: two
+   overlapping refreshes could both miss a new `cve_id` and the second insert
+   raised. Final fix: dialect-dispatched `ON CONFLICT DO UPDATE` (atomic on
+   both supported backends, merge fallback elsewhere).
 2. **Two concurrent refreshes [CONFIRMED, benign].** Both fetch from NVD and
-   upsert the same `cve_id`s; upsert makes the second a no-op. Wasteful (two
-   upstream calls) but not incorrect.
+   upsert the same `cve_id`s; the database-side upsert makes the second an
+   update. Wasteful (two upstream calls) but not incorrect.
 
 ---
 
@@ -282,9 +302,9 @@ kept for future use.
 
 | Issue | Title | Severity | Fix |
 |-------|-------|----------|-----|
-| 1 | ScanJob: stuck `pending`/`running` deadlock + unenforced transition table | High | `ScanJobRepository.get_active_job` reaps orphaned jobs to `failed` first (staleness cutoffs env-tunable via `SCAN_JOB_STALE_PENDING_MINUTES`/`SCAN_JOB_STALE_RUNNING_MINUTES`, defaults 30 min/12 h); `update_status` enforces the transition table and raises on terminal-state overwrite; `_run_job` contains failures of both the `running` mark and the terminal mark so a job always reaches a terminal state |
+| 1 | ScanJob: stuck `pending`/`running` deadlock + unenforced transition table | High | `ScanJobRepository.get_active_job` reaps orphaned jobs to `failed` first with a **conditional** UPDATE (staleness cutoffs env-tunable via `SCAN_JOB_STALE_PENDING_MINUTES`/`SCAN_JOB_STALE_RUNNING_MINUTES`, defaults 30 min/12 h); `update_status` enforces the transition table and raises on terminal-state overwrite; `_run_job` contains failures of the `running` mark and retries the terminal write 3× with backoff. Residual: if the terminal write keeps failing, the job stays `running` until `reap_stale` (called by `get_active_job` and `GET /api/v1/scans/{id}`) reaps it after the running cutoff |
 | 2 | NodeVulnerability: duplicate active links under concurrent relink | High | Partial unique index `uq_node_vuln_active` (`src/db/models.py`, additively created for existing DBs by `_migrate_schema`) plus conflict-tolerant `ON CONFLICT DO NOTHING` inserts in `sync_node_links`/`link_to_node` — the losing side of the race becomes a no-op |
-| 3 | NVD refresh emits SQLite-only upsert SQL — breaks PostgreSQL | Medium | Dialect-agnostic `session.merge()` upsert in `NVDService._refresh` |
+| 3 | NVD refresh emits SQLite-only upsert SQL — breaks PostgreSQL | Medium | Dialect-dispatched `ON CONFLICT DO UPDATE` (SQLite/PostgreSQL; `merge()` fallback elsewhere) — portable *and* atomic against the concurrent-refresh duplicate-insert race |
 | 4 | Geo enrichment `OFFSET` cursor can skip/duplicate rows | Medium | Keyset pagination on `Node.id` in `enrich_nodes_geo` |
 
 All fixes are guarded by `tests/test_state_machine_regressions.py`; the full suite

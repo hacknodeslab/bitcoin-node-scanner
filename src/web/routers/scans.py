@@ -40,6 +40,9 @@ def trigger_scan(
 
     active = repo.get_active_job("scan")
     if active:
+        # Persist any stale-job reaping done inside get_active_job — a 409
+        # rollback must not undo the orphan cleanup.
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A scan is already {active.status} (job_id={active.id}). Wait for it to finish.",
@@ -77,6 +80,11 @@ def trigger_scan(
 )
 def get_scan_job(job_id: str, db: Session = Depends(get_db)):
     repo = ScanJobRepository(db)
+    # Reap orphaned jobs here too: a client polling a job whose worker died
+    # must see 'failed' once it passes the staleness cutoff, not 'pending'
+    # or 'running' forever.
+    if repo.reap_stale():
+        db.commit()
     job = repo.get_by_id(job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scan job not found.")
