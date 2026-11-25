@@ -210,6 +210,16 @@ class NodeVulnerability(Base):
         Index('idx_node_vuln_cve_id', 'cve_id'),
         Index('idx_node_vuln_detected_at', 'detected_at'),
         Index('idx_node_vuln_resolved', 'resolved_at'),
+        # At most one ACTIVE link per (node, CVE); resolved history rows may
+        # repeat the pair freely. DB-enforced so concurrent relinks (scanner
+        # NVD refresh vs /api/v1/vulnerabilities refresh) can't double-insert
+        # — see docs/state-machines.md §3.
+        Index(
+            'uq_node_vuln_active', 'node_id', 'cve_id',
+            unique=True,
+            sqlite_where=sa.text('resolved_at IS NULL'),
+            postgresql_where=sa.text('resolved_at IS NULL'),
+        ),
     )
 
     def __repr__(self) -> str:

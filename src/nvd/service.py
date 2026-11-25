@@ -5,8 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from sqlalchemy import select, text
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db.models import CVEEntry as CVEEntryModel
@@ -66,6 +65,37 @@ class NVDService:
 
         return datetime.now(timezone.utc).replace(tzinfo=None) - last_fetched > self._ttl
 
+    def _upsert_entry(self, values: dict) -> None:
+        """Insert-or-update one catalog row, atomically on the target dialect.
+
+        Two overlapping refreshes can both miss a new `cve_id` on SELECT;
+        `ON CONFLICT DO UPDATE` makes the second one update instead of
+        raising an IntegrityError. `session.merge()` (the previous fix) is
+        dialect-agnostic but not atomic against that race — see
+        docs/state-machines.md §4.
+        """
+        dialect = self._session.get_bind().dialect.name
+        if dialect == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            stmt = pg_insert(CVEEntryModel).values(**values)
+            set_ = {k: getattr(stmt.excluded, k) for k in values if k != "cve_id"}
+            self._session.execute(
+                stmt.on_conflict_do_update(index_elements=["cve_id"], set_=set_)
+            )
+            return
+        if dialect == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+            stmt = sqlite_insert(CVEEntryModel).values(**values)
+            set_ = {k: getattr(stmt.excluded, k) for k in values if k != "cve_id"}
+            self._session.execute(
+                stmt.on_conflict_do_update(index_elements=["cve_id"], set_=set_)
+            )
+            return
+        # Unknown dialect: merge fallback (select-then-write, not atomic).
+        self._session.merge(CVEEntryModel(**values))
+
     def _refresh(self) -> None:
         """Fetch fresh CVE data from NVD and upsert into the database."""
         client = NVDClient()
@@ -91,29 +121,16 @@ class NVDService:
             if prev_affected is None or prev_affected != new_affected_json:
                 changed_cves += 1
 
-            stmt = sqlite_insert(CVEEntryModel).values(
-                cve_id=entry.cve_id,
-                published=entry.published,
-                last_modified=entry.last_modified,
-                severity=entry.severity,
-                cvss_score=entry.cvss_score,
-                description=entry.description,
-                affected_versions=new_affected_json,
-                fetched_at=now,
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["cve_id"],
-                set_={
-                    "published": stmt.excluded.published,
-                    "last_modified": stmt.excluded.last_modified,
-                    "severity": stmt.excluded.severity,
-                    "cvss_score": stmt.excluded.cvss_score,
-                    "description": stmt.excluded.description,
-                    "affected_versions": stmt.excluded.affected_versions,
-                    "fetched_at": stmt.excluded.fetched_at,
-                },
-            )
-            self._session.execute(stmt)
+            self._upsert_entry({
+                "cve_id": entry.cve_id,
+                "published": entry.published,
+                "last_modified": entry.last_modified,
+                "severity": entry.severity,
+                "cvss_score": entry.cvss_score,
+                "description": entry.description,
+                "affected_versions": new_affected_json,
+                "fetched_at": now,
+            })
             stored += 1
 
         self._session.commit()
